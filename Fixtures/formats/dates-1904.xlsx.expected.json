@@ -9,8 +9,8 @@
       "name": "Dates1904",
       "index": 0,
       "visibility": "visible",
-      "dimension": "A1:B5",
-      "usedRange": "A1:B5",
+      "dimension": "A1:B6",
+      "usedRange": "A1:B6",
       "cells": {
         "A1": {
           "type": "text",
@@ -19,45 +19,55 @@
         },
         "B1": {
           "type": "number",
-          "value": -1461.0,
+          "value": -1460.0,
           "numberFormat": "yyyy-mm-dd"
         },
         "A2": {
           "type": "text",
-          "value": "1900-03-01",
+          "value": "1900-02-28",
           "numberFormat": "General"
         },
         "B2": {
           "type": "number",
-          "value": -1401.0,
+          "value": -1402.0,
           "numberFormat": "yyyy-mm-dd"
         },
         "A3": {
           "type": "text",
-          "value": "1970-01-01",
+          "value": "1900-03-01",
           "numberFormat": "General"
         },
         "B3": {
           "type": "number",
-          "value": 24107.0,
+          "value": -1401.0,
           "numberFormat": "yyyy-mm-dd"
         },
         "A4": {
           "type": "text",
-          "value": "2024-03-15",
+          "value": "1970-01-01",
           "numberFormat": "General"
         },
         "B4": {
           "type": "number",
-          "value": 43904.0,
+          "value": 24107.0,
           "numberFormat": "yyyy-mm-dd"
         },
         "A5": {
           "type": "text",
-          "value": "2099-12-31",
+          "value": "2024-03-15",
           "numberFormat": "General"
         },
         "B5": {
+          "type": "number",
+          "value": 43904.0,
+          "numberFormat": "yyyy-mm-dd"
+        },
+        "A6": {
+          "type": "text",
+          "value": "2099-12-31",
+          "numberFormat": "General"
+        },
+        "B6": {
           "type": "number",
           "value": 71588.0,
           "numberFormat": "yyyy-mm-dd"
@@ -66,5 +76,14 @@
     }
   ],
   "twinFixture": "formats/dates-1900.xlsx",
-  "notes": "The 1904 serials are exactly the 1900 serials minus 1462."
+  "epochOffsetIsNotConstant": {
+    "belowSerial60": -1461,
+    "atOrAboveSerial60": -1462,
+    "why": "Serial 60 in the 1900 system is 1900-02-29, a date that never happened - Lotus 1-2-3 shipped the bug and Excel keeps it for compatibility. The 1904 system has no phantom day, so the gap between the two epochs widens by one at that point.",
+    "rowsBelow": [
+      "A1 (1900-01-01)",
+      "A2 (1900-02-28)"
+    ]
+  },
+  "notes": "A flat 'minus 1462' is WRONG for January and February 1900 and puts every date in those two months one day early - this fixture shipped with that bug and A1 caught it. Rows 1 and 2 are below serial 60 and are 1461 apart; rows 3 to 6 are at or above it and are 1462 apart. Both twins must render the SAME wall-clock date in column A's text and column B's formatted serial, which is the assertion that catches a conversion using the wrong offset either way."
 }

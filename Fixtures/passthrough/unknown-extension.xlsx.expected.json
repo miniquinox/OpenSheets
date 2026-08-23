@@ -1,0 +1,51 @@
+{
+  "file": "passthrough/unknown-extension.xlsx",
+  "kind": "xlsx",
+  "proves": "Two sheet-level elements that appear in NO list: an mc:AlternateContent block and a vendor <ext> inside <extLst>. A reader that captures a fixed list of element names drops both and Excel reports the file as damaged on the next save; a reader that captures every unmodelled child of <worksheet> keeps them without knowing what they are.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Extended",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:C3",
+      "usedRange": "A1:C3",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "heat",
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "number",
+          "value": 1.0,
+          "numberFormat": "General"
+        },
+        "C1": {
+          "type": "number",
+          "value": 2.0,
+          "numberFormat": "General"
+        },
+        "A3": {
+          "type": "number",
+          "value": 3.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "sheetLevelElementsThatMustSurvive": [
+    "pageMargins",
+    "AlternateContent",
+    "extLst"
+  ],
+  "provesTheRuleNotTheList": "SheetFragment.capturedElements lists neither AlternateContent nor any vendor element, and SheetFragment.schemaOrder(for:) sorts an unrecognised name into the extLst slot. Capture must therefore be 'every direct child of <worksheet> that is not modelled', not 'every name in this set'. Order matters as much as presence: CT_Worksheet is a sequence, and AlternateContent must come back before extLst, which is where it was read.",
+  "mustNotHappen": [
+    "dropping AlternateContent",
+    "dropping the vendor ext",
+    "reordering them relative to each other",
+    "rewriting the acme: namespace prefix or the ext uri"
+  ],
+  "notes": "The uri on <ext> is a GUID, which is how OOXML namespaces an extension block; a reader must not interpret it. Both blocks are pure passthrough - nothing in SheetModel models either, and nothing should."
+}

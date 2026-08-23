@@ -1,0 +1,301 @@
+{
+  "schema": 1,
+  "takenAt": "2026-08-23T19:30:30Z",
+  "configuration": "release",
+  "revision": null,
+  "machine": {
+    "os": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "arch": "arm64",
+    "model": "Mac14,6",
+    "cpu": "Apple M2 Max",
+    "cores": 12,
+    "loadAverage": [
+      6.3,
+      8.9,
+      15.13
+    ],
+    "normalizedLoad": 0.525
+  },
+  "calibrationSeconds": 0.001178084,
+  "metrics": {
+    "edit.keystroke.repaint.seconds": {
+      "value": null,
+      "unit": "seconds",
+      "budget": 0.016,
+      "status": "blocked",
+      "samples": 0,
+      "owner": "A4 + A5",
+      "note": "no sample emitted; blocked on GridKit and GlassUI's editing path"
+    },
+    "formula.recalc.10k.seconds": {
+      "value": null,
+      "unit": "seconds",
+      "budget": 0.2,
+      "status": "blocked",
+      "samples": 0,
+      "owner": "A3",
+      "note": "no sample emitted; blocked on SheetFormula's evaluator"
+    },
+    "formula.recalc.10k.visited": {
+      "value": null,
+      "unit": "count",
+      "budget": 20000,
+      "status": "blocked",
+      "samples": 0,
+      "owner": "A3",
+      "note": "no sample emitted; blocked on SheetFormula's evaluator"
+    },
+    "grid.scroll.droppedFrames.count": {
+      "value": null,
+      "unit": "count",
+      "budget": 0,
+      "status": "blocked",
+      "samples": 0,
+      "owner": "A4",
+      "note": "no sample emitted; blocked on GridKit's renderer"
+    },
+    "grid.scroll.frame.p99.seconds": {
+      "value": null,
+      "unit": "seconds",
+      "budget": 0.0083,
+      "status": "blocked",
+      "samples": 0,
+      "owner": "A4",
+      "note": "no sample emitted; blocked on GridKit's renderer"
+    },
+    "machine.calibration.seconds": {
+      "value": 0.001178084,
+      "unit": "seconds",
+      "budget": null,
+      "status": "measured",
+      "samples": 1,
+      "owner": "A7",
+      "machineFactor": null,
+      "normalizedLoad": 0.5248616536458334,
+      "note": "the fixed CPU kernel; divide by the baseline's value to normalise every other metric"
+    },
+    "machine.cores": {
+      "value": 12,
+      "unit": "count",
+      "budget": null,
+      "status": "measured",
+      "samples": 1,
+      "owner": "A7",
+      "machineFactor": null,
+      "normalizedLoad": 0.5248616536458334,
+      "note": null
+    },
+    "machine.load.normalized": {
+      "value": 0.5248616536458334,
+      "unit": "ratio",
+      "budget": null,
+      "status": "measured",
+      "samples": 1,
+      "owner": "A7",
+      "machineFactor": null,
+      "normalizedLoad": 0.5248616536458334,
+      "note": "load 6.30/12 cores (52%, busy), thermal nominal"
+    },
+    "model.a1.emit.1m.seconds": {
+      "value": 0.014195208,
+      "unit": "seconds",
+      "budget": 0.4,
+      "status": "measured",
+      "samples": 25,
+      "owner": "A7",
+      "machineFactor": 1,
+      "normalizedLoad": 0.5248616536458334,
+      "note": null
+    },
+    "model.a1.parse.1m.seconds": {
+      "value": 0.113536166,
+      "unit": "seconds",
+      "budget": 0.4,
+      "status": "measured",
+      "samples": 30,
+      "owner": "A7",
+      "machineFactor": 1,
+      "normalizedLoad": 0.5343017578125,
+      "note": null
+    },
+    "model.cellstore.build.1m.seconds": {
+      "value": 0.059831958,
+      "unit": "seconds",
+      "budget": null,
+      "status": "measured",
+      "samples": 5,
+      "owner": "A7",
+      "machineFactor": 1,
+      "normalizedLoad": 0.5343017578125,
+      "note": null
+    },
+    "model.cellstore.bytesPerCell": {
+      "value": 55.066624,
+      "unit": "bytes",
+      "budget": 128,
+      "status": "measured",
+      "samples": 1,
+      "owner": "A7",
+      "machineFactor": null,
+      "normalizedLoad": 0.5343017578125,
+      "note": "Cell is ~48 bytes; anything near 128 means the store is the overhead"
+    },
+    "model.cellstore.rss.1m.bytes": {
+      "value": 55066624,
+      "unit": "bytes",
+      "budget": 629145600,
+      "status": "measured",
+      "samples": 1,
+      "owner": "A7",
+      "machineFactor": null,
+      "normalizedLoad": 0.5343017578125,
+      "note": "the model's share of \u00a710.6's 600 MB ceiling; the reader's own buffers are extra"
+    },
+    "model.cellstore.sparse.100k.bytes": {
+      "value": 15876096,
+      "unit": "bytes",
+      "budget": 67108864,
+      "status": "measured",
+      "samples": 1,
+      "owner": "A7",
+      "machineFactor": null,
+      "normalizedLoad": 0.5248616536458334,
+      "note": "100k cells scattered over the whole grid: cost must track population, not bounding box"
+    },
+    "model.cellstore.sparseScan.seconds": {
+      "value": 0.012296958,
+      "unit": "seconds",
+      "budget": 0.05,
+      "status": "measured",
+      "samples": 40,
+      "owner": "A7",
+      "machineFactor": 1,
+      "normalizedLoad": 0.5248616536458334,
+      "note": null
+    },
+    "model.cellstore.window50x50.allocations": {
+      "value": 0,
+      "unit": "count",
+      "budget": 64,
+      "status": "measured",
+      "samples": 1,
+      "owner": "A7",
+      "machineFactor": null,
+      "normalizedLoad": 0.5343017578125,
+      "note": "the allocation-free walk must not allocate per cell \u2014 a work metric, load-proof"
+    },
+    "model.cellstore.window50x50.seconds": {
+      "value": 5.1084e-05,
+      "unit": "seconds",
+      "budget": 0.001,
+      "status": "measured",
+      "samples": 50,
+      "owner": "A7",
+      "machineFactor": 1,
+      "normalizedLoad": 0.5343017578125,
+      "note": null
+    },
+    "model.diff.100k.changes": {
+      "value": 500,
+      "unit": "count",
+      "budget": null,
+      "status": "measured",
+      "samples": 1,
+      "owner": "A7",
+      "machineFactor": null,
+      "normalizedLoad": 0.5343017578125,
+      "note": "how many cells the perturbation actually moved \u2014 a determinism canary"
+    },
+    "model.diff.100k.seconds": {
+      "value": 0.011470875,
+      "unit": "seconds",
+      "budget": 1.0,
+      "status": "measured",
+      "samples": 12,
+      "owner": "A7",
+      "machineFactor": 1,
+      "normalizedLoad": 0.5343017578125,
+      "note": null
+    },
+    "model.diff.100k.visited": {
+      "value": 100000,
+      "unit": "count",
+      "budget": 200000,
+      "status": "measured",
+      "samples": 1,
+      "owner": "A7",
+      "machineFactor": null,
+      "normalizedLoad": 0.5343017578125,
+      "note": "a diff that walks the rectangle rather than the populated rows costs this many visits"
+    },
+    "model.runlength.geometry.10k.seconds": {
+      "value": 0.004225417,
+      "unit": "seconds",
+      "budget": 0.06,
+      "status": "measured",
+      "samples": 25,
+      "owner": "A7",
+      "machineFactor": 1,
+      "normalizedLoad": 0.5248616536458334,
+      "note": null
+    },
+    "model.runlength.runs": {
+      "value": 100,
+      "unit": "count",
+      "budget": 100,
+      "status": "measured",
+      "samples": 1,
+      "owner": "A7",
+      "machineFactor": null,
+      "normalizedLoad": 0.5248616536458334,
+      "note": "the cost above is bound by this, not by the sheet's 1,048,576 rows"
+    },
+    "model.styles.intern.10k.seconds": {
+      "value": 0.002604541,
+      "unit": "seconds",
+      "budget": 0.2,
+      "status": "measured",
+      "samples": 10,
+      "owner": "A7",
+      "machineFactor": 1,
+      "normalizedLoad": 0.5248616536458334,
+      "note": null
+    },
+    "sync.externalChange.diff.100k.seconds": {
+      "value": null,
+      "unit": "seconds",
+      "budget": 1.0,
+      "status": "blocked",
+      "samples": 0,
+      "owner": "A6",
+      "note": "no sample emitted; blocked on SheetStore's watcher and diff engine"
+    },
+    "xlsx.open.100k.firstPaint.seconds": {
+      "value": null,
+      "unit": "seconds",
+      "budget": 0.8,
+      "status": "blocked",
+      "samples": 0,
+      "owner": "A1 + A4",
+      "note": "no sample emitted; blocked on SheetFormat's xlsx reader and GridKit's first layout pass"
+    },
+    "xlsx.open.1m.rss.bytes": {
+      "value": null,
+      "unit": "bytes",
+      "budget": 629145600,
+      "status": "blocked",
+      "samples": 0,
+      "owner": "A1",
+      "note": "no sample emitted; blocked on SheetFormat's xlsx reader"
+    },
+    "xlsx.open.1m.seconds": {
+      "value": null,
+      "unit": "seconds",
+      "budget": 4.0,
+      "status": "blocked",
+      "samples": 0,
+      "owner": "A1",
+      "note": "no sample emitted; blocked on SheetFormat's xlsx reader"
+    }
+  }
+}

@@ -227,7 +227,12 @@ class Book:
         cols = [dict(c.attrib) for c in root.findall(f"{M}cols/{M}col")]
         rows_meta = {r.get("r"): dict(r.attrib) for r in root.findall(f"{M}sheetData/{M}row")}
         hl = {h.get("ref"): h for h in root.findall(f"{M}hyperlinks/{M}hyperlink")}
-        elements = {el.tag[len(M):] for el in root if el.tag.startswith(M)}
+        # Local names, whatever namespace they came from. `SheetFragment.elementName` is
+        # defined as the local name precisely because producers differ on prefixes, and a
+        # sheet-level survivor can live outside the spreadsheetml namespace entirely —
+        # `mc:AlternateContent` is Markup Compatibility, and vendor extensions are whatever
+        # the vendor chose. Filtering to `M` here would have made those invisible.
+        elements = {el.tag.rsplit("}", 1)[-1] for el in root}
         return cells, dimension, merges, pane, cols, rows_meta, hl, elements
 
     def used_range(self, cells, merges=()):
@@ -503,6 +508,42 @@ def check_csv(path: str, exp: dict, rep: Report):
         rep.ok(rel, f"all {len(rows)} rows match")
 
 
+def sheet_error_codes():
+    """Every `SheetError.code` string, read out of A0's frozen enum.
+
+    A regex over the code strings can only ever approximate the real invariant,
+    which is *"this code is one SheetError can actually emit"* - and it got that
+    wrong twice: three-segment codes like `zip.bomb.ratio` and the `workbook.`,
+    `cell.` and `ref.` namespaces are all legal and were all rejected. So parse
+    the enum instead. The `code` property is a flat switch of
+    `case .foo: "some.code"` lines, which is exactly as machine-readable as it
+    looks, and it lives in the one file that cannot drift from the truth.
+
+    Returns `None` when the source cannot be read - a checkout without the Swift
+    package, say - and the caller falls back to a widened pattern. A1's
+    `SheetErrorTests` enforce the same invariant from the Swift side and are the
+    real authority; this is the cheap half that runs with no toolchain.
+    """
+    src = os.path.join(ROOT, "Packages", "OpenSheetsCore", "Sources",
+                       "SheetModel", "SheetError.swift")
+    try:
+        text = open(src, encoding="utf-8").read()
+    except OSError:
+        return None
+    # Narrow to the `public var code: String` switch so a doc comment quoting a
+    # code elsewhere in the file cannot widen the accepted set.
+    start = text.find("public var code: String")
+    if start < 0:
+        return None
+    body = text[start:]
+    end = body.find("\n    }")
+    if end > 0:
+        body = body[:end]
+    codes = set(re.findall(r'case\s+\.[A-Za-z0-9_]+:\s*"([^"]+)"', body))
+    return codes or None
+
+
+
 def check_hostile(rep: Report):
     p = os.path.join(FIXTURES, "hostile", "expected-errors.json")
     if not os.path.exists(p):
@@ -519,15 +560,29 @@ def check_hostile(rep: Report):
     if on_disk == named:
         rep.ok("hostile", f"all {len(on_disk)} hostile files are covered")
 
+    known = sheet_error_codes()
+    if known:
+        rep.ok("hostile", f"checking codes against {len(known)} cases in SheetError.code")
+    else:
+        rep.warn("hostile", "SheetError.swift not readable - falling back to a shape check. "
+                            "The Swift-side SheetErrorTests are the real authority.")
+
     for case in doc["cases"]:
         w = case["file"]
         if not case.get("proves"):
             rep.fail(w, "no `proves` line")
         if case["expectedError"] is None and case["expectedBehavior"] == "throw":
             rep.fail(w, "expectedError is null but expectedBehavior is 'throw'")
-        code = case["expectedError"] or ""
-        if code and not re.match(r"^(zip|xml|xlsx)\.[a-zA-Z]+$", code):
-            rep.fail(w, f"error code {code!r} is not <namespace>.<lowerCamelCase>")
+        for code in [case["expectedError"]] + list(case.get("alsoAcceptable") or []):
+            if not code:
+                continue
+            if known is not None:
+                if code not in known:
+                    near = sorted(c for c in known if c.split(".")[0] == code.split(".")[0])
+                    hint = f" Codes in that namespace: {', '.join(near)}" if near else ""
+                    rep.fail(w, f"error code {code!r} is not a SheetError.code.{hint}")
+            elif not re.match(r"^[a-z][a-zA-Z0-9]*(\.[a-zA-Z][a-zA-Z0-9]*){1,2}$", code):
+                rep.fail(w, f"error code {code!r} is not <namespace>.<name>[.<name>]")
         if not case["mustNotHappen"]:
             rep.fail(w, "mustNotHappen is empty")
     rep.ok("hostile", f"{len(doc['cases'])} cases well-formed")
@@ -705,6 +760,50 @@ def check_readme(rep: Report):
             rep.fail("README", f"{m} is not documented in Fixtures/README.md")
     else:
         rep.ok("README", "every fixture is documented")
+
+    check_readme_hostile_table(rep, text)
+
+
+def check_readme_hostile_table(rep: Report, text: str):
+    """The README's hostile table must match the JSON, code for code.
+
+    Two copies of the same fact is one copy too many. When A1 reconciled
+    `expected-errors.json` to A0's real `SheetError` enum, three separate
+    entry-name codes collapsed into `zip.pathTraversal` and the README quietly
+    kept listing all three - a table that says something the corpus does not.
+    Regenerate it with `Scripts/gen-fixtures.py --sync-readme`.
+    """
+    begin = text.find("<!-- BEGIN hostile-table")
+    end = text.find("<!-- END hostile-table -->")
+    if begin < 0 or end < 0:
+        rep.fail("README", "the hostile table has lost its generated-region markers; "
+                           "run Scripts/gen-fixtures.py --sync-readme")
+        return
+    block = text[begin:end]
+    doc = json.load(open(os.path.join(FIXTURES, "hostile", "expected-errors.json"),
+                         encoding="utf-8"))
+    drifted = 0
+    for case in doc["cases"]:
+        row = next((line for line in block.split("\n")
+                    if line.startswith(f"| `{case['file']}` |")), None)
+        if row is None:
+            rep.fail("README", f"{case['file']} has no row in the hostile table")
+            drifted += 1
+            continue
+        code = case["expectedError"]
+        want = f"`{code}`" if code else "must succeed"
+        if want not in row:
+            rep.fail("README", f"{case['file']}: the table says something other than "
+                               f"{want} - run Scripts/gen-fixtures.py --sync-readme")
+            drifted += 1
+            continue
+        for alt in case.get("alsoAcceptable") or []:
+            if f"`{alt}`" not in row:
+                rep.fail("README", f"{case['file']}: the table omits the acceptable "
+                                   f"alternative `{alt}`")
+                drifted += 1
+    if not drifted:
+        rep.ok("README", f"the hostile table matches all {len(doc['cases'])} JSON cases")
 
 
 SOFFICE = "/Applications/LibreOffice.app/Contents/MacOS/soffice"

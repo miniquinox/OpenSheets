@@ -16,14 +16,51 @@ import Testing
 struct BenchmarkTests {
     #if DEBUG
         /// Unoptimised builds pay for bounds checks, retain/release, and no inlining.
-        static let slack = 6.0
+        static let buildSlack = 6.0
         static let configuration = "debug"
     #else
-        static let slack = 1.0
+        static let buildSlack = 1.0
         static let configuration = "release"
     #endif
 
+    /// Build slack, widened when the machine is oversubscribed.
+    ///
+    /// These budgets are calibrated on an idle Mac. Run them while several other builds are
+    /// competing for the same cores and they measure the scheduler instead of the code — this
+    /// suite sat at 100–112% of budget on three separate tests during Wave 1, every one of them a
+    /// flake rather than a regression. A flaky gate gets ignored, and an ignored gate is worse
+    /// than no gate at all (see `docs/agents/WAVE-1-ADDENDUM.md` §8).
+    ///
+    /// So: scale linearly with overload, capped at 4×. A real regression is an order of
+    /// magnitude and still trips this; scheduler noise does not. Where a claim can be stated as a
+    /// ratio or a counter instead, it is — see ``metadataIsConstantTime`` — and that is always
+    /// preferable to a stopwatch. This exists for the cases where throughput really is the claim.
+    /// Sampled per test, deliberately — **not** a `static let`.
+    ///
+    /// A one-shot `static let` is evaluated at first access, which is early in the run while the
+    /// machine is still idle. Seventy seconds later the test run has saturated its own cores and
+    /// the cached multiplier is stale, which is exactly how this suite failed again after the
+    /// first attempt at fixing it. `getloadavg` is one syscall per test; read it fresh.
+    static var slack: Double {
+        let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
+        var averages = [Double](repeating: 0, count: 1)
+        guard getloadavg(&averages, 1) == 1, cores > 0, averages[0] > 0 else { return buildSlack }
+        return buildSlack * min(max(1.0, averages[0] / cores), 4.0)
+    }
+
+    /// Prints the load a budget was set against, so a wide budget is never silently wide.
+    private static func noteLoad() {
+        let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
+        var averages = [Double](repeating: 0, count: 1)
+        guard getloadavg(&averages, 1) == 1, cores > 0, averages[0] / cores > 1.05 else { return }
+        print(String(
+            format: "  [perf/%@] loaded: %.1f/%.0f cores — budget widened %.1fx",
+            configuration, averages[0], cores, min(averages[0] / cores, 4.0)
+        ))
+    }
+
     private static func report(_ label: String, _ elapsed: Duration, budget: Duration) {
+        noteLoad()
         let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
         let budgetSeconds = Double(budget.components.seconds) + Double(budget.components.attoseconds) / 1e18
         print(String(
@@ -139,23 +176,36 @@ struct BenchmarkTests {
 
     @Test("usedRange and count stay constant-time on a million cells")
     func metadataIsConstantTime() throws {
-        let store = try Self.millionCellStore()
-        let budget = Duration.milliseconds(Int(5 * Self.slack))
-        let clock = ContinuousClock()
+        // The claim is O(1) in cell count, and a ratio states that far better than a stopwatch.
+        // An absolute budget here measured the machine, not the algorithm: it sat at 112% of
+        // budget while seven other builds were running, which is a flake, not a regression.
+        // Both halves below run under identical load, so the ratio cancels it out.
+        let big = try Self.millionCellStore()
+        var small = CellStore()
+        for row in 0 ..< 3 { try small.setCell(Cell.number(Double(row)), at: CellRef(row: row, column: 0)) }
 
-        var range: CellRange?
-        var count = 0
-        let elapsed = clock.measure {
-            for _ in 0 ..< 100_000 {
-                range = store.usedRange
-                count = store.count
+        func timeReads(_ store: CellStore) -> Double {
+            var range: CellRange?
+            var count = 0
+            let elapsed = ContinuousClock().measure {
+                for _ in 0 ..< 100_000 {
+                    range = store.usedRange
+                    count = store.count
+                }
             }
+            precondition(range != nil && count > 0)
+            return Double(elapsed.components.attoseconds) / 1e18 + Double(elapsed.components.seconds)
         }
 
-        Self.report("100k usedRange+count reads", elapsed, budget: budget)
-        #expect(range != nil)
-        #expect(count == 1_000_000)
-        #expect(elapsed < budget)
+        _ = timeReads(small) // warm
+        let smallSeconds = timeReads(small)
+        let bigSeconds = timeReads(big)
+        let ratio = bigSeconds / max(smallSeconds, 1e-9)
+
+        print(String(format: "  [perf/%@] usedRange+count 1M vs 3 cells: ratio %.2f", Self.configuration, ratio))
+        #expect(big.count == 1_000_000)
+        // O(1) gives ~1. A linear scan over 1M cells instead of 3 would give six figures.
+        #expect(ratio < 4, "usedRange/count scale with cell count (ratio \(ratio))")
     }
 
     @Test("scrolling geometry does not walk a million rows")
@@ -166,22 +216,39 @@ struct BenchmarkTests {
         }
         #expect(heights.runCount == 100)
 
-        // 10,000 round-trips × two O(runCount) scans is 2,000,000 run visits. The point of the
-        // budget is that it is bound by the 100 runs and not by the 1,048,576 rows — an
-        // index-bound implementation would be four orders of magnitude slower than this.
-        let budget = Duration.milliseconds(Int(60 * Self.slack))
-        let clock = ContinuousClock()
-        var index = 0
-        let elapsed = clock.measure {
-            for step in 0 ..< 10_000 {
-                let offset = heights.offset(ofIndex: 1_048_575 - step)
-                index = heights.index(atOffset: offset, limit: Limits.rowCount)
+        // The claim is that this is bound by the 100 runs, not by the 1,048,576 rows. A ratio
+        // across two very different index positions states exactly that and is immune to machine
+        // load; an absolute budget here sat at 103% while other builds ran, which measured the
+        // scheduler rather than the data structure.
+        func timeRoundTrips(startingAt row: Int) -> Double {
+            var index = 0
+            let elapsed = ContinuousClock().measure {
+                for step in 0 ..< 10_000 {
+                    let offset = heights.offset(ofIndex: row - step)
+                    index = heights.index(atOffset: offset, limit: Limits.rowCount)
+                }
             }
+            precondition(index >= 0)
+            return Double(elapsed.components.attoseconds) / 1e18 + Double(elapsed.components.seconds)
         }
 
-        Self.report("10k offset+index round-trips at row 1M", elapsed, budget: budget)
-        #expect(index > 0)
-        #expect(elapsed < budget)
+        // Both positions sit PAST every run, so both traverse all 100 of them and the run-prefix
+        // length cancels. What differs is the row index — 99,010 against 1,048,575, a 10× spread
+        // over roughly a million rows. That isolates the actual claim.
+        //
+        // Comparing against a row *inside* the bands would not: row 20,000 sums only ~20 runs to
+        // row 1,048,575's 100, so it measures prefix length and reports ~5× on a perfectly
+        // run-bound implementation. Measured, and it is why this comparison is written this way.
+        let lastRunEnd = 99 * 1000 + 10
+        _ = timeRoundTrips(startingAt: lastRunEnd) // warm
+        let justPastRuns = timeRoundTrips(startingAt: lastRunEnd)
+        let farPastRuns = timeRoundTrips(startingAt: 1_048_575)
+        let ratio = farPastRuns / max(justPastRuns, 1e-9)
+
+        print(String(format: "  [perf/%@] offset+index at row 1M vs row 99k: ratio %.2f", Self.configuration, ratio))
+        // Run-bound gives ~1. Index-bound would be ~10× here, and four orders of magnitude
+        // against row 0.
+        #expect(ratio < 4, "run-length geometry scales with row index (ratio \(ratio))")
     }
 
     @Test("A1 parsing of a million references stays off the critical path")
@@ -214,6 +281,7 @@ struct BenchmarkTests {
 
         var buffer: [UInt8] = []
         buffer.reserveCapacity(16_000)
+        let reservedCapacity = buffer.capacity
         let elapsed = clock.measure {
             for _ in 0 ..< 1000 {
                 buffer.removeAll(keepingCapacity: true)
@@ -225,6 +293,10 @@ struct BenchmarkTests {
 
         Self.report("emit 1M A1 references", elapsed, budget: budget)
         #expect(!buffer.isEmpty)
+        // The claim in this test's name is about allocation, so assert it directly: a buffer that
+        // never outgrows its reservation never reallocated, which is what "nothing per cell"
+        // means. This half holds under any load, in any build configuration.
+        #expect(buffer.capacity == reservedCapacity, "appendA1 grew the buffer — it allocates per cell")
         #expect(elapsed < budget)
     }
 }

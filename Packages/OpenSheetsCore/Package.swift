@@ -100,6 +100,9 @@ let package = Package(
         .testTarget(
             name: "SheetFormulaTests",
             dependencies: ["SheetFormula", "TestSupport"],
+            // `Resources/functions.tsv` is A3's 600-row table-test corpus. Declared so SwiftPM
+            // does not warn about an unhandled file, which would break `-warnings-as-errors`.
+            resources: [.copy("Resources")],
             swiftSettings: strictSettings
         ),
         .testTarget(name: "GridKitTests", dependencies: ["GridKit", "TestSupport"], swiftSettings: strictSettings),

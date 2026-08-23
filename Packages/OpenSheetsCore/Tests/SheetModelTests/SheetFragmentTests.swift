@@ -21,7 +21,12 @@ struct SheetFragmentTests {
         #expect(SheetFragment.schemaOrder(for: "dataValidations") < SheetFragment.schemaOrder(for: "hyperlinks"))
         #expect(SheetFragment.schemaOrder(for: "hyperlinks") < SheetFragment.schemaOrder(for: "pageSetup"))
         #expect(SheetFragment.schemaOrder(for: "pageSetup") < SheetFragment.schemaOrder(for: "drawing"))
-        #expect(SheetFragment.schemaOrder(for: "drawing") < SheetFragment.schemaOrder(for: "tableParts"))
+        // legacyDrawing sits between drawing and drawingHF. It is the sheet's pointer to the VML
+        // that positions its comments, so mis-sorting it orphans every comment in the workbook.
+        #expect(SheetFragment.schemaOrder(for: "drawing") < SheetFragment.schemaOrder(for: "legacyDrawing"))
+        #expect(SheetFragment.schemaOrder(for: "legacyDrawing") < SheetFragment.schemaOrder(for: "legacyDrawingHF"))
+        #expect(SheetFragment.schemaOrder(for: "legacyDrawingHF") < SheetFragment.schemaOrder(for: "drawingHF"))
+        #expect(SheetFragment.schemaOrder(for: "drawingHF") < SheetFragment.schemaOrder(for: "tableParts"))
         #expect(SheetFragment.schemaOrder(for: "tableParts") < SheetFragment.schemaOrder(for: "extLst"))
     }
 
@@ -60,8 +65,25 @@ struct SheetFragmentTests {
         for modelled in ["sheetData", "cols", "mergeCells", "dimension", "sheetViews", "hyperlinks"] {
             #expect(!SheetFragment.capturedElements.contains(modelled), "\(modelled) must not be captured")
         }
-        for passthrough in ["conditionalFormatting", "dataValidations", "drawing", "tableParts", "pageSetup"] {
+        for passthrough in [
+            "conditionalFormatting", "dataValidations", "drawing", "legacyDrawing",
+            "legacyDrawingHF", "tableParts", "pageSetup",
+        ] {
             #expect(SheetFragment.capturedElements.contains(passthrough), "\(passthrough) must be captured")
+        }
+    }
+
+    @Test("No captured element falls into the unknown-element slot")
+    func everyCapturedElementIsOrdered() {
+        // The bug this catches: an element in capturedElements but missing from
+        // worksheetChildOrder sorts as "unknown", which violates CT_Worksheet's sequence and
+        // makes Excel repair the file by discarding it. legacyDrawing was exactly this.
+        let unknownSlot = SheetFragment.worksheetChildOrder.count - 1
+        for element in SheetFragment.capturedElements where element != "extLst" {
+            #expect(
+                SheetFragment.schemaOrder(for: element) != unknownSlot,
+                "\(element) is captured but missing from worksheetChildOrder"
+            )
         }
     }
 

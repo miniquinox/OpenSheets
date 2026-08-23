@@ -1,0 +1,66 @@
+# dark-increaseContrast
+
+## Components
+  ToolbarSurface         none       glass regular
+  FormulaBar             control    glass regular
+  SheetTabBar            control    glass regular
+  Sidebar                panel      glass regular
+  Inspector              panel      glass regular
+  SelectionStatsPill     capsule    glass regular.interactive
+  CommandPalette         card       glass regular.interactive
+  SnapshotBrowser        card       glass regular.interactive
+  LauncherWindow         card       glass regular.interactive
+  RefreshPill            capsule    glass regular.tint(#007AFF6B) → lens #1D508A
+  RefreshPill/conflict   capsule    glass regular.tint(#FFA7336B) → lens #886335
+  RefreshPill/failure    capsule    glass regular.tint(#FF5F556B) → lens #884543
+  DiffPanel              card       glass regular.interactive
+  ConflictBanner         panel      glass regular.tint(#FFA7336B) → lens #886335
+
+## Signals
+  agent      tint #007AFF  glyph sparkle  label Changed
+  conflict   tint #FFA733  glyph exclamationmark.triangle.fill  label Conflict
+  failure    tint #FF5F55  glyph xmark.octagon.fill  label Error
+  neutral    tint —  glyph circle  label Idle
+
+## Strokes
+  hairline  1.5pt
+  selection 3.0pt
+
+GridTheme
+  canvas                   #1C1C1E
+  canvasAlternate          #1C1C1E
+  gridline                 #A3A3A5
+  gridlineMajor            #ADADAE
+  headerBackground         #252528
+  headerInk                #DBDBDE
+  headerActiveBackground   #1E3653
+  headerActiveInk          #F5F5F7
+  headerSeparator          #ADADAE
+  cellInk                  #F9F9FA
+  cellInkSecondary         #C0C0C6
+  cellInkFormula           #B6CEFF
+  cellInkError             #FFC0BD
+  cellInkStale             #B7B7BD
+  selectionStroke          #007AFF
+  selectionFill            #007AFF1A
+  fillHandleFill           #007AFF
+  fillHandleStroke         #1C1C1E
+  referenceStroke          #007AFFB3
+  changeFlashFill          #007AFF47
+  changeMarker             #007AFF
+  editorBackground         #1C1C1E
+  editorStroke             #007AFF
+  editorInk                #F5F5F7
+  selectionStrokeWidth     3.0
+  fillHandleSize           6.0
+  changeFlashDuration      6.0
+  editorCornerRadius       6.0
+  defaultRowHeight         24.0
+  defaultColumnWidth       92.0
+  headerRowHeight          22.0
+  headerColumnWidth        46.0
+  cellPadding              6.0
+  cellFontName             system
+  cellFontSize             12.0
+  increasedContrast        yes
+  reducedTransparency      no

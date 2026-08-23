@@ -1,0 +1,253 @@
+{
+  "$comment": [
+    "Every performance budget in the project, in one place.",
+    "",
+    "PLAN.md §10.6 states six budgets in prose. This file is the executable form: one entry per",
+    "metric, each with the id a test must emit for the number to be collected. Scripts/bench.sh",
+    "runs the benchmark lane, collects every '@@OPENSHEETS_BENCH@@' line, joins it against this",
+    "file, and writes docs/perf/latest.json. A metric declared here that nobody emitted appears in",
+    "the output as 'blocked' rather than quietly vanishing — a budget nobody is measuring is worse",
+    "than a budget nobody wrote down, because it looks like it is being watched.",
+    "",
+    "TO ADD A MEASUREMENT: from any test target,",
+    "    Benchmark.record(id: \"grid.scroll.frame.p99.seconds\", value: seconds, unit: .seconds)",
+    "and it lands in the report. `blockedOn` here is documentation, not a switch: emit the id and",
+    "the metric becomes 'measured' on the next run with no change to this file.",
+    "",
+    "IDS ARE A CONTRACT. The baseline is keyed on them, so renaming one silently drops the metric",
+    "from the comparison instead of failing. Add a new id and retire the old one instead.",
+    "",
+    "'unit' must be one of: seconds, milliseconds, bytes, count, ratio, rate.",
+    "'budget' is the ceiling (or floor, for ratio and rate); null means 'tracked, not gated'.",
+    "'noisy': true moves a metric from the strict tolerance to the timing one. Reserve it for a",
+    "measurement that is genuinely jittery - an RSS delta, say - never for one that is merely",
+    "inconvenient.",
+    "",
+    "TWO TOLERANCES, BOTH MEASURED RATHER THAN GUESSED. Five back-to-back runs of this suite on",
+    "the Wave 1 development machine, at 2.5-3x its core count in load: counts and byte sizes",
+    "moved 0.0-0.3%, wall-clock metrics moved 3-29%. So counts are gated at 10% and timings at",
+    "20%, and on a machine whose load exceeds its core count the timing gate widens further and",
+    "says so out loud. Express a budget as a count wherever the question allows it."
+  ],
+  "schema": 1,
+  "regressionTolerance": 0.10,
+  "timingTolerance": 0.20,
+  "loadedMachineTimingMultiplier": 2.5,
+  "metrics": [
+    {
+      "id": "xlsx.open.100k.firstPaint.seconds",
+      "unit": "seconds",
+      "budget": 0.8,
+      "owner": "A1 + A4",
+      "planReference": "§10.6 — Open 100k-cell xlsx → first paint",
+      "blockedOn": "SheetFormat's xlsx reader and GridKit's first layout pass",
+      "description": "Wall clock from open() to the first frame that shows cells. Not the full parse: first paint is what the user experiences."
+    },
+    {
+      "id": "xlsx.open.1m.seconds",
+      "unit": "seconds",
+      "budget": 4.0,
+      "owner": "A1",
+      "planReference": "§10.6 — Open 1M-cell xlsx",
+      "blockedOn": "SheetFormat's xlsx reader",
+      "description": "Full parse of Fixtures/perf/1m-cells.xlsx into a Workbook."
+    },
+    {
+      "id": "xlsx.open.1m.rss.bytes",
+      "unit": "bytes",
+      "budget": 629145600,
+      "owner": "A1",
+      "planReference": "§10.6 — Open 1M-cell xlsx, < 600 MB RSS",
+      "blockedOn": "SheetFormat's xlsx reader",
+      "description": "Peak resident size across the parse. Use WorkCounters.peakResidentBytes(): a reader that briefly holds two copies is over budget even if it frees one."
+    },
+    {
+      "id": "grid.scroll.frame.p99.seconds",
+      "unit": "seconds",
+      "budget": 0.0083,
+      "owner": "A4",
+      "planReference": "§10.6 — Scroll frame time (ProMotion), p99",
+      "blockedOn": "GridKit's renderer",
+      "description": "99th percentile frame time while flinging. 8.3 ms is one 120 Hz frame."
+    },
+    {
+      "id": "grid.scroll.droppedFrames.count",
+      "unit": "count",
+      "budget": 0,
+      "owner": "A4",
+      "planReference": "§10.6 — zero drops while flinging",
+      "blockedOn": "GridKit's renderer",
+      "description": "A count, not a duration — it stays honest on a loaded machine, which a frame-time percentile does not."
+    },
+    {
+      "id": "edit.keystroke.repaint.seconds",
+      "unit": "seconds",
+      "budget": 0.016,
+      "owner": "A4 + A5",
+      "planReference": "§10.6 — Keystroke → cell repaint",
+      "blockedOn": "GridKit and GlassUI's editing path",
+      "description": "From the key event to the repainted cell."
+    },
+    {
+      "id": "formula.recalc.10k.seconds",
+      "unit": "seconds",
+      "budget": 0.2,
+      "owner": "A3",
+      "planReference": "§10.6 — Recalc 10k dependents",
+      "blockedOn": "SheetFormula's evaluator",
+      "description": "One edit at the root of a 10,000-cell dependency graph, to a settled sheet."
+    },
+    {
+      "id": "formula.recalc.10k.visited",
+      "unit": "count",
+      "budget": 20000,
+      "owner": "A3",
+      "planReference": "§10.6, work-done form",
+      "blockedOn": "SheetFormula's evaluator",
+      "description": "Cells the recalculation visited. The load-proof twin of the metric above: a recalc that visits the whole sheet instead of the dependency closure shows up here even on a busy machine."
+    },
+    {
+      "id": "sync.externalChange.diff.100k.seconds",
+      "unit": "seconds",
+      "budget": 1.0,
+      "owner": "A6",
+      "planReference": "§10.6 — External change → diff shown, 100k cells",
+      "blockedOn": "SheetStore's watcher and diff engine",
+      "description": "From the filesystem event to a WorkbookDiff ready to render."
+    },
+    {
+      "id": "model.cellstore.build.1m.seconds",
+      "unit": "seconds",
+      "budget": null,
+      "owner": "A7",
+      "planReference": "§10.6 — component of 'Open 1M-cell xlsx < 4 s'",
+      "description": "Building a 1000 × 1000 CellStore. The floor under the reader's own budget: whatever A1 spends parsing is on top of this."
+    },
+    {
+      "id": "model.cellstore.rss.1m.bytes",
+      "unit": "bytes",
+      "budget": 629145600,
+      "owner": "A7",
+      "planReference": "§10.6 — component of the 600 MB ceiling",
+      "description": "Resident bytes for a million cells in the model alone."
+    },
+    {
+      "id": "model.cellstore.bytesPerCell",
+      "unit": "bytes",
+      "budget": 128,
+      "owner": "A7",
+      "planReference": "PLAN.md §5.1 — 'about 48 bytes' per Cell",
+      "description": "Measured residency divided by cell count. Near 128 means the container costs more than the contents."
+    },
+    {
+      "id": "model.cellstore.window50x50.seconds",
+      "unit": "seconds",
+      "budget": 0.001,
+      "owner": "A7",
+      "planReference": "§10.6 — component of the scroll frame budget",
+      "description": "One screen of cells read out of a million. The grid does this every frame."
+    },
+    {
+      "id": "model.cellstore.window50x50.allocations",
+      "unit": "count",
+      "budget": 64,
+      "owner": "A7",
+      "planReference": "work-done form of the scroll budget",
+      "description": "Heap blocks retained by the allocation-free walk over one screen. Must not scale with the 2,500 cells."
+    },
+    {
+      "id": "model.cellstore.sparse.100k.bytes",
+      "unit": "bytes",
+      "budget": 67108864,
+      "noisy": true,
+      "owner": "A7",
+      "description": "100k cells scattered across the whole 1,048,576 × 16,384 grid. Cost must track population, not bounding box."
+    },
+    {
+      "id": "model.cellstore.sparseScan.seconds",
+      "unit": "seconds",
+      "budget": 0.05,
+      "owner": "A7",
+      "description": "Reading every cell of that sparse sheet through cells(in: .entireSheet)."
+    },
+    {
+      "id": "model.diff.100k.seconds",
+      "unit": "seconds",
+      "budget": 1.0,
+      "owner": "A7",
+      "planReference": "§10.6 — model-level floor under 'external change → diff shown'",
+      "description": "CellChange.classify over a 100k-cell rectangle with 500 changes in it."
+    },
+    {
+      "id": "model.diff.100k.visited",
+      "unit": "count",
+      "budget": 200000,
+      "owner": "A7",
+      "description": "How many addresses the diff looked at. A diff bound by the rectangle rather than by the populated rows shows up here."
+    },
+    {
+      "id": "model.diff.100k.changes",
+      "unit": "count",
+      "budget": null,
+      "owner": "A7",
+      "description": "How many cells the perturbation moved. A determinism canary: this number changing means the generator did, and every other number in the run is suspect."
+    },
+    {
+      "id": "model.a1.parse.1m.seconds",
+      "unit": "seconds",
+      "budget": 0.4,
+      "owner": "A7",
+      "description": "A million CellRef(a1:) parses — one per cell on a 1M-cell open."
+    },
+    {
+      "id": "model.a1.emit.1m.seconds",
+      "unit": "seconds",
+      "budget": 0.4,
+      "owner": "A7",
+      "description": "A million appendA1(to:) emissions — one per cell on a 1M-cell save."
+    },
+    {
+      "id": "model.runlength.geometry.10k.seconds",
+      "unit": "seconds",
+      "budget": 0.06,
+      "owner": "A7",
+      "planReference": "§10.6 — component of the scroll frame budget",
+      "description": "10,000 offset↔index round-trips at row 1,048,575. Roughly ten seconds of flinging."
+    },
+    {
+      "id": "model.runlength.runs",
+      "unit": "count",
+      "budget": 100,
+      "owner": "A7",
+      "description": "The run count the metric above is bound by. If this grows, that one grows with it and the cause is here."
+    },
+    {
+      "id": "model.styles.intern.10k.seconds",
+      "unit": "seconds",
+      "budget": 0.2,
+      "owner": "A7",
+      "description": "10,000 CellStyle interns against a table of 400 distinct styles."
+    },
+    {
+      "id": "machine.calibration.seconds",
+      "unit": "seconds",
+      "budget": null,
+      "owner": "A7",
+      "description": "A fixed CPU kernel, timed. Not a budget — the divisor. Scripts/bench.sh normalises every seconds-valued metric by this run's value over the baseline's, which is what lets a number taken on a laptop be compared with one taken on a CI runner."
+    },
+    {
+      "id": "machine.load.normalized",
+      "unit": "ratio",
+      "budget": null,
+      "owner": "A7",
+      "description": "One-minute load average per core when the run was taken. Recorded so a surprising number can be explained rather than argued about."
+    },
+    {
+      "id": "machine.cores",
+      "unit": "count",
+      "budget": null,
+      "owner": "A7",
+      "description": "Active processor count."
+    }
+  ]
+}

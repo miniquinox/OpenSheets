@@ -1,0 +1,434 @@
+{
+  "file": "formulas/operator-precedence.xlsx",
+  "kind": "xlsx",
+  "proves": "Excel's operator precedence is not the mathematical one. `=-2^2` is 4 because unary minus binds tighter than `^`, and `=2^3^2` is 64 because `^` is left-associative. An engine that reads these the mathematical way produces no error - it silently writes a different number into the user's file on the next recalculation.",
+  "valuesVerifiedBy": "LibreOffice 26.2.4.2 0229ac93fcf0d7cbc6376066c6f35021cef002dc recalculation of formulas written without cached values",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Data",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:C3",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 1.0,
+          "numberFormat": "General"
+        },
+        "C1": {
+          "type": "number",
+          "value": 3.0,
+          "numberFormat": "General"
+        },
+        "A2": {
+          "type": "number",
+          "value": 4.0,
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": 5.0,
+          "numberFormat": "General"
+        },
+        "C3": {
+          "type": "number",
+          "value": 9.0,
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "Precedence",
+      "index": 1,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:B33",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "unary minus binds tighter than ^",
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "number",
+          "value": 4.0,
+          "formula": "-2^2",
+          "numberFormat": null
+        },
+        "A2": {
+          "type": "text",
+          "value": "same, with an odd exponent",
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": 9.0,
+          "formula": "-3^2",
+          "numberFormat": null
+        },
+        "A3": {
+          "type": "text",
+          "value": "binary minus does NOT",
+          "numberFormat": "General"
+        },
+        "B3": {
+          "type": "number",
+          "value": -4.0,
+          "formula": "0-2^2",
+          "numberFormat": null
+        },
+        "A4": {
+          "type": "text",
+          "value": "binary minus after a reference",
+          "numberFormat": "General"
+        },
+        "B4": {
+          "type": "number",
+          "value": -3.0,
+          "formula": "Data!A1-2^2",
+          "numberFormat": null
+        },
+        "A5": {
+          "type": "text",
+          "value": "^ is left-associative",
+          "numberFormat": "General"
+        },
+        "B5": {
+          "type": "number",
+          "value": 64.0,
+          "formula": "2^3^2",
+          "numberFormat": null
+        },
+        "A6": {
+          "type": "text",
+          "value": "^ left-associative again",
+          "numberFormat": "General"
+        },
+        "B6": {
+          "type": "number",
+          "value": 64.0,
+          "formula": "2^2^3",
+          "numberFormat": null
+        },
+        "A7": {
+          "type": "text",
+          "value": "the maths reading, parenthesised",
+          "numberFormat": "General"
+        },
+        "B7": {
+          "type": "number",
+          "value": 256.0,
+          "formula": "2^(2^3)",
+          "numberFormat": null
+        },
+        "A8": {
+          "type": "text",
+          "value": "parens force the maths reading",
+          "numberFormat": "General"
+        },
+        "B8": {
+          "type": "number",
+          "value": -4.0,
+          "formula": "-(2^2)",
+          "numberFormat": null
+        },
+        "A9": {
+          "type": "text",
+          "value": "parenthesised negative base",
+          "numberFormat": "General"
+        },
+        "B9": {
+          "type": "number",
+          "value": 4.0,
+          "formula": "(-2)^2",
+          "numberFormat": null
+        },
+        "A10": {
+          "type": "text",
+          "value": "unary minus on both sides",
+          "numberFormat": "General"
+        },
+        "B10": {
+          "type": "number",
+          "value": 0.25,
+          "formula": "-2^-2",
+          "numberFormat": null
+        },
+        "A11": {
+          "type": "text",
+          "value": "negative exponent",
+          "numberFormat": "General"
+        },
+        "B11": {
+          "type": "number",
+          "value": 0.5,
+          "formula": "2^-1",
+          "numberFormat": null
+        },
+        "A12": {
+          "type": "text",
+          "value": "zero to the zero is 1",
+          "numberFormat": "General"
+        },
+        "B12": {
+          "type": "number",
+          "value": 1.0,
+          "formula": "0^0",
+          "numberFormat": null
+        },
+        "A13": {
+          "type": "text",
+          "value": "^ over * over +",
+          "numberFormat": "General"
+        },
+        "B13": {
+          "type": "number",
+          "value": 19.0,
+          "formula": "1+2*3^2",
+          "numberFormat": null
+        },
+        "A14": {
+          "type": "text",
+          "value": "unary minus then *",
+          "numberFormat": "General"
+        },
+        "B14": {
+          "type": "number",
+          "value": 12.0,
+          "formula": "-2^2*3",
+          "numberFormat": null
+        },
+        "A15": {
+          "type": "text",
+          "value": "unary minus after an operator",
+          "numberFormat": "General"
+        },
+        "B15": {
+          "type": "number",
+          "value": 18.0,
+          "formula": "2*-3^2",
+          "numberFormat": null
+        },
+        "A16": {
+          "type": "text",
+          "value": "^ then * left to right",
+          "numberFormat": "General"
+        },
+        "B16": {
+          "type": "number",
+          "value": 16.0,
+          "formula": "2^3*2",
+          "numberFormat": null
+        },
+        "A17": {
+          "type": "text",
+          "value": "- is left-associative",
+          "numberFormat": "General"
+        },
+        "B17": {
+          "type": "number",
+          "value": -4.0,
+          "formula": "1-2-3",
+          "numberFormat": null
+        },
+        "A18": {
+          "type": "text",
+          "value": "unary minus then +",
+          "numberFormat": "General"
+        },
+        "B18": {
+          "type": "number",
+          "value": 5.0,
+          "formula": "-2^2+1",
+          "numberFormat": null
+        },
+        "A19": {
+          "type": "text",
+          "value": "% is postfix and binds tightest",
+          "numberFormat": "General"
+        },
+        "B19": {
+          "type": "number",
+          "value": 1.0,
+          "formula": "50%*2",
+          "numberFormat": null
+        },
+        "A20": {
+          "type": "text",
+          "value": "% on a whole number",
+          "numberFormat": "General"
+        },
+        "B20": {
+          "type": "number",
+          "value": 1.0,
+          "formula": "100%",
+          "numberFormat": null
+        },
+        "A21": {
+          "type": "text",
+          "value": "unary minus inside a call",
+          "numberFormat": "General"
+        },
+        "B21": {
+          "type": "number",
+          "value": 4.0,
+          "formula": "SUM(-2^2)",
+          "numberFormat": null
+        },
+        "A22": {
+          "type": "text",
+          "value": "negation of a reference",
+          "numberFormat": "General"
+        },
+        "B22": {
+          "type": "number",
+          "value": 16.0,
+          "formula": "-Data!A2^2",
+          "numberFormat": null
+        },
+        "A23": {
+          "type": "text",
+          "value": "& binds tighter than =",
+          "numberFormat": "General"
+        },
+        "B23": {
+          "type": "boolean",
+          "value": true,
+          "formula": "\"a\"&\"b\"=\"ab\"",
+          "numberFormat": null
+        },
+        "A24": {
+          "type": "text",
+          "value": "& is left-associative",
+          "numberFormat": "General"
+        },
+        "B24": {
+          "type": "text",
+          "value": "123",
+          "formula": "1&2&3",
+          "numberFormat": null
+        },
+        "A25": {
+          "type": "text",
+          "value": "& result is text, not a number",
+          "numberFormat": "General"
+        },
+        "B25": {
+          "type": "boolean",
+          "value": false,
+          "formula": "\"1\"&2=12",
+          "numberFormat": null
+        },
+        "A26": {
+          "type": "text",
+          "value": "comparison of two comparisons",
+          "numberFormat": "General"
+        },
+        "B26": {
+          "type": "boolean",
+          "value": true,
+          "formula": "1<2=(1=1)",
+          "numberFormat": null
+        },
+        "A27": {
+          "type": "text",
+          "value": "text comparison",
+          "numberFormat": "General"
+        },
+        "B27": {
+          "type": "boolean",
+          "value": true,
+          "formula": "\"a\"<\"b\"",
+          "numberFormat": null
+        },
+        "A28": {
+          "type": "text",
+          "value": "range intersection is the space",
+          "numberFormat": "General"
+        },
+        "B28": {
+          "type": "number",
+          "value": 1.0,
+          "formula": "SUM(Data!A1:C1 Data!A1:A3)",
+          "numberFormat": null
+        },
+        "A29": {
+          "type": "text",
+          "value": "intersection of two columns",
+          "numberFormat": "General"
+        },
+        "B29": {
+          "type": "number",
+          "value": 4.0,
+          "formula": "SUM(Data!A1:A2 Data!A2:A3)",
+          "numberFormat": null
+        },
+        "A30": {
+          "type": "text",
+          "value": ": binds tighter than the space",
+          "numberFormat": "General"
+        },
+        "B30": {
+          "type": "number",
+          "value": 5.0,
+          "formula": "SUM(Data!A1:B2 Data!B2:C3)",
+          "numberFormat": null
+        },
+        "A31": {
+          "type": "text",
+          "value": "union is the comma",
+          "numberFormat": "General"
+        },
+        "B31": {
+          "type": "number",
+          "value": 14.0,
+          "formula": "SUM(Data!A1:A2,Data!C1:C2)",
+          "numberFormat": null
+        },
+        "A32": {
+          "type": "text",
+          "value": "boolean vs number comparison",
+          "numberFormat": "General"
+        },
+        "B32": {
+          "type": "boolean",
+          "value": null,
+          "formula": "1<2<3",
+          "numberFormat": null
+        },
+        "A33": {
+          "type": "text",
+          "value": "the same the other way round",
+          "numberFormat": "General"
+        },
+        "B33": {
+          "type": "boolean",
+          "value": null,
+          "formula": "3>2>1",
+          "numberFormat": null
+        }
+      }
+    }
+  ],
+  "skipChecks": [
+    "cellValue:Precedence!B32",
+    "cellValue:Precedence!B33"
+  ],
+  "enginesDisagree": [
+    {
+      "formula": "1<2<3",
+      "excel": false,
+      "libreOffice": true,
+      "why": "Both engines parse this left-associatively, so both compute (1<2)<3. They differ on what comes next: Excel orders mixed types number < text < FALSE < TRUE, so TRUE<3 is FALSE. LibreOffice coerces TRUE to 1, so 1<3 is TRUE."
+    },
+    {
+      "formula": "3>2>1",
+      "excel": true,
+      "libreOffice": false,
+      "why": "The same rule seen from the other side: Excel's TRUE>1 is TRUE; LibreOffice's 1>1 is FALSE."
+    }
+  ],
+  "notes": "MEASURED, not assumed: all 31 asserted formulas were evaluated by headless LibreOffice and every one agrees with Excel's documented answer, including the two rules this fixture exists for. The generator asserts that agreement and refuses to build if it ever breaks. The two formulas in `enginesDisagree` are present in the FILE - a reader must still parse them - but are listed in `skipChecks` and carry no asserted value, because the divergence is about boolean-vs-number comparison, not about precedence, and the corpus does not pick a winner. A3 should follow Excel there too, and cover it in functions.tsv. Note also that comparison associativity CANNOT be tested without crossing into that divergence: every formula that distinguishes left from right associativity for `=`/`<`/`>` ends up comparing a boolean with a number."
+}

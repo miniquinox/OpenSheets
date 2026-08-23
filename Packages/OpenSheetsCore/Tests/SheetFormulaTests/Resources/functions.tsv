@@ -1,0 +1,680 @@
+# formula	expected	note
+# expected is prefixed: n: number, s: text, b: boolean, e: error token,
+# z: blank, u: unsupported (keep the cached value).
+# Values were written by hand or computed independently of the Swift engine.
+# Evaluated under FormulaGrammar.excel, which is the default: where Excel and mathematical
+# convention disagree about ^ and unary minus, Excel is the authority.
+1+1	n:2	addition
+2-5	n:-3	subtraction
+6*7	n:42	multiplication
+7/2	n:3.5	division
+2^10	n:1024	power
+1/0	e:#DIV/0!	division by zero
+0/0	e:#DIV/0!	zero over zero is still #DIV/0!
+1%	n:0.01	postfix percent
+50%	n:0.5	postfix percent
+50%%	n:0.005	percent applies twice
+-2^2	n:4	Excel applies unary minus before ^, so this is (-2)^2 and not -(2^2)
+2^3^2	n:64	Excel's ^ is left-associative, so this is (2^3)^2 and not 2^(3^2)
+-3^2	n:9	same rule, different numbers
+(-2)^2	n:4	parentheses override
+2*3+4	n:10	* before +
+2+3*4	n:14	* before +
+(2+3)*4	n:20	parentheses
+2+3=5	b:TRUE	comparison is lowest precedence
+1<2	b:TRUE	less than
+2<=2	b:TRUE	less or equal
+3>4	b:FALSE	greater than
+4>=4	b:TRUE	greater or equal
+1<>2	b:TRUE	not equal
+"a"="A"	b:TRUE	text comparison is case-insensitive
+"a"<"b"	b:TRUE	text ordering
+1&2&3	s:123	concatenation chains left to right
+"x"&"y"	s:xy	concatenation
+1&""	s:1	number to text through concatenation
+TRUE&""	s:TRUE	boolean to text is uppercase
+1+TRUE	n:2	TRUE is 1 in arithmetic
+1+FALSE	n:1	FALSE is 0 in arithmetic
+TRUE+TRUE	n:2	booleans add
+"42"+1	n:43	text coerces to number in arithmetic
+"4.5"*2	n:9	decimal text coerces
+"1e3"+0	n:1000	scientific text coerces
+"50%"+0	n:0.5	percent text coerces
+"(5)"+0	n:-5	parenthesised text is negative
+"1,234"+0	n:1234	group separators are stripped
+"abc"+1	e:#VALUE!	text that is not a number is #VALUE!
+""+1	e:#VALUE!	the empty string is not zero in arithmetic
+"1"=1	b:FALSE	text does not coerce in comparison
+1<"1"	b:TRUE	numbers rank below text
+"z"<TRUE	b:TRUE	text ranks below booleans
+1=1=TRUE	b:TRUE	chained comparison folds left
++"a"	s:a	unary plus does not coerce
+-"a"	e:#VALUE!	unary minus does coerce, and fails
+--5	n:5	double negation
+-(-5)	n:5	negation of a group
+2^-1	n:0.5	negative exponent
+(-8)^(1/3)	e:#NUM!	a fractional power of a negative base is #NUM!
+0^0	n:1	zero to the zero is 1
+0^-1	e:#DIV/0!	zero to a negative power divides by zero
+#DIV/0!+1	e:#DIV/0!	an error literal propagates
+#N/A&"x"	e:#N/A	errors propagate through concatenation
+1/0+#N/A	e:#DIV/0!	the first error in evaluation order wins
+Data!A1	n:10	cross-sheet reference
+Data!A1+Data!A2	n:30	two cross-sheet references
+Data!$A$1	n:10	absolute reference
+Data!E4	z:	an empty cell is blank
+Data!E4+1	n:1	an empty cell is zero in arithmetic
+Data!E4&"x"	s:x	an empty cell is the empty string in concatenation
+Data!E4=0	b:TRUE	blank equals zero
+Data!E4=""	b:TRUE	blank also equals the empty string
+Data!E1	e:#DIV/0!	a cached error reads back as an error
+Data!E1+1	e:#DIV/0!	a cached error propagates
+SUM(Data!A1:A6)	n:210	range sum
+SUM(Data!A:A)	n:211	whole-column sum picks up A11 too
+SUM(Data!A1:A3,Data!A4:A6)	n:210	two range arguments
+SUM((Data!A1:A2,Data!A5:A6))	n:140	the union operator inside parentheses
+SUM(Data!A1:C1 Data!A1:A6)	n:10	the intersection operator
+SUM(Data!A1:A6 Data!C1:C6)	e:#NULL!	an empty intersection is #NULL!
+Nonexistent!A1	e:#REF!	an unknown sheet is #REF!
+SUM(#REF!)	e:#REF!	a deleted reference is #REF!
+COUNT(Data!A1:A6)	n:6	COUNT over a range
+COUNT(Data!B1:B6)	n:0	COUNT ignores text in a range
+COUNT("42")	n:1	COUNT coerces a directly written numeric string
+COUNT(Data!E5)	n:0	COUNT ignores numeric-looking text in a range
+SUM(Data!E5)	n:0	SUM ignores numeric-looking text in a range
+SUM("42")	n:42	SUM coerces a directly written numeric string
+SUM(Data!E2)	n:0	SUM ignores a boolean in a range
+SUM(TRUE)	n:1	SUM coerces a directly written boolean
+SUM(Data!E1:E2)	e:#DIV/0!	an error in a range propagates through SUM
+SUM(1,2,3)	n:6	SUM of literals
+SUM(Data!A1:A6)/2	n:105	SUM then divide
+PRODUCT(2,3,4)	n:24	PRODUCT
+PRODUCT(Data!A1:A3)	n:6000	PRODUCT over a range
+SUMSQ(3,4)	n:25	SUMSQ
+ABS(-7.5)	n:7.5	ABS
+ABS(7.5)	n:7.5	ABS of a positive
+SIGN(-3)	n:-1	SIGN negative
+SIGN(0)	n:0	SIGN zero
+SIGN(3)	n:1	SIGN positive
+SQRT(144)	n:12	SQRT
+SQRT(0)	n:0	SQRT of zero
+SQRT(-1)	e:#NUM!	Excel says #NUM!; LibreOffice says #VALUE!
+SQRT(2)	n:1.4142135623731	SQRT is not exact
+POWER(2,10)	n:1024	POWER
+POWER(2,0.5)	n:1.4142135623731	fractional POWER
+POWER(-2,3)	n:-8	negative base, integral exponent
+POWER(-2,0.5)	e:#NUM!	negative base, fractional exponent
+EXP(0)	n:1	EXP of zero
+EXP(1)	n:2.71828182845905	EXP of one
+LN(1)	n:0	LN of one
+LN(0)	e:#NUM!	LN of zero is out of domain
+LN(-1)	e:#NUM!	LN of a negative is out of domain
+LOG10(1000)	n:3	LOG10
+LOG10(0)	e:#NUM!	LOG10 of zero
+LOG(8,2)	n:3	LOG with an explicit base
+LOG(100)	n:2	LOG defaults to base 10
+LOG(8,1)	e:#NUM!	base 1 is not a logarithm
+MOD(17,5)	n:2	MOD
+MOD(-3,2)	n:1	MOD takes the sign of the divisor
+MOD(3,-2)	n:-1	MOD takes the sign of the divisor
+MOD(5,0)	e:#DIV/0!	MOD by zero
+QUOTIENT(17,5)	n:3	QUOTIENT truncates
+QUOTIENT(-17,5)	n:-3	QUOTIENT truncates toward zero
+QUOTIENT(5,0)	e:#DIV/0!	QUOTIENT by zero
+GCD(24,36)	n:12	GCD
+GCD(24,36,60)	n:12	GCD of three
+GCD(-4,8)	e:#NUM!	GCD rejects negatives
+LCM(4,6)	n:12	LCM
+LCM(3,5,7)	n:105	LCM of three
+FACT(0)	n:1	0! is 1
+FACT(5)	n:120	5!
+FACT(-1)	e:#NUM!	no factorial of a negative
+FACT(171)	e:#NUM!	171! overflows a double
+PI()	n:3.14159265358979	PI
+ROUND(2.567,2)	n:2.57	ROUND to two places
+ROUND(2.5,0)	n:3	ROUND is half away from zero
+ROUND(-2.5,0)	n:-3	ROUND is half away from zero for negatives too
+ROUND(1234,-2)	n:1200	ROUND with negative digits
+ROUNDUP(2.111,2)	n:2.12	ROUNDUP
+ROUNDUP(-2.111,2)	n:-2.12	ROUNDUP goes away from zero
+ROUNDDOWN(2.999,2)	n:2.99	ROUNDDOWN
+ROUNDDOWN(-2.999,2)	n:-2.99	ROUNDDOWN goes toward zero
+INT(2.9)	n:2	INT floors
+INT(-2.1)	n:-3	INT floors negatives away from zero
+TRUNC(2.9)	n:2	TRUNC truncates
+TRUNC(-2.9)	n:-2	TRUNC keeps the sign
+TRUNC(2.567,2)	n:2.56	TRUNC with digits
+EVEN(1.5)	n:2	EVEN rounds up to even
+EVEN(-1.5)	n:-2	EVEN rounds away from zero
+EVEN(2)	n:2	EVEN of an even number
+ODD(1.2)	n:3	ODD rounds up to odd
+ODD(-1.2)	n:-3	ODD rounds away from zero
+ODD(3)	n:3	ODD of an odd number
+CEILING(2.5,1)	n:3	CEILING up
+CEILING(-2.5,1)	n:-2	CEILING toward zero for a negative with positive step
+CEILING(-2.5,-1)	n:-3	CEILING away from zero when both are negative
+CEILING(5,0)	n:0	CEILING with a zero step is zero
+CEILING(2.5,-1)	e:#NUM!	a positive number with a negative step is #NUM!
+FLOOR(2.5,1)	n:2	FLOOR down
+FLOOR(-2.5,1)	n:-3	FLOOR away from zero for a negative with positive step
+FLOOR(-2.5,-1)	n:-2	FLOOR toward zero when both are negative
+FLOOR(5,0)	e:#DIV/0!	FLOOR with a zero step divides by zero, unlike CEILING
+MROUND(10,3)	n:9	MROUND
+MROUND(-10,-3)	n:-9	MROUND with matching signs
+MROUND(10,-3)	e:#NUM!	MROUND needs matching signs
+MROUND(10,0)	n:0	MROUND with a zero multiple
+SIN(0)	n:0	SIN
+COS(0)	n:1	COS
+TAN(0)	n:0	TAN
+ASIN(1)	n:1.5707963267949	ASIN
+ASIN(2)	e:#NUM!	ASIN out of domain
+ACOS(1)	n:0	ACOS
+ACOS(-2)	e:#NUM!	ACOS out of domain
+ATAN(1)	n:0.785398163397448	ATAN
+ATAN2(1,1)	n:0.785398163397448	ATAN2 takes x first, unlike C
+ATAN2(0,0)	e:#DIV/0!	ATAN2 of the origin
+DEGREES(PI())	n:180	DEGREES
+RADIANS(180)	n:3.14159265358979	RADIANS
+SUMPRODUCT(Data!A1:A3,Data!C1:C3)	n:170	SUMPRODUCT
+SUMPRODUCT(Data!A1:A3)	n:60	SUMPRODUCT of one array is a sum
+SUMPRODUCT(Data!A1:A3,Data!C1:C2)	e:#VALUE!	SUMPRODUCT needs matching shapes
+SUBTOTAL(9,Data!A1:A6)	n:210	SUBTOTAL 9 is SUM
+SUBTOTAL(1,Data!A1:A6)	n:35	SUBTOTAL 1 is AVERAGE
+SUBTOTAL(2,Data!A1:A6)	n:6	SUBTOTAL 2 is COUNT
+SUBTOTAL(4,Data!A1:A6)	n:60	SUBTOTAL 4 is MAX
+SUBTOTAL(5,Data!A1:A6)	n:10	SUBTOTAL 5 is MIN
+SUBTOTAL(109,Data!A1:A6)	n:210	SUBTOTAL 109 is SUM ignoring hidden rows
+SUBTOTAL(12,Data!A1:A6)	e:#NUM!	SUBTOTAL rejects an unknown code
+TRUE()	b:TRUE	TRUE as a function
+FALSE()	b:FALSE	FALSE as a function
+TRUE	b:TRUE	TRUE as a bare literal
+NOT(TRUE())	b:FALSE	NOT
+NOT(0)	b:TRUE	zero is false
+NOT(5)	b:FALSE	any non-zero is true
+NOT("x")	e:#VALUE!	text is not coercible to boolean
+AND(TRUE(),TRUE())	b:TRUE	AND
+AND(TRUE(),FALSE())	b:FALSE	AND
+AND(1,2,3)	b:TRUE	non-zero numbers are true
+AND(TRUE(),Data!A1=10)	b:TRUE	AND with a comparison
+OR(FALSE(),FALSE())	b:FALSE	OR
+OR(FALSE(),TRUE())	b:TRUE	OR
+OR(FALSE(),1/0)	e:#DIV/0!	OR is eager: it evaluates every argument
+XOR(TRUE(),TRUE())	b:FALSE	XOR of two trues
+XOR(TRUE(),FALSE())	b:TRUE	XOR
+XOR(TRUE(),TRUE(),TRUE())	b:TRUE	XOR counts parity
+IF(TRUE(),"yes","no")	s:yes	IF true branch
+IF(FALSE(),"yes","no")	s:no	IF false branch
+IF(Data!A1>5,"yes","no")	s:yes	IF with a comparison
+IF(FALSE(),1)	b:FALSE	IF with no false branch gives FALSE
+IF(TRUE(),,5)	n:0	an omitted branch is zero, not blank
+IF(TRUE(),1,1/0)	n:1	IF does not evaluate the branch it skips
+IF(FALSE(),1/0,2)	n:2	IF does not evaluate the branch it skips
+IF("x",1,2)	e:#VALUE!	a text condition is #VALUE!
+IFERROR(1/0,"safe")	s:safe	IFERROR catches
+IFERROR(2,"safe")	n:2	IFERROR passes a good value through
+IFERROR(NA(),"safe")	s:safe	IFERROR catches #N/A too
+IFNA(NA(),"safe")	s:safe	IFNA catches #N/A
+IFNA(1/0,"safe")	e:#DIV/0!	IFNA does not catch other errors
+IFS(FALSE(),"a",TRUE(),"b")	s:b	IFS takes the first true branch
+IFS(Data!A1>100,"big",Data!A1>5,"mid",TRUE(),"small")	s:mid	IFS ladder
+IFS(FALSE(),"a",FALSE(),"b")	e:#N/A	IFS with nothing true is #N/A
+SWITCH(2,1,"one",2,"two","other")	s:two	SWITCH matches
+SWITCH(9,1,"one",2,"two","other")	s:other	SWITCH falls back to its default
+SWITCH(9,1,"one",2,"two")	e:#N/A	SWITCH with no default and no match
+CHOOSE(3,"a","b","c")	s:c	CHOOSE
+CHOOSE(1,"a",1/0)	s:a	CHOOSE does not evaluate the options it skips
+CHOOSE(4,"a","b","c")	e:#VALUE!	CHOOSE out of range
+CHOOSE(0,"a")	e:#VALUE!	CHOOSE is 1-based
+ISBLANK(Data!E4)	b:TRUE	an empty cell is blank
+ISBLANK(Data!A1)	b:FALSE	a populated cell is not blank
+ISBLANK("")	b:FALSE	the empty string is not blank
+ISNUMBER(1)	b:TRUE	ISNUMBER
+ISNUMBER("1")	b:FALSE	text that looks numeric is still text
+ISNUMBER(Data!A1)	b:TRUE	ISNUMBER through a reference
+ISTEXT("x")	b:TRUE	ISTEXT
+ISTEXT(1)	b:FALSE	ISTEXT
+ISNONTEXT(1)	b:TRUE	ISNONTEXT
+ISNONTEXT("x")	b:FALSE	ISNONTEXT
+ISLOGICAL(TRUE())	b:TRUE	ISLOGICAL
+ISLOGICAL(1)	b:FALSE	ISLOGICAL
+ISERROR(1/0)	b:TRUE	ISERROR sees the error rather than returning it
+ISERROR(1)	b:FALSE	ISERROR
+ISERROR(NA())	b:TRUE	ISERROR includes #N/A
+ISERR(NA())	b:FALSE	ISERR excludes #N/A
+ISERR(1/0)	b:TRUE	ISERR includes everything else
+ISNA(NA())	b:TRUE	ISNA
+ISNA(1/0)	b:FALSE	ISNA
+ISREF(Data!A1)	b:TRUE	ISREF
+ISREF(1)	b:FALSE	ISREF
+ISEVEN(4)	b:TRUE	ISEVEN
+ISEVEN(3)	b:FALSE	ISEVEN
+ISODD(3)	b:TRUE	ISODD
+ISODD(4)	b:FALSE	ISODD
+NA()	e:#N/A	NA
+N(5)	n:5	N of a number
+N("x")	n:0	N of text is zero
+N(TRUE())	n:1	N of a boolean
+N(1/0)	e:#DIV/0!	N passes an error through
+T("x")	s:x	T of text
+T(5)	s:	T of a number is the empty string
+TYPE(1)	n:1	TYPE of a number
+TYPE("x")	n:2	TYPE of text
+TYPE(TRUE())	n:4	TYPE of a boolean
+TYPE(1/0)	n:16	TYPE of an error
+TYPE({1,2})	n:64	TYPE of an array
+ERROR.TYPE(1/0)	n:2	ERROR.TYPE numbers #DIV/0! as 2
+ERROR.TYPE(NA())	n:7	ERROR.TYPE numbers #N/A as 7
+ERROR.TYPE(1)	e:#N/A	ERROR.TYPE of a non-error
+ROWS(Data!A1:A6)	n:6	ROWS
+COLUMNS(Data!A1:C1)	n:3	COLUMNS
+ROWS(Data!A:A)	n:1048576	ROWS of a whole column is the declared size
+COLUMNS(Data!1:1)	n:16384	COLUMNS of a whole row is the declared size
+ROW(Data!C7)	n:7	ROW of a reference
+COLUMN(Data!C7)	n:3	COLUMN of a reference
+ISFORMULA(Data!A1)	b:FALSE	a literal cell holds no formula
+CONCAT("a","b","c")	s:abc	CONCAT
+CONCAT(Data!B1,"-",Data!B2)	s:alpha-beta	CONCAT with references
+CONCAT(Data!B1:B3)	s:alphabetagamma	CONCAT flattens a range
+CONCATENATE("a","b")	s:ab	CONCATENATE
+TEXTJOIN(",",TRUE(),Data!B1:B3)	s:alpha,beta,gamma	TEXTJOIN
+TEXTJOIN("-",TRUE(),"a","","b")	s:a-b	TEXTJOIN skips empties when told to
+TEXTJOIN("-",FALSE(),"a","","b")	s:a--b	TEXTJOIN keeps empties when told to
+LEFT(Data!D2,5)	s:hello	LEFT
+LEFT("abc")	s:a	LEFT defaults to one character
+LEFT("abc",0)	s:	LEFT of zero characters
+LEFT("abc",99)	s:abc	LEFT past the end
+LEFT("abc",-1)	e:#VALUE!	LEFT of a negative count
+RIGHT(Data!D2,5)	s:world	RIGHT
+RIGHT("abc")	s:c	RIGHT defaults to one character
+MID(Data!D2,7,5)	s:world	MID
+MID("abcdef",2,3)	s:bcd	MID
+MID("abc",0,2)	e:#VALUE!	MID is 1-based
+MID("abc",9,2)	s:	MID past the end is empty
+LEN(Data!D2)	n:11	LEN
+LEN("")	n:0	LEN of the empty string
+LEN(Data!E4)	n:0	LEN of a blank cell
+TRIM(Data!D1)	s:padded	TRIM strips the ends
+TRIM("a   b")	s:a b	TRIM collapses internal runs
+UPPER(Data!D3)	s:MIXED CASE	UPPER
+LOWER(Data!D3)	s:mixed case	LOWER
+PROPER(Data!D3)	s:Mixed Case	PROPER
+PROPER("o'brien")	s:O'Brien	PROPER capitalises after any non-letter
+SUBSTITUTE(Data!D2,"world","there")	s:hello there	SUBSTITUTE
+SUBSTITUTE("aaa","a","b",2)	s:aba	SUBSTITUTE of one instance
+SUBSTITUTE("aaa","a","b")	s:bbb	SUBSTITUTE replaces every instance
+SUBSTITUTE("abc","","x")	s:abc	SUBSTITUTE of nothing changes nothing
+REPLACE(Data!D2,1,5,"HELLO")	s:HELLO world	REPLACE
+REPLACE("abcdef",2,3,"")	s:aef	REPLACE with nothing deletes
+REPT("ab",3)	s:ababab	REPT
+REPT("a",0)	s:	REPT zero times
+REPT("a",-1)	e:#VALUE!	REPT of a negative count
+EXACT("a","a")	b:TRUE	EXACT
+EXACT("a","A")	b:FALSE	EXACT is case-sensitive, unlike =
+FIND("world",Data!D2)	n:7	FIND
+FIND("W",Data!D2)	e:#VALUE!	FIND is case-sensitive
+FIND("l","hello",4)	n:4	FIND from a start position
+FIND("z","abc")	e:#VALUE!	FIND with no match is #VALUE!
+SEARCH("W",Data!D2)	n:7	SEARCH is case-insensitive
+SEARCH("w*d",Data!D2)	n:7	SEARCH understands wildcards
+SEARCH("h?llo",Data!D2)	n:1	SEARCH understands ?
+SEARCH("z","abc")	e:#VALUE!	SEARCH with no match
+CLEAN("a"&CHAR(9)&"b")	s:ab	CLEAN strips control characters
+CHAR(65)	s:A	CHAR
+CHAR(0)	e:#VALUE!	CHAR is 1-based
+CHAR(256)	e:#VALUE!	CHAR stops at 255
+CODE("A")	n:65	CODE
+CODE("")	e:#VALUE!	CODE of the empty string
+UNICHAR(937)	s:Ω	UNICHAR reaches past 255
+UNICODE("Ω")	n:937	UNICODE
+VALUE("123.45")	n:123.45	VALUE
+VALUE("1,234.5")	n:1234.5	VALUE with separators
+VALUE("abc")	e:#VALUE!	VALUE of non-numeric text
+NUMBERVALUE("1.234,5",",",".")	n:1234.5	NUMBERVALUE with European separators
+TEXT(1234.5,"#,##0.00")	s:1,234.50	TEXT with a grouped format
+TEXT(0.5,"0%")	s:50%	TEXT scales percentages before rounding
+TEXT(1234.5,"0")	s:1235	TEXT rounds to the format
+TEXT(45366,"yyyy-mm-dd")	s:2024-03-15	TEXT with a date format
+TEXT(45366,"dddd")	s:Friday	TEXT with a weekday name
+TEXT(45366,"mmm")	s:Mar	TEXT with an abbreviated month
+TEXT("abc","@")	s:abc	TEXT passes text through @
+DATE(2024,3,15)	n:45366	DATE
+DATE(2024,13,1)	n:45658	DATE normalises an out-of-range month
+DATE(2024,1,32)	n:45323	DATE normalises an out-of-range day
+YEAR(DATE(2024,3,15))	n:2024	YEAR
+MONTH(DATE(2024,3,15))	n:3	MONTH
+DAY(DATE(2024,3,15))	n:15	DAY
+YEAR(Data!F1)	n:2024	YEAR of a stored serial
+TIME(12,0,0)	n:0.5	TIME
+TIME(27,0,0)	n:0.125	TIME wraps past midnight
+HOUR(0.5)	n:12	HOUR
+MINUTE(0.51)	n:14	MINUTE
+SECOND(0.5)	n:0	SECOND
+EDATE(DATE(2024,1,31),1)	n:45351	EDATE clamps to the end of a shorter month
+EDATE(DATE(2024,3,15),-1)	n:45337	EDATE backwards
+EOMONTH(DATE(2024,2,10),0)	n:45351	EOMONTH
+EOMONTH(DATE(2024,1,15),1)	n:45351	EOMONTH one month on
+DATEDIF(DATE(2024,1,1),DATE(2024,3,15),"d")	n:74	DATEDIF in days
+DATEDIF(DATE(2024,1,1),DATE(2024,3,15),"m")	n:2	DATEDIF in whole months
+DATEDIF(DATE(2020,1,1),DATE(2024,3,15),"y")	n:4	DATEDIF in whole years
+DATEDIF(DATE(2024,3,15),DATE(2024,1,1),"d")	e:#NUM!	DATEDIF rejects a backwards range
+WEEKDAY(DATE(2024,3,15))	n:6	WEEKDAY, Sunday is 1
+WEEKDAY(DATE(2024,3,15),2)	n:5	WEEKDAY type 2, Monday is 1
+WEEKDAY(DATE(2024,3,15),3)	n:4	WEEKDAY type 3, Monday is 0
+DAYS(DATE(2024,3,15),DATE(2024,1,1))	n:74	DAYS
+NETWORKDAYS(DATE(2024,3,1),DATE(2024,3,15))	n:11	NETWORKDAYS
+NETWORKDAYS(DATE(2024,3,2),DATE(2024,3,3))	n:0	NETWORKDAYS over a weekend
+WORKDAY(DATE(2024,3,1),1)	n:45355	WORKDAY skips the weekend
+WORKDAY(DATE(2024,3,1),5)	n:45359	WORKDAY over a week
+WEEKNUM(DATE(2024,1,1))	n:1	WEEKNUM
+WEEKNUM(DATE(2024,3,15))	n:11	WEEKNUM
+DATEVALUE("2024-03-15")	n:45366	DATEVALUE
+DATEVALUE("nonsense")	e:#VALUE!	DATEVALUE of nonsense
+TIMEVALUE("12:00")	n:0.5	TIMEVALUE
+"2024-03-15"+1	n:45367	date text coerces in arithmetic
+DATE(2024,3,15)-DATE(2024,3,1)	n:14	dates subtract to a day count
+AVERAGE(Data!A1:A6)	n:35	AVERAGE
+AVERAGE(1,2,3,4)	n:2.5	AVERAGE of literals
+AVERAGE(Data!B1:B6)	e:#DIV/0!	AVERAGE of no numbers
+AVERAGEA(Data!A1:A6)	n:35	AVERAGEA over numbers
+COUNTA(Data!B1:B6)	n:6	COUNTA counts text
+COUNTA(Data!A1:A6)	n:6	COUNTA counts numbers
+COUNTBLANK(Data!A1:A6)	n:0	COUNTBLANK of a full range
+COUNTBLANK(Data!G1:G5)	n:5	COUNTBLANK of an empty range
+MIN(Data!A1:A6)	n:10	MIN
+MAX(Data!A1:A6)	n:60	MAX
+MIN(Data!B1:B6)	n:0	MIN of no numbers is zero
+MAX(Data!B1:B6)	n:0	MAX of no numbers is zero
+MEDIAN(Data!A1:A6)	n:35	MEDIAN of an even count averages the middle two
+MEDIAN(1,2,3)	n:2	MEDIAN of an odd count
+MEDIAN(Data!B1:B6)	e:#DIV/0!	MEDIAN of nothing
+VAR(Data!A1:A6)	n:350	VAR is the sample variance
+VAR.S(Data!A1:A6)	n:350	VAR.S is the sample variance
+VARP(Data!A1:A6)	n:291.666666666667	VARP is the population variance
+VAR.P(Data!A1:A6)	n:291.666666666667	VAR.P is the population variance
+STDEV(Data!A1:A6)	n:18.7082869338697	STDEV is the sample deviation
+STDEV.S(Data!A1:A6)	n:18.7082869338697	STDEV.S is the sample deviation
+STDEVP(Data!A1:A6)	n:17.0782512765993	STDEVP is the population deviation
+STDEV.P(Data!A1:A6)	n:17.0782512765993	STDEV.P is the population deviation
+VAR(1)	e:#DIV/0!	the sample variance of one point is undefined
+VARP(1)	n:0	the population variance of one point is zero
+CORREL(Data!A1:A6,Data!C1:C6)	n:1	CORREL of a perfect linear relation
+PERCENTILE(Data!A1:A6,0.5)	n:35	PERCENTILE at the median
+PERCENTILE(Data!A1:A6,0)	n:10	PERCENTILE at zero is the minimum
+PERCENTILE(Data!A1:A6,1)	n:60	PERCENTILE at one is the maximum
+PERCENTILE(Data!A1:A6,1.5)	e:#NUM!	PERCENTILE out of range
+PERCENTILE.INC(Data!A1:A6,0.25)	n:22.5	PERCENTILE.INC
+QUARTILE(Data!A1:A6,1)	n:22.5	QUARTILE 1
+QUARTILE(Data!A1:A6,2)	n:35	QUARTILE 2 is the median
+QUARTILE(Data!A1:A6,5)	e:#NUM!	QUARTILE out of range
+QUARTILE.INC(Data!A1:A6,3)	n:47.5	QUARTILE.INC 3
+LARGE(Data!A1:A6,1)	n:60	LARGE
+LARGE(Data!A1:A6,2)	n:50	LARGE
+LARGE(Data!A1:A6,7)	e:#NUM!	LARGE past the end
+SMALL(Data!A1:A6,1)	n:10	SMALL
+SMALL(Data!A1:A6,3)	n:30	SMALL
+SMALL(Data!A1:A6,0)	e:#NUM!	SMALL is 1-based
+RANK(30,Data!A1:A6)	n:4	RANK defaults to descending
+RANK(30,Data!A1:A6,1)	n:3	RANK ascending
+RANK(99,Data!A1:A6)	e:#N/A	RANK of a value that is not there
+RANK.EQ(60,Data!A1:A6)	n:1	RANK.EQ
+VLOOKUP("beta",Data!B1:C6,2,FALSE())	n:2.5	VLOOKUP exact
+VLOOKUP("BETA",Data!B1:C6,2,FALSE())	n:2.5	VLOOKUP is case-insensitive
+VLOOKUP("delta",Data!B1:C6,2,FALSE())	e:#N/A	VLOOKUP with no match
+VLOOKUP("beta",Data!B1:C6,3,FALSE())	e:#REF!	VLOOKUP past the last column
+VLOOKUP("beta",Data!B1:C6,0,FALSE())	e:#VALUE!	VLOOKUP column index is 1-based
+VLOOKUP(35,Data!A1:C6,3)	n:3.5	VLOOKUP approximate finds the largest not greater
+VLOOKUP("b*a",Data!B1:C6,2,FALSE())	n:2.5	VLOOKUP exact mode honours wildcards
+HLOOKUP("y",Data!A10:C11,2,FALSE())	n:2	HLOOKUP
+HLOOKUP("q",Data!A10:C11,2,FALSE())	e:#N/A	HLOOKUP with no match
+XLOOKUP("gamma",Data!B1:B6,Data!C1:C6)	n:3.5	XLOOKUP
+XLOOKUP("delta",Data!B1:B6,Data!C1:C6,"none")	s:none	XLOOKUP with a not-found value
+XLOOKUP("delta",Data!B1:B6,Data!C1:C6)	e:#N/A	XLOOKUP with no not-found value
+XLOOKUP(35,Data!A1:A6,Data!C1:C6,,-1)	n:3.5	XLOOKUP next-smaller mode
+XLOOKUP(35,Data!A1:A6,Data!C1:C6,,1)	n:4.5	XLOOKUP next-larger mode
+INDEX(Data!A1:A6,3)	n:30	INDEX down a column
+INDEX(Data!A10:C10,2)	s:y	INDEX across a row
+INDEX(Data!A1:C6,2,3)	n:2.5	INDEX by row and column
+INDEX(Data!A1:A6,9)	e:#REF!	INDEX past the end
+MATCH(40,Data!A1:A6,0)	n:4	MATCH exact
+MATCH(35,Data!A1:A6,1)	n:3	MATCH approximate
+MATCH(5,Data!A1:A6,1)	e:#N/A	MATCH below everything
+MATCH("gamma",Data!B1:B6,0)	n:3	MATCH on text
+MATCH("delta",Data!B1:B6,0)	e:#N/A	MATCH with no match
+XMATCH("beta",Data!B1:B6)	n:2	XMATCH
+XMATCH("beta",Data!B1:B6,0,-1)	n:5	XMATCH searching backwards
+OFFSET(Data!A1,2,0)	n:30	OFFSET
+OFFSET(Data!A1,0,2)	n:1.5	OFFSET across
+SUM(OFFSET(Data!A1,0,0,3,1))	n:60	OFFSET with a size
+OFFSET(Data!A1,-100,0)	e:#REF!	Excel says #REF! off the sheet; LibreOffice says #VALUE!
+OFFSET(Data!A1,0,-1)	e:#REF!	OFFSET off the left edge
+INDIRECT("Data!A2")	n:20	INDIRECT
+INDIRECT("Data!A1:A6")	n:10	INDIRECT of a range, reduced by implicit intersection
+SUM(INDIRECT("Data!A1:A3"))	n:60	INDIRECT into a range argument
+INDIRECT("not a reference")	e:#REF!	INDIRECT of nonsense
+INDIRECT("Missing!A1")	e:#REF!	INDIRECT of an unknown sheet
+LOOKUP(35,Data!A1:A6,Data!C1:C6)	n:3.5	LOOKUP
+ADDRESS(1,1)	s:$A$1	ADDRESS defaults to fully absolute
+ADDRESS(7,3,4)	s:C7	ADDRESS relative
+ADDRESS(7,3,2)	s:C$7	ADDRESS with an absolute row
+ADDRESS(7,3,3)	s:$C7	ADDRESS with an absolute column
+COUNTIF(Data!B1:B6,"gamma")	n:2	COUNTIF on text
+COUNTIF(Data!B1:B6,"GAMMA")	n:2	COUNTIF is case-insensitive
+COUNTIF(Data!A1:A6,">25")	n:4	COUNTIF with a comparison
+COUNTIF(Data!A1:A6,">=30")	n:4	COUNTIF with >=
+COUNTIF(Data!A1:A6,"<>10")	n:5	COUNTIF with <>
+COUNTIF(Data!B1:B6,"a*")	n:2	COUNTIF with a wildcard
+COUNTIF(Data!B1:B6,"?????")	n:4	COUNTIF with ? wildcards: alpha and gamma, twice each
+COUNTIF(Data!A1:A6,40)	n:1	COUNTIF with a number
+SUMIF(Data!B1:B6,"alpha",Data!A1:A6)	n:50	SUMIF with a separate sum range
+SUMIF(Data!A1:A6,">25")	n:180	SUMIF over its own range
+SUMIF(Data!B1:B6,"delta",Data!A1:A6)	n:0	SUMIF with no matches
+AVERAGEIF(Data!B1:B6,"alpha",Data!A1:A6)	n:25	AVERAGEIF
+AVERAGEIF(Data!B1:B6,"delta",Data!A1:A6)	e:#DIV/0!	AVERAGEIF with no matches
+SUMIFS(Data!A1:A6,Data!B1:B6,"beta")	n:70	SUMIFS
+SUMIFS(Data!A1:A6,Data!B1:B6,"alpha",Data!A1:A6,">15")	n:40	SUMIFS with two conditions
+COUNTIFS(Data!B1:B6,"alpha",Data!A1:A6,">15")	n:1	COUNTIFS
+COUNTIFS(Data!B1:B6,"alpha")	n:2	COUNTIFS with one condition
+AVERAGEIFS(Data!A1:A6,Data!B1:B6,"gamma")	n:45	AVERAGEIFS
+MAXIFS(Data!A1:A6,Data!B1:B6,"beta")	n:50	MAXIFS
+MINIFS(Data!A1:A6,Data!B1:B6,"beta")	n:20	MINIFS
+MAXIFS(Data!A1:A6,Data!B1:B6,"delta")	n:0	MAXIFS with no matches is zero
+SUMIF(Data!A1:A6,">1000")	n:0	SUMIF that matches nothing
+SUM({1,2,3})	n:6	an array literal
+SUM({1,2;3,4})	n:10	a two-row array literal
+INDEX({1,2;3,4},2,1)	n:3	INDEX into an array literal
+ROWS({1,2;3,4})	n:2	ROWS of an array literal
+COLUMNS({1,2;3,4})	n:2	COLUMNS of an array literal
+SUM({1,-2,3})	n:2	negative constants in an array
+SUM(1,{2,3},4)	n:10	mixing arrays and scalars
+0.1+0.2-0.3	n:0	cosmetic rounding turns cancellation into a clean zero
+0.1+0.2	n:0.3	0.1+0.2 displays as 0.3 at 15 significant digits
+(0.1+0.2-0.3)=0	b:TRUE	and compares equal to zero
+1-0.9-0.1	n:0	another cancellation
+1/3*3	n:1	round-trip through a third
+1e308*10	e:#NUM!	overflow is #NUM!, not infinity
+-1e308*10	e:#NUM!	overflow is #NUM! in both directions
+1e-320/1e10	n:0	underflow goes to zero
+100000000000000000000+1	n:1e+20	beyond 15 digits the increment is invisible
+LAMBDA(x,x+1)	u:	LAMBDA is a real function we do not implement
+LET(x,1,x+1)	u:	LET is out of scope
+FILTER(Data!A1:A6,Data!A1:A6>20)	u:	dynamic arrays spill; we do not
+SORT(Data!A1:A6)	u:	dynamic array
+UNIQUE(Data!B1:B6)	u:	dynamic array
+SEQUENCE(3)	u:	dynamic array
+PMT(0.05,10,1000)	u:	the financial suite is out of scope
+NPV(0.1,Data!A1:A6)	u:	financial
+IRR(Data!A1:A6)	u:	financial
+DSUM(Data!A1:C6,1,Data!A1:A2)	u:	database functions are out of scope
+TEXTSPLIT("a,b",",")	u:	dynamic array text function
+CELL("address",Data!A1)	u:	CELL exposes host state we do not model
+HYPERLINK("http://x","x")	u:	HYPERLINK is a link, not a value
+GETPIVOTDATA("x",Data!A1)	u:	pivot tables are out of scope
+YEARFRAC(DATE(2024,1,1),DATE(2024,7,1))	u:	YEARFRAC needs day-count bases we do not model
+SUM(LAMBDA(x,x),2)	u:	an unsupported call anywhere makes the whole formula unsupported
+NOTAFUNCTION(1)	e:#NAME?	an unknown name is #NAME?, not unsupported
+SUM(NOTAFUNCTION(1))	e:#NAME?	an unknown name inside a call
+UndefinedName	e:#NAME?	an undefined name is #NAME?
+_xlfn.NOTAFUNCTION(1)	u:	an _xlfn. prefix marks a real function we have not got to
+_xlfn.IFS(TRUE(),"a")	s:a	the stored spelling of IFS parses
+_xlfn.SWITCH(1,1,"a","b")	s:a	the stored spelling of SWITCH parses
+_xlfn.CONCAT("a","b")	s:ab	the stored spelling of CONCAT parses
+_xlfn.TEXTJOIN("-",TRUE(),"a","b")	s:a-b	the stored spelling of TEXTJOIN parses
+_xlfn.XLOOKUP("beta",Data!B1:B6,Data!C1:C6)	n:2.5	the stored spelling of XLOOKUP parses
+_xlfn.MAXIFS(Data!A1:A6,Data!B1:B6,"beta")	n:50	the stored spelling of MAXIFS parses
+_xlfn.MINIFS(Data!A1:A6,Data!B1:B6,"beta")	n:20	the stored spelling of MINIFS parses
+_xlfn.STDEV.P(Data!A1:A6)	n:17.0782512765993	the stored spelling of STDEV.P parses
+_xlfn.STDEV.S(Data!A1:A6)	n:18.7082869338697	the stored spelling of STDEV.S parses
+_xlfn.VAR.P(Data!A1:A6)	n:291.666666666667	the stored spelling of VAR.P parses
+_xlfn.VAR.S(Data!A1:A6)	n:350	the stored spelling of VAR.S parses
+_xlfn.QUARTILE.INC(Data!A1:A6,1)	n:22.5	the stored spelling of QUARTILE.INC parses
+_xlfn.PERCENTILE.INC(Data!A1:A6,0.5)	n:35	the stored spelling of PERCENTILE.INC parses
+_xlfn.RANK.EQ(60,Data!A1:A6)	n:1	the stored spelling of RANK.EQ parses
+_xlfn.IFNA(NA(),"safe")	s:safe	the stored spelling of IFNA parses
+_xlfn.XMATCH("beta",Data!B1:B6)	n:2	the stored spelling of XMATCH parses
+SUM()	e:#VALUE!	SUM needs an argument
+ABS()	e:#VALUE!	ABS needs an argument
+ABS(1,2)	e:#VALUE!	ABS takes exactly one argument
+PI(1)	e:#VALUE!	PI takes none
+IF(TRUE())	e:#VALUE!	IF needs at least two arguments
+MID("abc",1)	e:#VALUE!	MID needs three arguments
+SUM(SUM(1,2),SUM(3,4))	n:10	nested calls
+IF(AND(TRUE(),TRUE()),SUM(1,2),0)	n:3	nesting through a condition
+ROUND(AVERAGE(Data!A1:A6)/3,3)	n:11.667	nesting into ROUND
+IFERROR(VLOOKUP("delta",Data!B1:C6,2,FALSE()),0)	n:0	IFERROR around a lookup
+SUM(IF(TRUE(),1,2),3)	n:4	a lazy function inside an eager one
+LEN(CONCAT("a","bc"))	n:3	text nesting
+-SUM(1,2)	n:-3	unary minus on a call
+SUM(1,2)%	n:0.03	percent on a call
+(SUM(1,2))	n:3	a call in a group
+1+1+1+1+1+1+1+1+1+1	n:10	a long left-associative chain
+1-1-1-1	n:-2	subtraction is left-associative
+100/10/2	n:5	division is left-associative
+2*3*4*5	n:120	multiplication chains
+"a"&"b"&"c"&"d"	s:abcd	concatenation chains
+SUM(Data!A1,Data!A2,Data!A3)	n:60	SUM of three single-cell references
+SUM(Data!A1:A6,100)	n:310	a range and a literal together
+AVERAGE(Data!A1:A6,Data!C1:C6)	n:19.5	AVERAGE across two ranges
+MIN(Data!A1:A6,5)	n:5	MIN with a literal
+MAX(Data!A1:A6,100)	n:100	MAX with a literal
+COUNT(Data!A1:C6)	n:12	COUNT over a rectangle
+COUNTA(Data!A1:C6)	n:18	COUNTA over a rectangle
+SUM(Data!A1:C1)	n:11.5	a one-row range
+SUM(Data!C1:C6)	n:24	the C column
+PRODUCT(Data!C1:C2)	n:3.75	PRODUCT of decimals
+SUMSQ(Data!A1:A2)	n:500	SUMSQ over a range
+MEDIAN(Data!C1:C6)	n:4	MEDIAN of the C column
+LARGE(Data!C1:C6,2)	n:5.5	LARGE on decimals
+SMALL(Data!C1:C6,2)	n:2.5	SMALL on decimals
+STDEV.P(Data!C1:C6)	n:1.70782512765993	STDEV.P on decimals
+VAR.S(Data!C1:C6)	n:3.5	VAR.S on decimals
+CORREL(Data!C1:C6,Data!A1:A6)	n:1	CORREL is symmetric
+RANK(10,Data!A1:A6)	n:6	RANK of the smallest, descending
+RANK(10,Data!A1:A6,1)	n:1	RANK of the smallest, ascending
+PERCENTILE(Data!A1:A6,0.75)	n:47.5	PERCENTILE at three quarters
+QUARTILE(Data!A1:A6,0)	n:10	QUARTILE 0 is the minimum
+QUARTILE(Data!A1:A6,4)	n:60	QUARTILE 4 is the maximum
+AVERAGEA(1,2,3)	n:2	AVERAGEA of literals
+MINA(Data!A1:A6)	n:10	MINA
+MAXA(Data!A1:A6)	n:60	MAXA
+SUBTOTAL(3,Data!B1:B6)	n:6	SUBTOTAL 3 is COUNTA
+SUBTOTAL(6,Data!A1:A3)	n:6000	SUBTOTAL 6 is PRODUCT
+SUBTOTAL(9,Data!A1:A3,Data!A4:A6)	n:210	SUBTOTAL over two ranges
+SUBTOTAL(101,Data!A1:A6)	n:35	SUBTOTAL 101 is AVERAGE ignoring hidden rows
+LEFT(Data!D3,5)	s:mIxEd	LEFT preserves case
+RIGHT(Data!D3,4)	s:cAsE	RIGHT preserves case
+MID(Data!D3,7,4)	s:cAsE	MID preserves case
+LEN(Data!D1)	n:10	LEN counts the padding
+LEN(TRIM(Data!D1))	n:6	LEN after TRIM
+UPPER("")	s:	UPPER of the empty string
+LOWER(Data!A1)	s:10	LOWER coerces a number to text first
+PROPER("hello world")	s:Hello World	PROPER on two words
+PROPER("HELLO")	s:Hello	PROPER lowercases the tail
+TRIM("   ")	s:	TRIM of only spaces
+SUBSTITUTE("a-b-c","-","+")	s:a+b+c	SUBSTITUTE every instance
+SUBSTITUTE("a-b-c","-","+",1)	s:a+b-c	SUBSTITUTE the first instance
+REPLACE("abcdef",4,3,"XYZ")	s:abcXYZ	REPLACE the tail
+REPLACE("abc",1,0,"X")	s:Xabc	REPLACE nothing is an insert
+REPT("-",5)	s:-----	REPT a separator
+EXACT("","")	b:TRUE	EXACT of two empty strings
+EXACT(1,1)	b:TRUE	EXACT coerces both sides to text
+FIND("a","banana")	n:2	FIND the first instance
+FIND("a","banana",3)	n:4	FIND from a later start
+FIND("","abc")	n:1	FIND of nothing is the start position
+SEARCH("A","banana")	n:2	SEARCH ignores case
+SEARCH("~*","a*b")	n:2	SEARCH with an escaped wildcard
+CHAR(97)	s:a	CHAR of a lowercase letter
+CODE("abc")	n:97	CODE reads the first character
+VALUE("  12  ")	n:12	VALUE trims
+VALUE("-3.5")	n:-3.5	VALUE of a negative
+VALUE("2024-03-15")	n:45366	VALUE of a date string
+TEXT(-1234.5,"#,##0.00")	s:-1,234.50	TEXT of a negative
+TEXT(0,"0.00")	s:0.00	TEXT of zero
+TEXT(1234.5,"0.0")	s:1234.5	TEXT without grouping
+TEXT(45366,"dd/mm/yyyy")	s:15/03/2024	TEXT with a European date order
+TEXT(0.5,"hh:mm")	s:12:00	TEXT of a time
+TEXT(45366,"mmmm")	s:March	TEXT with a full month name
+CONCAT(Data!A1,Data!A2)	s:1020	CONCAT coerces numbers
+TEXTJOIN(",",TRUE(),Data!A1:A3)	s:10,20,30	TEXTJOIN over numbers
+CONCATENATE(Data!B1," ",Data!B2)	s:alpha beta	CONCATENATE with a space
+YEAR(DATE(2000,2,29))	n:2000	a real leap day
+DAY(DATE(2000,2,29))	n:29	a real leap day
+MONTH(DATE(2024,12,31))	n:12	the last day of a year
+DATE(2024,3,15)+1	n:45367	adding a day
+DATE(2024,3,15)-1	n:45365	subtracting a day
+EOMONTH(DATE(2024,12,1),0)	n:45657	EOMONTH in December
+EDATE(DATE(2024,12,31),2)	n:45716	EDATE across a year boundary
+DATEDIF(DATE(2024,1,31),DATE(2024,3,1),"md")	n:1	DATEDIF md
+DATEDIF(DATE(2023,1,15),DATE(2024,3,15),"ym")	n:2	DATEDIF ym
+DATEDIF(DATE(2023,1,15),DATE(2024,3,15),"yd")	n:60	DATEDIF yd
+WEEKDAY(DATE(2024,3,17))	n:1	a Sunday is 1 under type 1
+WEEKDAY(DATE(2024,3,16))	n:7	a Saturday is 7 under type 1
+NETWORKDAYS(DATE(2024,3,1),DATE(2024,3,1))	n:1	NETWORKDAYS of a single weekday
+NETWORKDAYS(DATE(2024,3,2),DATE(2024,3,2))	n:0	NETWORKDAYS of a single Saturday
+WORKDAY(DATE(2024,3,8),1)	n:45362	WORKDAY from a Friday
+HOUR(0.75)	n:18	HOUR of three quarters
+MINUTE(0.5)	n:0	MINUTE at noon
+TIME(0,90,0)	n:0.0625	TIME normalises minutes
+COUNTIF(Data!A1:A6,"<>")	n:6	<> alone means not blank
+COUNTIF(Data!G1:G5,"<>")	n:0	not blank over an empty range
+COUNTIF(Data!A1:A6,"<25")	n:2	COUNTIF with <
+COUNTIF(Data!A1:A6,"<=20")	n:2	COUNTIF with <=
+SUMIF(Data!A1:A6,"<=20")	n:30	SUMIF with <=
+SUMIF(Data!B1:B6,"gamma",Data!C1:C6)	n:10	SUMIF into the C column
+AVERAGEIF(Data!A1:A6,">25")	n:45	AVERAGEIF over its own range
+COUNTIFS(Data!A1:A6,">15",Data!A1:A6,"<45")	n:3	COUNTIFS with a band
+SUMIFS(Data!C1:C6,Data!B1:B6,"alpha")	n:6	SUMIFS into the C column
+MAXIFS(Data!C1:C6,Data!B1:B6,"gamma")	n:6.5	MAXIFS on decimals
+MINIFS(Data!C1:C6,Data!B1:B6,"gamma")	n:3.5	MINIFS on decimals
+ISNUMBER(SQRT(-1))	b:FALSE	an error is not a number
+ISERROR(SQRT(-1))	b:TRUE	SQRT(-1) really is an error
+ERROR.TYPE(SQRT(-1))	n:6	and it is #NUM!, which is 6
+ERROR.TYPE(#REF!)	n:4	ERROR.TYPE numbers #REF! as 4
+ERROR.TYPE(#NAME?)	n:5	ERROR.TYPE numbers #NAME? as 5
+ERROR.TYPE(#VALUE!)	n:3	ERROR.TYPE numbers #VALUE! as 3
+ERROR.TYPE(#NULL!)	n:1	ERROR.TYPE numbers #NULL! as 1
+IFERROR(#REF!,1)	n:1	IFERROR catches #REF!
+IFERROR(#NAME?,1)	n:1	IFERROR catches #NAME?
+N(Data!E4)	n:0	N of a blank
+T(Data!B1)	s:alpha	T of referenced text
+TYPE(Data!E4)	n:1	TYPE of a blank is 1, the same as a number
+ROUND(2.5,0)+ROUND(3.5,0)	n:7	two half-away roundings
+SUM(1,2)+SUM(3,4)	n:10	two calls added
+IF(1>2,1,IF(2>1,2,3))	n:2	nested IF
+IF(1>2,1,IF(2>3,2,3))	n:3	doubly nested IF
+ABS(SUM(Data!A1:A6)*-1)	n:210	ABS of a negated sum
+MAX(MIN(5,10),3)	n:5	MIN inside MAX
+LEN(TEXT(1234.5,"#,##0.00"))	n:8	LEN of a formatted number
+VALUE(TEXT(12,"0"))	n:12	TEXT then VALUE round-trips
+SUM(Data!A1:A6)-SUM(Data!A1:A3)-SUM(Data!A4:A6)	n:0	sums cancel to a clean zero
+Data!A1:A6	n:10	a bare range reduces by implicit intersection to the origin row
+SUM(Data!A1:A2 Data!A1:C2)	n:30	intersection of overlapping rectangles
+SUM((Data!A1,Data!A3,Data!A5))	n:90	a three-part union
+COUNT((Data!A1:A2,Data!A5:A6))	n:4	COUNT over a union
+TODAY()	n:45366	TODAY floors the injected clock
+NOW()	n:45366.75	NOW is the injected clock
+SHEETS()	n:2	SHEETS counts the workbook's sheets
+AND(RAND()>=0,RAND()<1)	b:TRUE	RAND stays inside the unit interval
+RANDBETWEEN(5,5)	n:5	RANDBETWEEN on a single-value range
+AND(RANDBETWEEN(1,6)>=1,RANDBETWEEN(1,6)<=6)	b:TRUE	RANDBETWEEN stays inside its bounds
+RANDBETWEEN(6,5)	e:#NUM!	RANDBETWEEN with the bounds the wrong way round
+ISNUMBER(TODAY())	b:TRUE	TODAY is a number, like every other date

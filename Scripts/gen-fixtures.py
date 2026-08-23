@@ -24,8 +24,11 @@ Design notes worth knowing before you edit this:
 from __future__ import annotations
 
 import argparse
+import datetime
 import io
+import json
 import os
+import re
 import struct
 import sys
 import zipfile
@@ -521,6 +524,70 @@ BUILTIN_NUMFMTS = {
     45: "mm:ss", 46: "[h]:mm:ss", 47: "mmss.0", 48: "##0.0E+0", 49: "@",
 }
 
+# --------------------------------------------------------------------------
+# operator precedence
+# --------------------------------------------------------------------------
+#
+# Excel's precedence is NOT the mathematical one, and the difference is silent
+# data corruption rather than a visible error: `=-2^2` caches 4, we render 4
+# from the cache, the user edits an unrelated precedent, we recalculate with a
+# maths-shaped grammar and quietly write -4 into their file.
+#
+# Two rules do the damage:
+#   * unary minus binds TIGHTER than `^`   ->  -2^2 = 4, not -4
+#   * `^` is LEFT-associative              ->  2^3^2 = 64, not 512
+#
+# Every expectation below was produced the same way as the rest of `formulas/`:
+# written with no cached value, evaluated by headless LibreOffice, read back.
+# `expected` is Excel's documented answer and the generator ASSERTS that
+# LibreOffice agrees, so the day an engine changes its mind the corpus refuses
+# to build rather than silently encoding a new answer.
+#
+# label, formula (no leading =), Excel's answer, SheetModel kind
+PRECEDENCE_TABLE = [
+    ("unary minus binds tighter than ^",   "-2^2",                        4.0,   "number"),
+    ("same, with an odd exponent",         "-3^2",                        9.0,   "number"),
+    ("binary minus does NOT",              "0-2^2",                      -4.0,   "number"),
+    ("binary minus after a reference",     "Data!A1-2^2",                -3.0,   "number"),
+    ("^ is left-associative",              "2^3^2",                      64.0,   "number"),
+    ("^ left-associative again",           "2^2^3",                      64.0,   "number"),
+    ("the maths reading, parenthesised",   "2^(2^3)",                   256.0,   "number"),
+    ("parens force the maths reading",     "-(2^2)",                     -4.0,   "number"),
+    ("parenthesised negative base",        "(-2)^2",                      4.0,   "number"),
+    ("unary minus on both sides",          "-2^-2",                      0.25,   "number"),
+    ("negative exponent",                  "2^-1",                        0.5,   "number"),
+    ("zero to the zero is 1",              "0^0",                         1.0,   "number"),
+    ("^ over * over +",                    "1+2*3^2",                    19.0,   "number"),
+    ("unary minus then *",                 "-2^2*3",                     12.0,   "number"),
+    ("unary minus after an operator",      "2*-3^2",                     18.0,   "number"),
+    ("^ then * left to right",             "2^3*2",                      16.0,   "number"),
+    ("- is left-associative",              "1-2-3",                      -4.0,   "number"),
+    ("unary minus then +",                 "-2^2+1",                      5.0,   "number"),
+    ("% is postfix and binds tightest",    "50%*2",                       1.0,   "number"),
+    ("% on a whole number",                "100%",                        1.0,   "number"),
+    ("unary minus inside a call",          "SUM(-2^2)",                   4.0,   "number"),
+    ("negation of a reference",            "-Data!A2^2",                 16.0,   "number"),
+    ("& binds tighter than =",             '"a"&"b"="ab"',               True,   "boolean"),
+    ("& is left-associative",              "1&2&3",                     "123",   "text"),
+    ("& result is text, not a number",     '"1"&2=12',                  False,   "boolean"),
+    ("comparison of two comparisons",      "1<2=(1=1)",                  True,   "boolean"),
+    ("text comparison",                    '"a"<"b"',                    True,   "boolean"),
+    ("range intersection is the space",    "SUM(Data!A1:C1 Data!A1:A3)",  1.0,   "number"),
+    ("intersection of two columns",        "SUM(Data!A1:A2 Data!A2:A3)",  4.0,   "number"),
+    (": binds tighter than the space",     "SUM(Data!A1:B2 Data!B2:C3)",  5.0,   "number"),
+    ("union is the comma",                 "SUM(Data!A1:A2,Data!C1:C2)", 14.0,   "number"),
+]
+
+# Written into the file so a reader has to parse them, but NOT asserted: Excel
+# and LibreOffice genuinely disagree, and the corpus does not pick a winner.
+# See the sidecar note for the measurement.
+PRECEDENCE_DIVERGENT = [
+    ("boolean vs number comparison",       "1<2<3"),
+    ("the same the other way round",       "3>2>1"),
+]
+
+
+
 CUSTOM_NUMFMTS = [
     ("0.000", 1234.5678),
     ("#,##0", 1234567.0),
@@ -540,6 +607,116 @@ CUSTOM_NUMFMTS = [
     ('[>=1000]#,##0,"k";#,##0', 12500.0),
     ('_-* #,##0.00_-;-* #,##0.00_-;_-* "-"??_-;_-@_-', 3.5),
 ]
+
+
+def _precedence_seed(ws):
+    """A1:C3 holding 1..9 row-major, so every range case has a checkable sum."""
+    n = 1
+    for row in range(1, 4):
+        for col in range(1, 4):
+            ws.cell(row=row, column=col, value=float(n))
+            n += 1
+
+
+def g_formulas_precedence():
+    """`formulas/operator-precedence.xlsx` — Excel's grammar, not the maths one."""
+    wb = openpyxl.Workbook()
+    data = wb.active
+    data.title = "Data"
+    _precedence_seed(data)
+    calc = wb.create_sheet("Precedence")
+
+    rows = [(label, formula, expected, kind)
+            for label, formula, expected, kind in PRECEDENCE_TABLE]
+    for i, (label, formula, _, _) in enumerate(rows, start=1):
+        calc.cell(row=i, column=1, value=label)
+        calc.cell(row=i, column=2, value="=" + formula)
+    divergent_start = len(rows) + 1
+    for j, (label, formula) in enumerate(PRECEDENCE_DIVERGENT):
+        calc.cell(row=divergent_start + j, column=1, value=label)
+        calc.cell(row=divergent_start + j, column=2, value="=" + formula)
+
+    openpyxl_save(wb, "formulas/operator-precedence.xlsx")
+    recalc(fx("formulas/operator-precedence.xlsx"))
+
+    # Read back what LibreOffice actually computed and refuse to ship a sidecar
+    # that disagrees with Excel's documented answer. The corpus is only ground
+    # truth while two independent engines agree; the moment they do not, this
+    # raises instead of quietly encoding whichever one ran last.
+    values = openpyxl.load_workbook(fx("formulas/operator-precedence.xlsx"),
+                                    data_only=True)["Precedence"]
+    stored = openpyxl.load_workbook(fx("formulas/operator-precedence.xlsx"),
+                                    data_only=False)["Precedence"]
+    cells = {}
+    for i, (label, formula, expected, kind) in enumerate(rows, start=1):
+        got = values.cell(row=i, column=2).value
+        same = (round(got, 10) == round(expected, 10)
+                if isinstance(expected, float) and isinstance(got, (int, float))
+                else got == expected)
+        if not same:
+            raise SystemExit(
+                f"operator-precedence: LibreOffice disagrees with Excel on ={formula}: "
+                f"Excel documents {expected!r}, LibreOffice computed {got!r}. "
+                "Do NOT widen the expectation - drop the case and record the divergence.")
+        written = stored.cell(row=i, column=2).value
+        if written.lstrip("=") != formula:
+            raise SystemExit(
+                f"operator-precedence: LibreOffice rewrote ={formula} as {written!r}. "
+                "The sidecar must describe the bytes in the file, so either accept the "
+                "rewritten spelling deliberately or pick a formula it leaves alone.")
+        cells[f"A{i}"] = cell("text", label)
+        cells[f"B{i}"] = cell(kind, float(expected) if kind == "number" else expected,
+                              formula=formula, fmt=None)
+
+    skip = []
+    for j, (label, formula) in enumerate(PRECEDENCE_DIVERGENT):
+        row = divergent_start + j
+        cells[f"A{row}"] = cell("text", label)
+        # `value: null` with a non-empty type: the cell must hold a boolean, its
+        # content is deliberately unasserted.
+        cells[f"B{row}"] = cell("boolean", None, formula=formula, fmt=None)
+        skip.append(f"cellValue:Precedence!B{row}")
+
+    last = divergent_start + len(PRECEDENCE_DIVERGENT) - 1
+    emit_sidecar(
+        "formulas/operator-precedence.xlsx",
+        "Excel's operator precedence is not the mathematical one. `=-2^2` is 4 because unary "
+        "minus binds tighter than `^`, and `=2^3^2` is 64 because `^` is left-associative. An "
+        "engine that reads these the mathematical way produces no error - it silently writes a "
+        "different number into the user's file on the next recalculation.",
+        [sheet("Data",
+               {"A1": cell("number", 1.0), "C1": cell("number", 3.0),
+                "A2": cell("number", 4.0), "B2": cell("number", 5.0),
+                "C3": cell("number", 9.0)},
+               index=0, used_range="A1:C3"),
+         sheet("Precedence", cells, index=1, used_range=f"A1:B{last}")],
+        verified_by=engine(),
+        skip_checks=skip,
+        enginesDisagree=[
+            {"formula": "1<2<3",
+             "excel": False,
+             "libreOffice": True,
+             "why": "Both engines parse this left-associatively, so both compute (1<2)<3. They "
+                    "differ on what comes next: Excel orders mixed types number < text < FALSE < "
+                    "TRUE, so TRUE<3 is FALSE. LibreOffice coerces TRUE to 1, so 1<3 is TRUE."},
+            {"formula": "3>2>1",
+             "excel": True,
+             "libreOffice": False,
+             "why": "The same rule seen from the other side: Excel's TRUE>1 is TRUE; "
+                    "LibreOffice's 1>1 is FALSE."},
+        ],
+        notes="MEASURED, not assumed: all 31 asserted formulas were evaluated by headless "
+              "LibreOffice and every one agrees with Excel's documented answer, including the "
+              "two rules this fixture exists for. The generator asserts that agreement and "
+              "refuses to build if it ever breaks. The two formulas in `enginesDisagree` are "
+              "present in the FILE - a reader must still parse them - but are listed in "
+              "`skipChecks` and carry no asserted value, because the divergence is about "
+              "boolean-vs-number comparison, not about precedence, and the corpus does not pick "
+              "a winner. A3 should follow Excel there too, and cover it in functions.tsv. "
+              "Note also that comparison associativity CANNOT be tested without crossing into "
+              "that divergence: every formula that distinguishes left from right associativity "
+              "for `=`/`<`/`>` ends up comparing a boolean with a number.")
+
 
 
 def g_formats():
@@ -607,9 +784,34 @@ def g_formats():
                        "readable side by side.")
 
     # 3/4. the same wall-clock dates in the 1900 and 1904 epochs
-    dates = ["1900-01-01", "1900-03-01", "1970-01-01", "2024-03-15", "2099-12-31"]
-    serial1900 = [1.0, 61.0, 25569.0, 45366.0, 73050.0]
-    serial1904 = [s - 1462.0 for s in serial1900]
+    #
+    # The offset between the two epochs is NOT constant. Serial 60 in the 1900
+    # system is 1900-02-29, a day that never happened (Lotus 1-2-3 shipped the
+    # bug and Excel keeps it for compatibility). The 1904 system has no such
+    # day. So below serial 60 the two systems are 1461 days apart and at or
+    # above it they are 1462 - and a flat `- 1462` puts every date in January
+    # and February 1900 one day early. This fixture had exactly that bug: A1
+    # caught it and skipped the row rather than assert a wrong expectation.
+    #
+    # Computed from the calendar instead of shifted, so it cannot recur.
+    EPOCH_1904 = datetime.date(1904, 1, 1)          # serial 0 in the 1904 system
+
+    def to_1900(d):
+        naive = (d - datetime.date(1900, 1, 1)).days + 1
+        return float(naive + 1 if d >= datetime.date(1900, 3, 1) else naive)
+
+    def to_1904(d):
+        return float((d - EPOCH_1904).days)
+
+    dates = ["1900-01-01", "1900-02-28", "1900-03-01", "1970-01-01", "2024-03-15", "2099-12-31"]
+    parsed = [datetime.date.fromisoformat(d) for d in dates]
+    serial1900 = [to_1900(d) for d in parsed]
+    serial1904 = [to_1904(d) for d in parsed]
+    assert serial1900[:3] == [1.0, 59.0, 61.0], serial1900
+    assert serial1904[:3] == [-1460.0, -1402.0, -1401.0], serial1904
+    assert [b - a for a, b in zip(serial1900, serial1904)] == [-1461.0, -1461.0] + [-1462.0] * (len(dates) - 2)
+
+    last_row = len(dates)
     for tag, serials, flag in (("1900", serial1900, False), ("1904", serial1904, True)):
         rows, cells = [], {}
         for i, (d, s) in enumerate(zip(dates, serials), start=1):
@@ -623,16 +825,32 @@ def g_formats():
                   .replace('<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>',
                            '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
                            '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>'))
-        parts = base_parts([worksheet_xml("".join(rows), dimension="A1:B5")],
+        parts = base_parts([worksheet_xml("".join(rows), dimension=f"A1:B{last_row}")],
                            [(f"Dates{tag}", "visible")], styles=styles, date1904=flag)
         zip_parts(f"formats/dates-{tag}.xlsx", parts)
         emit_sidecar(f"formats/dates-{tag}.xlsx",
                      f"The {tag} date system. Column A is the wall-clock date as text, column B "
                      f"the serial. dates-1900 and dates-1904 must render IDENTICAL dates.",
-                     [sheet(f"Dates{tag}", cells, dimension="A1:B5", used_range="A1:B5")],
+                     [sheet(f"Dates{tag}", cells, dimension=f"A1:B{last_row}",
+                            used_range=f"A1:B{last_row}")],
                      verified_by=HAND, date_system=int(tag),
                      twinFixture=f"formats/dates-{'1904' if tag == '1900' else '1900'}.xlsx",
-                     notes="The 1904 serials are exactly the 1900 serials minus 1462.")
+                     epochOffsetIsNotConstant={
+                         "belowSerial60": -1461,
+                         "atOrAboveSerial60": -1462,
+                         "why": "Serial 60 in the 1900 system is 1900-02-29, a date that never "
+                                "happened - Lotus 1-2-3 shipped the bug and Excel keeps it for "
+                                "compatibility. The 1904 system has no phantom day, so the gap "
+                                "between the two epochs widens by one at that point.",
+                         "rowsBelow": ["A1 (1900-01-01)", "A2 (1900-02-28)"],
+                     },
+                     notes="A flat 'minus 1462' is WRONG for January and February 1900 and puts "
+                           "every date in those two months one day early - this fixture shipped "
+                           "with that bug and A1 caught it. Rows 1 and 2 are below serial 60 and "
+                           "are 1461 apart; rows 3 to 6 are at or above it and are 1462 apart. "
+                           "Both twins must render the SAME wall-clock date in column A's text "
+                           "and column B's formatted serial, which is the assertion that catches "
+                           "a conversion using the wrong offset either way.")
 
     # 5. the Lotus 1-2-3 leap-year bug
     rows, cells = [], {}
@@ -1270,6 +1488,73 @@ def g_passthrough():
         "xl/worksheets/_rels/sheet1.xml.rels", "xl/theme/theme1.xml"])
 
 
+    # 8. an extension nobody has a name for
+    #
+    # A1 does NOT capture sheet-level fragments from a list. It captures every
+    # direct child of <worksheet> that is not in its modelled set, on the
+    # reasoning that a list is always one schema revision behind - which is
+    # exactly how `legacyDrawing` came to be missing from
+    # `SheetFragment.capturedElements` in the first place.
+    #
+    # A list-driven reader passes every other fixture in `passthrough/` and
+    # fails this one, because nothing here appears in any list: `mc:AlternateContent`
+    # is Markup Compatibility (real, legal as a worksheet child, and how Excel
+    # itself ships post-2007 features to older readers), and the `<ext>` inside
+    # `<extLst>` carries a namespace invented for this fixture. Both must come
+    # back byte-for-byte and in the same order.
+    alternate = (
+        '<mc:AlternateContent '
+        'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+        '<mc:Choice Requires="acme">'
+        '<acme:heatmapOverlay xmlns:acme="http://acme.example/spreadsheet/2029" '
+        'range="A1:C3" palette="viridis" opacity="0.35"/>'
+        "</mc:Choice>"
+        "<mc:Fallback/>"
+        "</mc:AlternateContent>")
+    ext_list = (
+        "<extLst>"
+        '<ext uri="{7E1B4C0A-6E22-4B65-9F1D-0A2C4D5E6F70}" '
+        'xmlns:acme="http://acme.example/spreadsheet/2029">'
+        '<acme:sheetTelemetry lastOpened="2029-04-01T09:15:00Z" openCount="17"/>'
+        "</ext>"
+        "</extLst>")
+    body = ('<row r="1"><c r="A1" t="inlineStr"><is><t>heat</t></is></c>'
+            '<c r="B1"><v>1</v></c><c r="C1"><v>2</v></c></row>'
+            '<row r="3"><c r="A3"><v>3</v></c></row>')
+    tail = ('<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" '
+            'header="0.3" footer="0.3"/>' + alternate + ext_list)
+    parts = base_parts([worksheet_xml(body, dimension="A1:C3", tail=tail)],
+                       [("Extended", "visible")])
+    zip_parts("passthrough/unknown-extension.xlsx", parts)
+    emit_sidecar(
+        "passthrough/unknown-extension.xlsx",
+        "Two sheet-level elements that appear in NO list: an mc:AlternateContent block and a "
+        "vendor <ext> inside <extLst>. A reader that captures a fixed list of element names "
+        "drops both and Excel reports the file as damaged on the next save; a reader that "
+        "captures every unmodelled child of <worksheet> keeps them without knowing what they are.",
+        [sheet("Extended",
+               {"A1": cell("text", "heat"), "B1": cell("number", 1.0),
+                "C1": cell("number", 2.0), "A3": cell("number", 3.0)},
+               used_range="A1:C3", dimension="A1:C3")],
+        verified_by=HAND,
+        sheetLevelElementsThatMustSurvive=["pageMargins", "AlternateContent", "extLst"],
+        provesTheRuleNotTheList=(
+            "SheetFragment.capturedElements lists neither AlternateContent nor any vendor "
+            "element, and SheetFragment.schemaOrder(for:) sorts an unrecognised name into the "
+            "extLst slot. Capture must therefore be 'every direct child of <worksheet> that is "
+            "not modelled', not 'every name in this set'. Order matters as much as presence: "
+            "CT_Worksheet is a sequence, and AlternateContent must come back before extLst, "
+            "which is where it was read."),
+        mustNotHappen=["dropping AlternateContent", "dropping the vendor ext",
+                       "reordering them relative to each other",
+                       "rewriting the acme: namespace prefix or the ext uri"],
+        notes="The uri on <ext> is a GUID, which is how OOXML namespaces an extension block; a "
+              "reader must not interpret it. Both blocks are pure passthrough - nothing in "
+              "SheetModel models either, and nothing should.")
+
+
+
+
 # ==========================================================================
 # csv/
 # ==========================================================================
@@ -1853,9 +2138,68 @@ def g_hostile():
 # main
 # ==========================================================================
 
+README_TABLE_BEGIN = "<!-- BEGIN hostile-table"
+README_TABLE_END = "<!-- END hostile-table -->"
+
+
+def sync_readme_hostile_table():
+    """Rewrite the hostile table in `Fixtures/README.md` from the JSON.
+
+    The codes in `hostile/expected-errors.json` are reconciled against A0's real
+    `SheetError` enum (Wave 1 addendum 6), and the README's copy of them drifted
+    the moment that happened - three separate entry-name codes had collapsed into
+    one and the table still listed all three. Two copies of the same fact is one
+    copy too many, so the table is generated and `Scripts/validate-fixtures.py`
+    fails if it is stale. Only the code column is generated; the 'what it proves'
+    column is prose and is left alone.
+    """
+    readme = os.path.join(FIXTURES, "README.md")
+    text = open(readme, encoding="utf-8").read()
+    doc = json.load(open(os.path.join(FIXTURES, "hostile", "expected-errors.json"),
+                         encoding="utf-8"))
+
+    begin = text.find(README_TABLE_BEGIN)
+    end = text.find(README_TABLE_END)
+    if begin < 0 or end < 0:
+        raise SystemExit("Fixtures/README.md has lost its hostile-table markers")
+
+    existing = {}
+    for line in text[begin:end].split("\n"):
+        m = re.match(r"\| `([^`]+)` \| (.+?) \| (.*) \|$", line)
+        if m:
+            existing[m.group(1)] = m.group(3)
+
+    rows = readme_hostile_rows(doc, existing)
+    header = (f"{README_TABLE_BEGIN}: generated from hostile/expected-errors.json by\n"
+              "     `Scripts/gen-fixtures.py --sync-readme`. Do not edit the code column by "
+              "hand \u2014\n"
+              "     Scripts/validate-fixtures.py fails if it drifts from the JSON. -->\n\n")
+    body = header + "\n".join(rows) + "\n\n"
+    with open(readme, "w", encoding="utf-8") as f:
+        f.write(text[:begin] + body + text[end:])
+    print(f"    README hostile table: {len(doc['cases'])} rows")
+
+
+def readme_hostile_rows(doc, existing_prose):
+    """The generated table rows. Shared with the validator so drift is detectable."""
+    rows = ["| File | Expected `SheetError.code` | What it proves |",
+            "| --- | --- | --- |"]
+    for case in doc["cases"]:
+        code = case["expectedError"]
+        cell = f"`{code}`" if code else "*(none \u2014 must succeed)*"
+        alt = case.get("alsoAcceptable") or []
+        if alt:
+            cell += " <br>or " + " / ".join(f"`{a}`" for a in alt)
+        prose = existing_prose.get(case["file"]) or (case.get("proves") or "").replace("|", "\\|")
+        rows.append(f"| `{case['file']}` | {cell} | {prose} |")
+    return rows
+
+
+
 GROUPS = {
     "basic": g_basic,
     "formulas": g_formulas,
+    "precedence": g_formulas_precedence,
     "formats": g_formats,
     "structure": g_structure,
     "passthrough": g_passthrough,
@@ -1869,9 +2213,16 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Generate the OpenSheets fixture corpus")
     ap.add_argument("groups", nargs="*", choices=sorted(GROUPS) + ["perf"], default=None)
     ap.add_argument("--all", action="store_true")
+    ap.add_argument("--sync-readme", action="store_true",
+                    help="regenerate the hostile table in Fixtures/README.md from the JSON "
+                         "and exit")
     ap.add_argument("--with-huge", action="store_true",
                     help="also build the git-ignored 1M-cell xlsx, 2 GB csv and 10M-char line")
     args = ap.parse_args(argv)
+
+    if args.sync_readme:
+        sync_readme_hostile_table()
+        return
 
     wanted = list(GROUPS) + ["perf"] if (args.all or not args.groups) else args.groups
     LO = soffice_version()
@@ -1882,6 +2233,8 @@ def main(argv=None):
             g_perf(with_huge=args.with_huge)
         else:
             GROUPS[name]()
+        if name == "hostile":
+            sync_readme_hostile_table()
 
     n_fx = sum(1 for root, _, files in os.walk(FIXTURES) for f in files
                if not f.endswith(".expected.json") and not f.endswith(".md")

@@ -140,3 +140,28 @@ gate is worse than no gate.
 - `swift build && swift test` must pass when you finish, with zero warnings.
 - Everything you need from Wave 0 is already on disk: read `Sources/SheetModel/` for the real API
   rather than trusting PLAN.md §5.1's sketch, and `Fixtures/README.md` for the corpus.
+
+---
+
+## 10. `legacyDrawing` — added mid-wave (AFFECTS A1, A2)
+
+*Found by A2 during Wave 1; the model is already fixed. Re-read `SheetFragment.swift`.*
+
+`legacyDrawing` and `legacyDrawingHF` were missing from both `worksheetChildOrder` and
+`capturedElements`. `CT_Worksheet` places them between `drawing` and `drawingHF`; absent from the
+order they fell into the unknown-element slot and sorted after `tableParts`, violating the sequence,
+and absent from the capture list a reader would drop them entirely.
+
+`<legacyDrawing r:id="…"/>` is the sheet's pointer to the VML that positions its **comments**, so
+losing it orphans every comment in the workbook. It appears in `Fixtures/passthrough/comments.xlsx`
+and `Fixtures/passthrough/kitchen-sink.xlsm`.
+
+`SheetModelTests` now asserts that **no** element in `capturedElements` can fall into the
+unknown slot, so this class of bug cannot recur silently.
+
+## 11. Column-width units have one owner (AFFECTS A1)
+
+A2 exposed `XLSXColumnMetrics.points(fromCharacters:)` / `.characters(fromPoints:)` publicly in
+`Sources/SheetFormat/XLSX/Write/WorksheetPartWriter.swift`. **A1 must call these rather than writing
+its own inverse.** Excel's "characters of the normal font" unit is an approximation either way; two
+independent approximations means every save nudges every column width, and the drift compounds.

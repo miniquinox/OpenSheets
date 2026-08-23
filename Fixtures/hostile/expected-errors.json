@@ -5,21 +5,28 @@
     "is ever executed. Run this suite under ASan with a 2 s per-case timeout.",
     "expectedError is the SheetError.code the reader MUST produce; alsoAcceptable",
     "lists codes that indicate the same defence firing at a different layer.",
-    "One entry (zip-bomb-nested.xlsx) expects SUCCESS - read its notes."
+    "One entry (zip-bomb-nested.xlsx) expects SUCCESS - read its notes.",
+    "RECONCILED IN WAVE 1 (addendum 6): the codes below were written against a proposed",
+    "naming scheme before A0's SheetError enum existed. A0's enum is the source of truth,",
+    "so A1 rewrote every expectedError/alsoAcceptable string to a real SheetError.code and",
+    "corrected the Limits.* names. SheetFormatTests/Read/HostileFixtureTests asserts both",
+    "that every code here is one the enum can emit and that every fixture has an entry."
   ],
   "errorCodeNamespaces": {
     "zip.*": "MiniZip.Reader rejections - archive structure, entry names, size caps",
-    "xml.*": "hardened XML pull-parser rejections - DTD, entities, depth, characters",
-    "xlsx.*": "SheetFormat rejections - part graph, sheet limits, cell references"
+    "xml.*": "hardened XML pull-parser rejections - DTD, entities, depth, characters, encoding",
+    "workbook.*": "SheetFormat rejections about the package as a whole - missing critical part, encryption, declared sheet dimensions",
+    "ref.* / cell.*": "SheetFormat rejections about one address or one cell's contents"
   },
   "count": 23,
   "cases": [
     {
       "file": "hostile/zip-bomb.xlsx",
-      "expectedError": "zip.compressionRatioExceeded",
+      "expectedError": "zip.bomb.ratio",
       "expectedBehavior": "throw",
       "alsoAcceptable": [
-        "zip.decompressedSizeExceeded"
+        "zip.bomb.entry",
+        "zip.bomb.total"
       ],
       "mustNotHappen": [
         "crash",
@@ -27,7 +34,7 @@
         "unbounded memory growth",
         "reading any file outside the archive"
       ],
-      "limit": "Limits.maxCompressionRatio (100:1)",
+      "limit": "Limits.maxCompressionRatio (100:1), enforced above a 1 MB output floor",
       "proves": "xl/worksheets/sheet1.xml inflates ~1030:1 to 200 MB. The per-entry ratio cap must fire DURING inflation, not after.",
       "notes": "Inflate incrementally and abort mid-stream; a reader that inflates to a buffer first has already lost 200 MB of RAM by the time it checks."
     },
@@ -47,10 +54,10 @@
     },
     {
       "file": "hostile/xxe-external-entity.xlsx",
-      "expectedError": "xml.dtdForbidden",
+      "expectedError": "xml.doctype",
       "expectedBehavior": "throw",
       "alsoAcceptable": [
-        "xml.externalEntityForbidden"
+        "xml.externalEntity"
       ],
       "mustNotHappen": [
         "reading /etc/passwd",
@@ -65,10 +72,10 @@
     },
     {
       "file": "hostile/billion-laughs.xlsx",
-      "expectedError": "xml.dtdForbidden",
+      "expectedError": "xml.doctype",
       "expectedBehavior": "throw",
       "alsoAcceptable": [
-        "xml.entityExpansionLimitExceeded"
+        "xml.malformed"
       ],
       "mustNotHappen": [
         "crash",
@@ -76,13 +83,13 @@
         "unbounded memory growth",
         "reading any file outside the archive"
       ],
-      "limit": "Limits.maxEntityExpansion",
+      "limit": "none - DTDs are refused outright, so no expansion budget is ever needed",
       "proves": "Nine levels of 10x entity expansion: &lol9; is 1,000,000,000 characters of 'lol'.",
-      "notes": "If DTDs are refused outright this never gets a chance to expand, which is the outcome we want."
+      "notes": "If DTDs are refused outright this never gets a chance to expand, which is the outcome we want - and is why there is no entity-expansion limit in Limits."
     },
     {
       "file": "hostile/dtd-doctype.xlsx",
-      "expectedError": "xml.dtdForbidden",
+      "expectedError": "xml.doctype",
       "expectedBehavior": "throw",
       "alsoAcceptable": [],
       "mustNotHappen": [
@@ -97,7 +104,7 @@
     },
     {
       "file": "hostile/path-traversal.xlsx",
-      "expectedError": "zip.entryNameTraversal",
+      "expectedError": "zip.pathTraversal",
       "expectedBehavior": "throw",
       "alsoAcceptable": [],
       "mustNotHappen": [
@@ -112,7 +119,7 @@
     },
     {
       "file": "hostile/absolute-path-entry.xlsx",
-      "expectedError": "zip.entryNameAbsolute",
+      "expectedError": "zip.pathTraversal",
       "expectedBehavior": "throw",
       "alsoAcceptable": [],
       "mustNotHappen": [
@@ -121,13 +128,13 @@
         "unbounded memory growth",
         "reading any file outside the archive"
       ],
-      "limit": null,
+      "limit": "entry-name validation",
       "proves": "Absolute POSIX and Windows entry names. Python's own zipfile.extract() strips these; a hand-rolled reader that does not is a write-anywhere primitive.",
-      "notes": null
+      "notes": "SheetError.archivePathTraversal covers absolute names as well as '..' segments - see its documentation, which names '..', a leading separator, a NUL and a Windows drive letter as one rejection."
     },
     {
       "file": "hostile/nul-in-entry-name.xlsx",
-      "expectedError": "zip.entryNameIllegalCharacter",
+      "expectedError": "zip.pathTraversal",
       "expectedBehavior": "throw",
       "alsoAcceptable": [],
       "mustNotHappen": [
@@ -136,13 +143,13 @@
         "unbounded memory growth",
         "reading any file outside the archive"
       ],
-      "limit": null,
+      "limit": "entry-name validation",
       "proves": "An entry name with an embedded NUL, so a C-string API sees 'xl/worksheets/sheet1.xml' while the zip index sees something else.",
-      "notes": "Classic poisoned-NUL confusion. Validate names as bytes, not as C strings."
+      "notes": "Classic poisoned-NUL confusion. Validate names as bytes, not as C strings. SheetError.archivePathTraversal documents NUL, a leading separator and a drive letter as the same rejection, so all three name fixtures share the zip.pathTraversal code."
     },
     {
       "file": "hostile/duplicate-entries.xlsx",
-      "expectedError": "zip.duplicateEntryName",
+      "expectedError": "zip.duplicateEntry",
       "expectedBehavior": "throw",
       "alsoAcceptable": [],
       "mustNotHappen": [
@@ -157,10 +164,10 @@
     },
     {
       "file": "hostile/truncated.xlsx",
-      "expectedError": "zip.truncatedArchive",
+      "expectedError": "zip.truncated",
       "expectedBehavior": "throw",
       "alsoAcceptable": [
-        "zip.notAnArchive"
+        "zip.malformed"
       ],
       "mustNotHappen": [
         "crash",
@@ -174,9 +181,11 @@
     },
     {
       "file": "hostile/not-a-zip.xlsx",
-      "expectedError": "zip.notAnArchive",
+      "expectedError": "zip.malformed",
       "expectedBehavior": "throw",
-      "alsoAcceptable": [],
+      "alsoAcceptable": [
+        "zip.truncated"
+      ],
       "mustNotHappen": [
         "crash",
         "hang (>2s)",
@@ -185,14 +194,14 @@
       ],
       "limit": null,
       "proves": "A PDF renamed to .xlsx. Trust the magic bytes, never the extension.",
-      "notes": null
+      "notes": "SheetError has no dedicated 'not an archive' case; archiveMalformed (zip.malformed) is it. The reader tells the two apart by the leading bytes: a file that starts with PK but has no end-of-central-directory record is truncated, one that never had a PK signature is malformed."
     },
     {
       "file": "hostile/encrypted.xlsx",
-      "expectedError": "xlsx.encryptedWorkbook",
+      "expectedError": "workbook.encrypted",
       "expectedBehavior": "throw",
       "alsoAcceptable": [
-        "xlsx.unsupportedFormat"
+        "workbook.unsupportedFormat"
       ],
       "mustNotHappen": [
         "crash",
@@ -206,7 +215,7 @@
     },
     {
       "file": "hostile/entry-count-bomb.xlsx",
-      "expectedError": "zip.entryCountExceeded",
+      "expectedError": "zip.entryCount",
       "expectedBehavior": "throw",
       "alsoAcceptable": [],
       "mustNotHappen": [
@@ -215,16 +224,17 @@
         "unbounded memory growth",
         "reading any file outside the archive"
       ],
-      "limit": "Limits.maxZipEntries (10,000)",
+      "limit": "Limits.maxArchiveEntries (10,000)",
       "proves": "12,004 entries. Every one costs an OpaqueParts slot, so the cap has to be enforced while READING the central directory, not after building the table.",
       "notes": null
     },
     {
       "file": "hostile/lying-uncompressed-size.xlsx",
-      "expectedError": "zip.declaredSizeExceeded",
+      "expectedError": "zip.bomb.entry",
       "expectedBehavior": "throw",
       "alsoAcceptable": [
-        "zip.sizeMismatch"
+        "zip.truncated",
+        "zip.bomb.ratio"
       ],
       "mustNotHappen": [
         "crash",
@@ -232,9 +242,9 @@
         "unbounded memory growth",
         "reading any file outside the archive"
       ],
-      "limit": "Limits.maxDecompressedBytes (500 MB)",
+      "limit": "Limits.maxEntryDecompressedBytes (200 MB), checked against the DECLARED size before allocating",
       "proves": "A ~120-byte entry whose ZIP64 header declares 10 GB uncompressed. Reject on the declared size BEFORE allocating, then verify the actual inflated length matches.",
-      "notes": "Both halves matter: pre-allocating from a declared size is a DoS, and trusting the declared size after inflating hides a truncation."
+      "notes": "Both halves matter: pre-allocating from a declared size is a DoS, and trusting the declared size after inflating hides a truncation. The declared-size check fires first here, which is why the code is zip.bomb.entry rather than a ratio error."
     },
     {
       "file": "hostile/crc-mismatch.xlsx",
@@ -253,7 +263,7 @@
     },
     {
       "file": "hostile/unsupported-compression-method.xlsx",
-      "expectedError": "zip.unsupportedCompressionMethod",
+      "expectedError": "zip.unsupportedCompression",
       "expectedBehavior": "throw",
       "alsoAcceptable": [],
       "mustNotHappen": [
@@ -268,10 +278,11 @@
     },
     {
       "file": "hostile/dimension-4-billion-rows.xlsx",
-      "expectedError": "xlsx.dimensionExceedsLimits",
+      "expectedError": "workbook.dimensionOutOfRange",
       "expectedBehavior": "throw",
       "alsoAcceptable": [
-        "xlsx.cellReferenceOutOfRange"
+        "ref.outOfRange",
+        "ref.invalid"
       ],
       "mustNotHappen": [
         "crash",
@@ -279,13 +290,13 @@
         "unbounded memory growth",
         "reading any file outside the archive"
       ],
-      "limit": "Limits.maxRows / Limits.maxColumns",
+      "limit": "Limits.maxRow / Limits.maxColumn",
       "proves": "<dimension> claims 4,294,967,296 rows and a row element sits at r=4294967295. Excel's ceiling is 1,048,576 x 16,384 (Limits).",
-      "notes": "Also proves the row index is parsed as UInt32/Int64, not Int32 - 4294967295 overflows a signed 32-bit parse to -1."
+      "notes": "Also proves the row index is parsed as Int64, not Int32 - 4294967295 overflows a signed 32-bit parse to -1. The dimension is checked before the row, so the dimension error is the one that fires."
     },
     {
       "file": "hostile/deep-nesting-100k.xlsx",
-      "expectedError": "xml.depthLimitExceeded",
+      "expectedError": "xml.depth",
       "expectedBehavior": "throw",
       "alsoAcceptable": [],
       "mustNotHappen": [
@@ -300,7 +311,7 @@
     },
     {
       "file": "hostile/cell-40k-chars.xlsx",
-      "expectedError": "xlsx.cellTextTooLong",
+      "expectedError": "cell.textTooLong",
       "expectedBehavior": "throw",
       "alsoAcceptable": [],
       "mustNotHappen": [
@@ -315,9 +326,11 @@
     },
     {
       "file": "hostile/nul-bytes-in-string.xlsx",
-      "expectedError": "xml.illegalCharacter",
+      "expectedError": "xml.invalidEncoding",
       "expectedBehavior": "throw",
-      "alsoAcceptable": [],
+      "alsoAcceptable": [
+        "xml.malformed"
+      ],
       "mustNotHappen": [
         "crash",
         "hang (>2s)",
@@ -325,11 +338,11 @@
       ],
       "limit": null,
       "proves": "A raw NUL plus BEL and vertical tab inside <t>. All three are illegal in XML 1.0 and no conforming parser may accept them.",
-      "notes": "C1 carries the LEGAL escaped form _x0000_. If A1 decodes _x0000_ escapes it must strip the resulting control character rather than reintroducing it - and A2 must re-escape on write (its brief already calls this out as a real crash source)."
+      "notes": "C1 carries the LEGAL escaped form _x0000_. A1 decodes _xHHHH_ escapes and drops any character XML 1.0 forbids rather than reintroducing it - and A2 must re-escape on write. SheetError.xmlInvalidEncoding is documented as covering 'a NUL inside a string', which is this."
     },
     {
       "file": "hostile/missing-workbook-part.xlsx",
-      "expectedError": "xlsx.missingRequiredPart",
+      "expectedError": "workbook.criticalPartMissing",
       "expectedBehavior": "throw",
       "alsoAcceptable": [],
       "mustNotHappen": [
@@ -344,10 +357,10 @@
     },
     {
       "file": "hostile/invalid-cell-reference.xlsx",
-      "expectedError": "xlsx.invalidCellReference",
+      "expectedError": "ref.invalid",
       "expectedBehavior": "throw",
       "alsoAcceptable": [
-        "xlsx.cellReferenceOutOfRange"
+        "ref.outOfRange"
       ],
       "mustNotHappen": [
         "crash",

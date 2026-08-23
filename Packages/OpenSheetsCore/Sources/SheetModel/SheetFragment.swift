@@ -61,8 +61,8 @@ public struct SheetFragment: Sendable, Hashable, Codable {
         "conditionalFormatting", "dataValidations", "hyperlinks", "printOptions",
         "pageMargins", "pageSetup", "headerFooter", "rowBreaks", "colBreaks",
         "customProperties", "cellWatches", "ignoredErrors", "smartTags", "drawing",
-        "drawingHF", "picture", "oleObjects", "controls", "webPublishItems", "tableParts",
-        "extLst",
+        "legacyDrawing", "legacyDrawingHF", "drawingHF", "picture", "oleObjects", "controls",
+        "webPublishItems", "tableParts", "extLst",
     ]
 
     /// Where `elementName` belongs in ``worksheetChildOrder``.
@@ -89,8 +89,9 @@ public struct SheetFragment: Sendable, Hashable, Codable {
         "sortState", "dataConsolidate", "customSheetViews", "phoneticPr",
         "conditionalFormatting", "dataValidations", "printOptions", "pageMargins",
         "pageSetup", "headerFooter", "rowBreaks", "colBreaks", "customProperties",
-        "cellWatches", "ignoredErrors", "smartTags", "drawing", "drawingHF", "picture",
-        "oleObjects", "controls", "webPublishItems", "tableParts", "extLst",
+        "cellWatches", "ignoredErrors", "smartTags", "drawing", "legacyDrawing",
+        "legacyDrawingHF", "drawingHF", "picture", "oleObjects", "controls",
+        "webPublishItems", "tableParts", "extLst",
     ]
 }
 
