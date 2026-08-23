@@ -179,3 +179,63 @@ result.apply(to: &workbook)
 - `SheetStore` declares a dependency on `SheetFormat` in `Package.swift` but imports nothing from
   it. Drop it for faster incremental builds unless A8's wiring needs it.
 - A2's writer throws `SheetError.notImplemented` for add/remove/reorder sheet in v0.1 (see §4).
+
+---
+
+## 13. Model corrections applied after Wave 1 (both A8 and A9)
+
+Four defects the wave surfaced, now fixed in `SheetModel` with regressions in
+`SheetModelTests/ModelCorrectionTests`:
+
+- **`CellRange(a1:)` accepts `$`.** It previously routed straight to `CellRef.init(a1:)`, which
+  rejects absolute markers by design — so `A1Notation.parse("Budget!$A$1:$A$3")` returned `nil`
+  and every defined name's target was left silently unresolved. Anchoring is deliberately not
+  modelled on a range; a range is a rectangle, and which edges carried a `$` matters only to the
+  formula engine, which keeps it in its own AST.
+- **Built-ins 39/40 lost a stray space** (`#,##0.00;(#,##0.00)`). 37 and 38 genuinely do carry a
+  trailing space before the `;` and 39/40 genuinely do not — the asymmetry looks like a typo in
+  ECMA-376 §18.8.30 and is not.
+- **`NumberFormat.builtIn(id:)` is memoised.** `StyleTable.numberFormat(id:)` used to re-parse the
+  format code on every call, which cost GridKit its entire frame budget from a function that reads
+  like a dictionary lookup. If you format in a loop, this is now free.
+- **`Sheet.formattedExtent` unions merges.** An `A1:F8` merge holding four values is an eight-row
+  sheet. `usedRange` still counts only cells — the distinction is real, so pick deliberately and
+  say which you meant.
+
+## 14. Deferred model requests — do NOT implement these in Wave 2
+
+Logged, understood, and intentionally not done. Work around them; do not widen scope:
+
+| Request | Why deferred |
+| --- | --- |
+| `Cell.sharedStringIndex` (A2) | Would fix rich-text round-trip by index instead of content match. Needs A1 to set it *and* A2 to consume it; adding the field alone is dead API. **v0.2, and it is the highest-value one.** |
+| `Cell.metadataIndex` for `cm`/`vm` (A2) | Dynamic arrays are explicitly out of v0.1 scope. |
+| `<autoFilter>` criteria (A1) | Breaks A2's modelled-range path; needs both sides changed together. |
+| Promote `SheetRegionChanges` to `SheetModel` (A2) | Architecturally tidier, but A8 and A9 already import `SheetFormat`. No user-visible gain. |
+| `CellStore.sortedRowIndices()` (A4) | A4 built `DataBlockIndex` around the gap. Use A4's; do not add a second index. |
+| Promote `GridSelection` to `SheetModel` (A4) | A8 imports `GridKit` anyway. Additive later if A9 needs it. |
+| Rename `Limits.defaultRowHeight` (A2) | These are *display* defaults (24 pt for Retina), not Excel's 15 pt. Renaming breaks call sites; §2's rule already prevents the bug it would document. |
+
+## 15. Two engine divergences you will not find in the corpus
+
+A7 verified all 31 operator-precedence cases against Excel's documented answers, and found two that
+**Excel and LibreOffice genuinely disagree on**, so neither can be ground-truthed by the corpus:
+
+- `=1<2<3` — Excel **FALSE**, LibreOffice **TRUE**
+- `=3>2>1` — Excel **TRUE**, LibreOffice **FALSE**
+
+The cause is not associativity — both parse left-associatively. Excel orders mixed types
+`number < text < FALSE < TRUE`, while LibreOffice coerces `TRUE → 1`. Both cells exist in
+`Fixtures/formulas/operator-precedence.xlsx` (a reader must parse them) but carry no asserted
+value. **Corollary: comparison-operator associativity cannot be tested at all without crossing this
+divergence.** Follow Excel.
+
+## 16. Snapshot testing: the accessibility environment keys are get-only
+
+`accessibilityReduceTransparency`, `accessibilityReduceMotion`,
+`accessibilityDifferentiateWithoutColor` and `colorSchemeContrast` are **get-only** key paths in the
+macOS 26 SDK, so `.environment(\.accessibilityReduceTransparency, true)` does not compile and
+PLAN.md §10.5's matrix is not implementable as written. A5 independently arrived at the answer —
+`AppearanceContext` is a GlassUI-owned override that gets injected — so use that, and never try to
+drive these through the environment. Also: `ImageRenderer` is pixel-stable but **not** byte-stable,
+so snapshot suites must compare decoded pixels, never file bytes.

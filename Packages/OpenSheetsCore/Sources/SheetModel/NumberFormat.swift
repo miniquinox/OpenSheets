@@ -1134,8 +1134,11 @@ extension NumberFormat {
         case 22: "m/d/yy h:mm"
         case 37: "#,##0 ;(#,##0)"
         case 38: "#,##0 ;[Red](#,##0)"
-        case 39: "#,##0.00 ;(#,##0.00)"
-        case 40: "#,##0.00 ;[Red](#,##0.00)"
+        // 37 and 38 carry a trailing space before the `;`, 39 and 40 do not. The asymmetry looks
+        // like a typo and is not — it is what ECMA-376 §18.8.30 lists, and a workbook whose only
+        // content is the implicit table (`Fixtures/formats/builtin-numfmts.xlsx`) notices.
+        case 39: "#,##0.00;(#,##0.00)"
+        case 40: "#,##0.00;[Red](#,##0.00)"
         case 41: "_(* #,##0_);_(* (#,##0);_(* \"-\"_);_(@_)"
         case 42: "_(\"$\"* #,##0_);_(\"$\"* (#,##0);_(\"$\"* \"-\"_);_(@_)"
         case 43: "_(* #,##0.00_);_(* (#,##0.00);_(* \"-\"??_);_(@_)"
@@ -1147,6 +1150,26 @@ extension NumberFormat {
         case 49: "@"
         default: nil
         }
+    }
+
+    /// The parsed built-in format for `id`, or `nil` if the id is not a built-in.
+    ///
+    /// Parsed once into a static table rather than on every call. ``builtInCode(id:)`` returns a
+    /// `String`, and turning that string into a `NumberFormat` means running the format-code
+    /// parser — cheap in isolation, ruinous in a draw loop that calls it once per visible cell
+    /// per frame. GridKit lost its whole 8.3 ms frame budget to exactly that, and the profile
+    /// blamed a call that reads like a dictionary lookup.
+    ///
+    /// Only ids Excel actually reserves are cached (`0…22`, `37…49`); the locale-specific East
+    /// Asian ranges are absent for the reasons ``builtInCode(id:)`` gives.
+    public static func builtIn(id: Int32) -> NumberFormat? {
+        guard id >= 0, id < Int32(builtInTable.count) else { return nil }
+        return builtInTable[Int(id)]
+    }
+
+    /// Backing store for ``builtIn(id:)``. Indexed by id; `nil` where no built-in is reserved.
+    private static let builtInTable: [NumberFormat?] = (0 ... 49).map { id in
+        builtInCode(id: Int32(id)).map { NumberFormat($0) }
     }
 
     /// The ids Excel reserves for built-in formats. A custom `<numFmt>` must use an id at or

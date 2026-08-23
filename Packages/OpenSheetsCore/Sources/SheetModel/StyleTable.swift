@@ -89,10 +89,14 @@ public struct StyleTable: Sendable, Hashable, Codable {
     public var count: Int { styles.count }
 
     /// The format code for a `numFmtId`, custom first, then built-in, then `General`.
+    ///
+    /// Built-ins are resolved from a table parsed once, not re-parsed per call. This is called
+    /// once per visible cell per frame by the renderer, and parsing a format code there cost
+    /// GridKit its entire 8.3 ms frame budget until it was found — 9 ms per frame with a third of
+    /// frames over budget, from a function that looks like a dictionary lookup.
     public func numberFormat(id: Int32) -> NumberFormat {
         if let custom = customNumberFormats[id] { return custom }
-        if let code = NumberFormat.builtInCode(id: id) { return NumberFormat(code) }
-        return .general
+        return NumberFormat.builtIn(id: id) ?? .general
     }
 
     /// The format a cell with this style renders through.

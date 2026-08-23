@@ -125,7 +125,9 @@ struct GridPerformanceTests {
             surface.render(model, sheetOrigin: CGPoint(x: 0, y: Double(step) / 1000 * maximumY))
         }
         let after = GridBenchmark.residentBytes()
-        let growthMB = Double(after &- before) / (1024 * 1024)
+        // Signed. `&-` on UInt64 turns a perfectly ordinary memory reclaim into 2^44 bytes of
+        // apparent growth, which then fails a `< 20` assertion with a number that reads as noise.
+        let growthMB = Double(Int64(bitPattern: after) - Int64(bitPattern: before)) / (1024 * 1024)
 
         #expect(surface.renderer.textCache.count <= surface.renderer.textCache.capacity)
         // Twenty megabytes of headroom over a thousand screenfuls: an unbounded cache would be

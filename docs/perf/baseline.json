@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "takenAt": "2026-08-23T19:13:48Z",
+  "takenAt": "2026-08-23T19:33:24Z",
   "configuration": "release",
   "revision": null,
   "machine": {
@@ -10,13 +10,13 @@
     "cpu": "Apple M2 Max",
     "cores": 12,
     "loadAverage": [
-      23.26,
-      24.9,
-      24.56
+      5.29,
+      7.73,
+      13.52
     ],
-    "normalizedLoad": 1.938
+    "normalizedLoad": 0.441
   },
-  "calibrationSeconds": 0.001193583,
+  "calibrationSeconds": 0.001097791,
   "metrics": {
     "edit.keystroke.repaint.seconds": {
       "value": null,
@@ -64,14 +64,14 @@
       "note": "no sample emitted; blocked on GridKit's renderer"
     },
     "machine.calibration.seconds": {
-      "value": 0.001193583,
+      "value": 0.001097791,
       "unit": "seconds",
       "budget": null,
       "status": "measured",
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 1.9381103515625,
+      "normalizedLoad": 0.4407958984375,
       "note": "the fixed CPU kernel; divide by the baseline's value to normalise every other metric"
     },
     "machine.cores": {
@@ -82,96 +82,96 @@
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 1.9381103515625,
+      "normalizedLoad": 0.4407958984375,
       "note": null
     },
     "machine.load.normalized": {
-      "value": 1.9381103515625,
+      "value": 0.4407958984375,
       "unit": "ratio",
       "budget": null,
       "status": "measured",
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 1.9381103515625,
-      "note": "load 23.26/12 cores (194%, overloaded), thermal nominal"
+      "normalizedLoad": 0.4407958984375,
+      "note": "load 5.29/12 cores (44%, busy), thermal nominal"
     },
     "model.a1.emit.1m.seconds": {
-      "value": 0.014512916,
+      "value": 0.014444708,
       "unit": "seconds",
       "budget": 0.4,
-      "status": "degraded",
+      "status": "measured",
       "samples": 25,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 1.9381103515625,
-      "note": "machine loaded: load 23.26/12 cores (194%, overloaded), thermal nominal"
+      "normalizedLoad": 0.4407958984375,
+      "note": null
     },
     "model.a1.parse.1m.seconds": {
-      "value": 0.116333125,
+      "value": 0.127281792,
       "unit": "seconds",
       "budget": 0.4,
-      "status": "degraded",
+      "status": "measured",
       "samples": 30,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 2.070556640625,
-      "note": "machine loaded: load 24.85/12 cores (207%, overloaded), thermal nominal"
+      "normalizedLoad": 0.4574381510416667,
+      "note": null
     },
     "model.cellstore.build.1m.seconds": {
-      "value": 0.059871084,
+      "value": 0.05964425,
       "unit": "seconds",
       "budget": null,
-      "status": "degraded",
+      "status": "measured",
       "samples": 5,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 2.070556640625,
-      "note": "machine loaded: load 24.85/12 cores (207%, overloaded), thermal nominal"
+      "normalizedLoad": 0.4574381510416667,
+      "note": null
     },
     "model.cellstore.bytesPerCell": {
-      "value": 55.13216,
+      "value": 55.033856,
       "unit": "bytes",
       "budget": 128,
       "status": "measured",
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 2.070556640625,
+      "normalizedLoad": 0.4574381510416667,
       "note": "Cell is ~48 bytes; anything near 128 means the store is the overhead"
     },
     "model.cellstore.rss.1m.bytes": {
-      "value": 55132160,
+      "value": 55033856,
       "unit": "bytes",
       "budget": 629145600,
       "status": "measured",
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 2.070556640625,
+      "normalizedLoad": 0.4574381510416667,
       "note": "the model's share of \u00a710.6's 600 MB ceiling; the reader's own buffers are extra"
     },
     "model.cellstore.sparse.100k.bytes": {
-      "value": 15712256,
+      "value": 15843328,
       "unit": "bytes",
       "budget": 67108864,
       "status": "measured",
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 1.9381103515625,
+      "normalizedLoad": 0.4407958984375,
       "note": "100k cells scattered over the whole grid: cost must track population, not bounding box"
     },
     "model.cellstore.sparseScan.seconds": {
-      "value": 0.013253708,
+      "value": 0.01295325,
       "unit": "seconds",
       "budget": 0.05,
-      "status": "degraded",
+      "status": "measured",
       "samples": 40,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 1.9381103515625,
-      "note": "machine loaded: load 23.26/12 cores (194%, overloaded), thermal nominal"
+      "normalizedLoad": 0.4407958984375,
+      "note": null
     },
     "model.cellstore.window50x50.allocations": {
       "value": 0,
@@ -181,19 +181,19 @@
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 2.070556640625,
+      "normalizedLoad": 0.4574381510416667,
       "note": "the allocation-free walk must not allocate per cell \u2014 a work metric, load-proof"
     },
     "model.cellstore.window50x50.seconds": {
-      "value": 5.1583e-05,
+      "value": 5.1416e-05,
       "unit": "seconds",
       "budget": 0.001,
-      "status": "degraded",
+      "status": "measured",
       "samples": 50,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 2.070556640625,
-      "note": "machine loaded: load 24.85/12 cores (207%, overloaded), thermal nominal"
+      "normalizedLoad": 0.4574381510416667,
+      "note": null
     },
     "model.diff.100k.changes": {
       "value": 500,
@@ -203,19 +203,19 @@
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 2.070556640625,
+      "normalizedLoad": 0.4574381510416667,
       "note": "how many cells the perturbation actually moved \u2014 a determinism canary"
     },
     "model.diff.100k.seconds": {
-      "value": 0.011459542,
+      "value": 0.011657041,
       "unit": "seconds",
       "budget": 1.0,
-      "status": "degraded",
+      "status": "measured",
       "samples": 12,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 2.070556640625,
-      "note": "machine loaded: load 24.85/12 cores (207%, overloaded), thermal nominal"
+      "normalizedLoad": 0.4574381510416667,
+      "note": null
     },
     "model.diff.100k.visited": {
       "value": 100000,
@@ -225,19 +225,19 @@
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 2.070556640625,
+      "normalizedLoad": 0.4574381510416667,
       "note": "a diff that walks the rectangle rather than the populated rows costs this many visits"
     },
     "model.runlength.geometry.10k.seconds": {
-      "value": 0.004255875,
+      "value": 0.004273625,
       "unit": "seconds",
       "budget": 0.06,
-      "status": "degraded",
+      "status": "measured",
       "samples": 25,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 1.9381103515625,
-      "note": "machine loaded: load 23.26/12 cores (194%, overloaded), thermal nominal"
+      "normalizedLoad": 0.4407958984375,
+      "note": null
     },
     "model.runlength.runs": {
       "value": 100,
@@ -247,19 +247,19 @@
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 1.9381103515625,
+      "normalizedLoad": 0.4407958984375,
       "note": "the cost above is bound by this, not by the sheet's 1,048,576 rows"
     },
     "model.styles.intern.10k.seconds": {
-      "value": 0.002583625,
+      "value": 0.002653416,
       "unit": "seconds",
       "budget": 0.2,
-      "status": "degraded",
+      "status": "measured",
       "samples": 10,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 1.9381103515625,
-      "note": "machine loaded: load 23.26/12 cores (194%, overloaded), thermal nominal"
+      "normalizedLoad": 0.4407958984375,
+      "note": null
     },
     "sync.externalChange.diff.100k.seconds": {
       "value": null,
@@ -297,7 +297,5 @@
       "owner": "A1",
       "note": "no sample emitted; blocked on SheetFormat's xlsx reader"
     }
-  },
-  "baselineTakenUnderLoad": true,
-  "note": "Recorded at 1.94x load with --baseline-on-a-busy-machine: this Mac ran seven agents concurrently for the whole of Wave 1 and never went below 1.2x. Every timing value is a minimum over 5-50 runs, so the contention is largely cancelled - four back-to-back runs agreed to within 1.7% on most metrics - but these are still a ceiling rather than a measurement. Re-record with Scripts/bench.sh --record-baseline on a genuinely idle machine at the first opportunity."
+  }
 }

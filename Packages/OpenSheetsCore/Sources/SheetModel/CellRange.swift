@@ -188,13 +188,22 @@ extension CellRange {
     /// Parses `"A1:B5"`, or a bare `"A1"` as a single-cell range. Rejects `$` anchors and
     /// sheet qualifiers — for those, use ``A1Notation``.
     public init?(a1 text: some StringProtocol) {
-        if let colon = text.firstIndex(of: ":") {
-            guard let first = CellRef(a1: text[text.startIndex ..< colon]),
-                  let second = CellRef(a1: text[text.index(after: colon)...])
+        // `$` is dropped rather than rejected. A range is where absolute markers actually turn
+        // up — `refersTo` on a defined name is almost always `Sheet1!$A$1:$A$3` — and
+        // `CellRef.init(a1:)` refuses them by design, so routing straight to it returned nil and
+        // left every defined name's target silently unresolved.
+        //
+        // Anchoring is deliberately NOT modelled here: a `CellRange` is a rectangle, and which
+        // of its edges were written with a `$` only matters to the formula engine, which keeps
+        // that in its own AST (see `ReferenceTransform`).
+        let plain = text.contains("$") ? String(text.filter { $0 != "$" }) : String(text)
+        if let colon = plain.firstIndex(of: ":") {
+            guard let first = CellRef(a1: plain[plain.startIndex ..< colon]),
+                  let second = CellRef(a1: plain[plain.index(after: colon)...])
             else { return nil }
             self.init(start: first, end: second)
         } else {
-            guard let single = CellRef(a1: text) else { return nil }
+            guard let single = CellRef(a1: plain) else { return nil }
             self.init(single)
         }
     }

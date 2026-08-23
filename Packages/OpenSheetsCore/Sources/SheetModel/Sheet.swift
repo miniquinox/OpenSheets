@@ -292,6 +292,13 @@ public struct Sheet: Sendable, Equatable, Codable, Identifiable {
             let band = CellRange(rows: 0 ... lastRow, columns: 0 ... 0)
             result = result.map { $0.union(band) } ?? band
         }
+        // A merge extends the extent even where the covered cells hold nothing. `A1:F8` merged
+        // with four values in it is an eight-row sheet, not a one-row one — the corpus asserts
+        // exactly that (`Fixtures/structure/merged-cells.xlsx`), and a selection drawn from a
+        // narrower extent would clip the merge it is supposed to contain.
+        for merge in merges {
+            result = result.map { $0.union(merge) } ?? merge
+        }
         return result
     }
 

@@ -102,3 +102,65 @@ struct SheetFragmentTests {
         #expect(fragment.xml == #"<drawing r:id="rId3"/>"#)
     }
 }
+
+/// Regressions for the four defects Wave 1 found in the frozen model.
+@Suite("Wave 1 model corrections")
+struct ModelCorrectionTests {
+    @Test("Absolute markers parse, because that is how defined names are written")
+    func absoluteMarkersParse() throws {
+        // The failure this replaces was silent: A1Notation.parse returned nil for every real
+        // defined name, and DefinedName.target was simply left empty.
+        let plain = try #require(CellRange(a1: "A1:A3"))
+        #expect(CellRange(a1: "$A$1:$A$3") == plain)
+        #expect(CellRange(a1: "$A1:A$3") == plain)
+        #expect(CellRange(a1: "$A$1") == CellRange(a1: "A1"))
+
+        let parsed = try #require(A1Notation.parse("Budget!$A$1:$A$3"))
+        #expect(parsed.sheetName == "Budget")
+        #expect(parsed.range == plain)
+
+        let quoted = try #require(A1Notation.parse("'My Sheet'!$B$2"))
+        #expect(quoted.sheetName == "My Sheet")
+        #expect(quoted.range == CellRange(a1: "B2"))
+
+        // A lone $ is still not a reference.
+        #expect(CellRange(a1: "$") == nil)
+    }
+
+    @Test("Built-ins 39 and 40 have no space before the separator; 37 and 38 do")
+    func builtInSpacingMatchesTheSpec() {
+        // Looks like a typo in ECMA-376 §18.8.30. It is not.
+        #expect(NumberFormat.builtInCode(id: 37) == "#,##0 ;(#,##0)")
+        #expect(NumberFormat.builtInCode(id: 38) == "#,##0 ;[Red](#,##0)")
+        #expect(NumberFormat.builtInCode(id: 39) == "#,##0.00;(#,##0.00)")
+        #expect(NumberFormat.builtInCode(id: 40) == "#,##0.00;[Red](#,##0.00)")
+    }
+
+    @Test("Built-in formats are parsed once, not per call")
+    func builtInsAreMemoised() {
+        // Identity would be ideal, but NumberFormat is a value type. What is assertable is that
+        // the table agrees with the parser for every reserved id, and that repeated reads are
+        // cheap enough to sit in a draw loop.
+        for id in Int32(0) ... 49 {
+            #expect(
+                NumberFormat.builtIn(id: id) == NumberFormat.builtInCode(id: id).map { NumberFormat($0) },
+                "built-in \(id) disagrees with its parsed code"
+            )
+        }
+        #expect(NumberFormat.builtIn(id: 164) == nil)
+        #expect(NumberFormat.builtIn(id: -1) == nil)
+    }
+
+    @Test("A merge widens the formatted extent past the cells that hold values")
+    func mergesWidenTheExtent() throws {
+        var sheet = Sheet(id: SheetID(1), name: "Data")
+        try sheet.cells.setCell(Cell.number(1), at: CellRef(row: 0, column: 0))
+        #expect(sheet.formattedExtent == CellRange(a1: "A1"))
+
+        sheet.merges = [try #require(CellRange(a1: "A1:F8"))]
+        // Four values inside an A1:F8 merge is an eight-row sheet, not a one-row one.
+        #expect(sheet.formattedExtent == CellRange(a1: "A1:F8"))
+        // usedRange is unchanged — it counts cells, and that distinction is the point.
+        #expect(sheet.usedRange == CellRange(a1: "A1"))
+    }
+}

@@ -240,19 +240,38 @@ appears on the runner.
 
 ## The baseline that is committed today
 
-`baseline.json` was recorded at **1.94× load**, with `--baseline-on-a-busy-machine`, and carries
-`"baselineTakenUnderLoad": true` and a `note` saying so. Seven agents shared this Mac for the whole
-of Wave 1 and it never went below 1.2× — a poller ran for twenty minutes waiting for 0.5× and never
-saw it.
+Recorded on an **idle run**: 0.44× load, which is below the 0.5× floor `--record-baseline`
+enforces, so it carries no `baselineTakenUnderLoad` flag. That took some waiting — seven agents
+shared this Mac for the whole of Wave 1 and it spent most of the day between 1× and 4× its core
+count — but the numbers are the real thing.
 
-It is usable: every timing value is a minimum over 5–50 runs, and the four verification runs after
-it was taken agreed with it to within 1.7% on all but one metric. But it is a **ceiling**, not a
-measurement. **Re-record it on a genuinely idle machine at the first opportunity** — one command,
-and the numbers can only get better:
+Verified after the fact: `Scripts/bench.sh` run at 0.52× load, with the strict 20% timing gate
+live, passes against it with no regressions and no false positives.
 
-```bash
-Scripts/bench.sh --record-baseline
-```
+| metric | baseline | budget |
+| --- | ---: | ---: |
+| `model.cellstore.build.1m.seconds` | 59.6 ms | — |
+| `model.cellstore.rss.1m.bytes` | 52.5 MB | 600 MB |
+| `model.cellstore.bytesPerCell` | 55.0 B | 128 B |
+| `model.cellstore.window50x50.seconds` | 0.051 ms | 1 ms |
+| `model.cellstore.window50x50.allocations` | 0 | 64 |
+| `model.cellstore.sparse.100k.bytes` | 15.1 MB | 64 MB |
+| `model.cellstore.sparseScan.seconds` | 13.0 ms | 50 ms |
+| `model.diff.100k.seconds` | 11.7 ms | 1 s |
+| `model.diff.100k.visited` | 100,000 | 200,000 |
+| `model.a1.parse.1m.seconds` | 127.3 ms | 400 ms |
+| `model.a1.emit.1m.seconds` | 14.4 ms | 400 ms |
+| `model.runlength.geometry.10k.seconds` | 4.3 ms | 60 ms |
+| `model.styles.intern.10k.seconds` | 2.7 ms | 200 ms |
+
+Machine: 12 cores, Apple silicon, `machine.calibration.seconds` = 0.0011. Every seconds-valued
+metric is normalised against that ratio before comparison, so a CI runner half this speed is not
+a regression.
+
+Two of these carry most of the signal. `model.cellstore.bytesPerCell` at 55 B against a `Cell` of
+about 48 B means the store costs roughly 7 bytes per cell of overhead — that number moving is the
+first sign of a representation change. And `model.cellstore.window50x50.allocations` at **0** is
+the strongest assertion in the file: one screen of cells, read out of a million, retaining nothing.
 
 ---
 

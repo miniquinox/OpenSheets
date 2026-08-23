@@ -33,3 +33,7 @@ Packages/OpenSheetsCore/.swiftpm/
 coverage.txt
 build.log
 .swiftlint.cache
+
+# Instruments traces are large binaries; regenerate with Scripts/bench.sh
+docs/perf/*.trace.tar.gz
+docs/perf/*.trace

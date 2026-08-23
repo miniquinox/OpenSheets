@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "takenAt": "2026-08-23T19:30:30Z",
+  "takenAt": "2026-08-23T19:34:07Z",
   "configuration": "release",
   "revision": null,
   "machine": {
@@ -10,13 +10,13 @@
     "cpu": "Apple M2 Max",
     "cores": 12,
     "loadAverage": [
-      6.3,
-      8.9,
-      15.13
+      4.89,
+      7.3,
+      13.09
     ],
-    "normalizedLoad": 0.525
+    "normalizedLoad": 0.408
   },
-  "calibrationSeconds": 0.001178084,
+  "calibrationSeconds": 0.001185209,
   "metrics": {
     "edit.keystroke.repaint.seconds": {
       "value": null,
@@ -64,14 +64,14 @@
       "note": "no sample emitted; blocked on GridKit's renderer"
     },
     "machine.calibration.seconds": {
-      "value": 0.001178084,
+      "value": 0.001185209,
       "unit": "seconds",
       "budget": null,
       "status": "measured",
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 0.5248616536458334,
+      "normalizedLoad": 0.4076334635416667,
       "note": "the fixed CPU kernel; divide by the baseline's value to normalise every other metric"
     },
     "machine.cores": {
@@ -82,51 +82,51 @@
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 0.5248616536458334,
+      "normalizedLoad": 0.4076334635416667,
       "note": null
     },
     "machine.load.normalized": {
-      "value": 0.5248616536458334,
+      "value": 0.4076334635416667,
       "unit": "ratio",
       "budget": null,
       "status": "measured",
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 0.5248616536458334,
-      "note": "load 6.30/12 cores (52%, busy), thermal nominal"
+      "normalizedLoad": 0.4076334635416667,
+      "note": "load 4.89/12 cores (41%, busy), thermal nominal"
     },
     "model.a1.emit.1m.seconds": {
-      "value": 0.014195208,
+      "value": 0.014397167,
       "unit": "seconds",
       "budget": 0.4,
       "status": "measured",
       "samples": 25,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 0.5248616536458334,
+      "normalizedLoad": 0.4076334635416667,
       "note": null
     },
     "model.a1.parse.1m.seconds": {
-      "value": 0.113536166,
+      "value": 0.127130333,
       "unit": "seconds",
       "budget": 0.4,
       "status": "measured",
       "samples": 30,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 0.5343017578125,
+      "normalizedLoad": 0.4068603515625,
       "note": null
     },
     "model.cellstore.build.1m.seconds": {
-      "value": 0.059831958,
+      "value": 0.060638417,
       "unit": "seconds",
       "budget": null,
       "status": "measured",
       "samples": 5,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 0.5343017578125,
+      "normalizedLoad": 0.4068603515625,
       "note": null
     },
     "model.cellstore.bytesPerCell": {
@@ -137,7 +137,7 @@
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 0.5343017578125,
+      "normalizedLoad": 0.4068603515625,
       "note": "Cell is ~48 bytes; anything near 128 means the store is the overhead"
     },
     "model.cellstore.rss.1m.bytes": {
@@ -148,29 +148,29 @@
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 0.5343017578125,
+      "normalizedLoad": 0.4068603515625,
       "note": "the model's share of \u00a710.6's 600 MB ceiling; the reader's own buffers are extra"
     },
     "model.cellstore.sparse.100k.bytes": {
-      "value": 15876096,
+      "value": 15712256,
       "unit": "bytes",
       "budget": 67108864,
       "status": "measured",
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 0.5248616536458334,
+      "normalizedLoad": 0.4076334635416667,
       "note": "100k cells scattered over the whole grid: cost must track population, not bounding box"
     },
     "model.cellstore.sparseScan.seconds": {
-      "value": 0.012296958,
+      "value": 0.013189167,
       "unit": "seconds",
       "budget": 0.05,
       "status": "measured",
       "samples": 40,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 0.5248616536458334,
+      "normalizedLoad": 0.4076334635416667,
       "note": null
     },
     "model.cellstore.window50x50.allocations": {
@@ -181,18 +181,18 @@
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 0.5343017578125,
+      "normalizedLoad": 0.4068603515625,
       "note": "the allocation-free walk must not allocate per cell \u2014 a work metric, load-proof"
     },
     "model.cellstore.window50x50.seconds": {
-      "value": 5.1084e-05,
+      "value": 5.1291e-05,
       "unit": "seconds",
       "budget": 0.001,
       "status": "measured",
       "samples": 50,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 0.5343017578125,
+      "normalizedLoad": 0.4068603515625,
       "note": null
     },
     "model.diff.100k.changes": {
@@ -203,18 +203,18 @@
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 0.5343017578125,
+      "normalizedLoad": 0.4068603515625,
       "note": "how many cells the perturbation actually moved \u2014 a determinism canary"
     },
     "model.diff.100k.seconds": {
-      "value": 0.011470875,
+      "value": 0.0115805,
       "unit": "seconds",
       "budget": 1.0,
       "status": "measured",
       "samples": 12,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 0.5343017578125,
+      "normalizedLoad": 0.4068603515625,
       "note": null
     },
     "model.diff.100k.visited": {
@@ -225,18 +225,18 @@
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 0.5343017578125,
+      "normalizedLoad": 0.4068603515625,
       "note": "a diff that walks the rectangle rather than the populated rows costs this many visits"
     },
     "model.runlength.geometry.10k.seconds": {
-      "value": 0.004225417,
+      "value": 0.004247917,
       "unit": "seconds",
       "budget": 0.06,
       "status": "measured",
       "samples": 25,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 0.5248616536458334,
+      "normalizedLoad": 0.4076334635416667,
       "note": null
     },
     "model.runlength.runs": {
@@ -247,18 +247,18 @@
       "samples": 1,
       "owner": "A7",
       "machineFactor": null,
-      "normalizedLoad": 0.5248616536458334,
+      "normalizedLoad": 0.4076334635416667,
       "note": "the cost above is bound by this, not by the sheet's 1,048,576 rows"
     },
     "model.styles.intern.10k.seconds": {
-      "value": 0.002604541,
+      "value": 0.002612458,
       "unit": "seconds",
       "budget": 0.2,
       "status": "measured",
       "samples": 10,
       "owner": "A7",
       "machineFactor": 1,
-      "normalizedLoad": 0.5248616536458334,
+      "normalizedLoad": 0.4076334635416667,
       "note": null
     },
     "sync.externalChange.diff.100k.seconds": {

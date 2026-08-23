@@ -149,20 +149,6 @@ jobs:
         working-directory: Packages/OpenSheetsCore
         run: swift test --sanitize thread --filter 'SheetModelTests|MiniZipTests'
 
-  performance:
-    name: Performance gate
-    runs-on: macos-26
-    timeout-minutes: 30
-    # A7 owns `Scripts/bench.sh`, `docs/perf/baseline.json`, and the full `perf.yml` workflow.
-    # This job exists so the gate has a home from Wave 0 and no-ops cleanly until then, rather
-    # than being bolted on later and discovered to be broken.
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run benchmarks
-        run: |
-          if [[ -x Scripts/bench.sh ]]; then
-            Scripts/bench.sh
-          else
-            echo "Scripts/bench.sh not present yet (A7 owns it) — skipping."
-          fi
+  # The performance gate lives in `perf.yml`, which owns Scripts/bench.sh, the baseline, and the
+  # lenient-PR / strict-nightly split. A placeholder job lived here through Wave 0 so the gate had
+  # a home before that workflow existed; keeping it would now run the whole suite twice.
