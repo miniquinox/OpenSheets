@@ -93,8 +93,11 @@ public enum ReadRangeTool {
                 ? detailed(sheet, range: window, styles: document.workbook.styles)
                 : compact(sheet, range: window, styles: document.workbook.styles, formulas: showFormulas)
 
-            var lines = ["\(target.sheetName)!\(window.a1String(collapseSingleCell: false))"]
-            if target.wasClamped { lines[0] += "  (clamped to the used range)" }
+            var lines: [String] = []
+            // Before the values, because it is about the values. See `OpenRecalculation`.
+            if let notice = document.recalculationNotice { lines.append(notice) }
+            lines.append("\(target.sheetName)!\(window.a1String(collapseSingleCell: false))")
+            if target.wasClamped { lines[lines.count - 1] += "  (clamped to the used range)" }
             lines.append(body)
             var note: String?
             if hasMore {

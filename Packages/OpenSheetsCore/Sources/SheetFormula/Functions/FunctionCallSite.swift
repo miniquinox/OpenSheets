@@ -36,6 +36,10 @@ struct FunctionCallSite {
     /// Reduces a value to a scalar, applying implicit intersection to references.
     static func reduce(_ value: FormulaValue, at origin: SheetCell, scope: EvaluationScope) throws -> ScalarValue {
         switch value {
+        case .lambda:
+            // A lambda that reaches a value context was never applied. Excel shows `#CALC!`
+            // for a cell whose result is a function, and so do we.
+            throw FormulaFault.cell(.calculation)
         case let .scalar(scalar):
             return scalar
         case let .array(array):
@@ -145,6 +149,8 @@ struct FunctionCallSite {
 
     static func table(_ value: FormulaValue, scope: EvaluationScope) throws -> ValueArray {
         switch value {
+        case .lambda:
+            throw FormulaFault.cell(.calculation)
         case let .scalar(scalar):
             return ValueArray(scalar)
         case let .array(array):
@@ -229,6 +235,8 @@ struct FunctionCallSite {
     ) throws {
         guard index < arguments.count else { return }
         switch arguments[index] {
+        case .lambda:
+            throw FormulaFault.cell(.calculation)
         case let .scalar(scalar):
             result.append((scalar, false))
         case let .array(array):
@@ -277,6 +285,30 @@ struct FunctionCallSite {
         }
         return result
     }
+
+    // MARK: - Lambdas
+
+    /// Argument `index` as a `LAMBDA`. `#VALUE!` for anything else, which is what Excel gives
+    /// for `BYROW(A1:A3, 5)`.
+    func lambda(_ index: Int) throws -> LambdaValue {
+        guard index < arguments.count, let value = arguments[index].lambdaValue else {
+            throw FormulaFault.cell(.wrongType)
+        }
+        return value
+    }
+
+    /// Calls a `LAMBDA` with the given arguments, in the environment it captured.
+    func apply(_ lambda: LambdaValue, _ values: [FormulaValue]) throws -> FormulaValue {
+        try scope.applyLambda(lambda, arguments: values, origin: origin)
+    }
+
+    /// Calls a `LAMBDA` and reduces its result to one scalar, which is what every helper in
+    /// the `BYROW`/`MAP` family needs from it.
+    func applyToScalar(_ lambda: LambdaValue, _ values: [FormulaValue]) throws -> ScalarValue {
+        try FunctionCallSite.reduce(try apply(lambda, values), at: origin, scope: scope)
+    }
+
+    // MARK: - Aggregation
 
     /// Raises `#DIV/0!` when an aggregate had nothing to work with, which is what `AVERAGE`
     /// of an empty range gives.

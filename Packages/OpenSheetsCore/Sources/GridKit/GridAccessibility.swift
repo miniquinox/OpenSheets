@@ -253,6 +253,8 @@ extension GridHostView {
         if let cell {
             if let formula = cell.formula { parts.append("formula = \(formula)") }
             if cell.flags.contains(.staleCache) { parts.append("value not recalculated") }
+            if cell.flags.contains(.uncomputed) { parts.append("not computed") }
+            if cell.flags.contains(.spilledInto) { parts.append("filled in by a formula, read only") }
             if cell.flags.contains(.externalLink) { parts.append("links to another workbook") }
         }
         if merged { parts.append("merged cell") }

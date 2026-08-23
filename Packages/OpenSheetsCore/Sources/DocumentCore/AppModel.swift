@@ -7,6 +7,37 @@ import Observation
 import SheetModel
 import SheetStore
 
+/// How the app came to be opening a file, and therefore whether granting its parent folder to
+/// Claude Code needs a second, explicit yes.
+///
+/// # Why this is not one rule for everybody
+///
+/// PLAN.md §1.1 says opening a file grants its parent folder, and it has to: the CLI and the MCP
+/// server cannot mint a grant by construction (neither links AppKit), so the app is the **only**
+/// path to a first grant. Without it a user's first Claude Code call fails with
+/// `grant.outsideWorkspace` and there is no obvious way forward.
+///
+/// But a grant is a real permission — read *and* write over every file in that folder, for an
+/// agent, indefinitely — and the gestures that reach ``AppModel/openDocument(at:consent:)`` are
+/// not equally strong:
+///
+/// - ``userSelectedInPanel`` is an `NSOpenPanel` or `NSSavePanel` result. The user navigated into
+///   that folder and picked something in it a moment ago; that *is* the consent gesture, and it
+///   is the one ``SheetStore/UserGrantAuthorization`` was designed around. No second prompt.
+/// - ``fromOutsideTheApp`` is a path we were handed: `argv`, `open(1)`, a Finder double-click, a
+///   drag from another application. The user asked to *see a spreadsheet*; nothing in that
+///   gesture says "and give an agent the run of this folder". So we ask, once per folder, and
+///   name the folder in the question.
+///
+/// The default is ``fromOutsideTheApp`` on purpose: a call site that forgets to say gets the
+/// careful answer, not the permissive one.
+public enum WorkspaceConsent: Sendable, Hashable {
+    /// The user picked this file in one of our own panels.
+    case userSelectedInPanel
+    /// The path arrived from outside the app.
+    case fromOutsideTheApp
+}
+
 /// Process-wide state: the store, the recents, the grants, and the MCP status.
 ///
 /// One of these, unlike ``DocumentModel``. The distinction is the whole point of both: anything
@@ -43,9 +74,40 @@ public final class AppModel {
     /// undo stacks and two opinions about whether it is dirty.
     @ObservationIgnored private var open: [String: WeakDocument] = [:]
 
+    /// Opens that have started and not finished, keyed the same way as ``open``.
+    ///
+    /// Without this the "one model per file" rule holds only for opens that do not overlap.
+    /// ``openDocument(at:consent:)`` suspends twice — once to parse the workbook, once to start
+    /// the session — and the lookup that decides whether a model already exists happens *before*
+    /// both. Two windows asking for the same file in the same run-loop turn therefore both see
+    /// "nothing open", and the file ends up with two sessions, two watchers and two opinions about
+    /// whether it is dirty. Five windows, five of each — which is exactly the shape of the bug
+    /// this exists to make impossible.
+    ///
+    /// Recording the *task* rather than a flag means the second caller gets the same model the
+    /// first one is still building, instead of an error or a second read.
+    @ObservationIgnored private var opening: [String: Task<DocumentModel, any Error>] = [:]
+
     private struct WeakDocument {
         weak var model: DocumentModel?
     }
+
+    /// Asked before a folder is granted for an open the user did not initiate inside the app.
+    ///
+    /// Installed by the app target, which is the only layer that may put a panel on screen. `nil`
+    /// refuses, which is the safe direction: a hook nobody installed must not become an open door.
+    /// See ``WorkspaceConsent``.
+    @ObservationIgnored public var confirmWorkspaceGrant: (@MainActor (URL) async -> Bool)?
+
+    /// Whether documents opened from here watch their file. `nil` asks ``Flags``, which is what
+    /// the app wants.
+    ///
+    /// It exists so a **test** never has to write `OSFlagAutoRefresh`. That key is process-wide,
+    /// so a suite that set it to `false` and then suspended could have another suite set it back
+    /// to `true` underneath — and the document under test would quietly auto-refresh out of the
+    /// `STALE` state the test was waiting for. The failure read as a watcher bug and was not one.
+    /// A per-instance value cannot be raced by a suite that does not share the instance.
+    @ObservationIgnored public var autoRefreshForNewDocuments: Bool?
 
     public init(store: SheetStore) {
         self.store = store
@@ -63,23 +125,65 @@ public final class AppModel {
 
     /// Opens a document, or returns the one already open on that path.
     ///
-    /// The order is load-bearing and is A6's, not ours: the **grant is checked before the file is
-    /// stat-ed**, because a denial that happens after a read has already told the caller whether
-    /// the file exists.
-    public func openDocument(at url: URL) async throws(SheetError) -> DocumentModel {
+    /// **One ``DocumentModel`` per file, whatever the timing.** A path that is already open
+    /// returns its live model; a path that is *being* opened joins that open rather than starting
+    /// a second one. See ``opening``.
+    ///
+    /// The order inside is load-bearing and is A6's, not ours: the **grant is checked before the
+    /// file is stat-ed**, because a denial that happens after a read has already told the caller
+    /// whether the file exists.
+    public func openDocument(
+        at url: URL,
+        consent: WorkspaceConsent = .fromOutsideTheApp
+    ) async throws(SheetError) -> DocumentModel {
         let key = Self.key(for: url)
         if let existing = open[key]?.model { return existing }
 
+        let task: Task<DocumentModel, any Error>
+        if let inFlight = opening[key] {
+            task = inFlight
+        } else {
+            task = Task { [self] in try await load(url, key: key, consent: consent) }
+            opening[key] = task
+        }
+        do {
+            let model = try await task.value
+            opening[key] = nil
+            return model
+        } catch {
+            opening[key] = nil
+            throw error as? SheetError
+                ?? .cancelled(operation: "open \(url.lastPathComponent)")
+        }
+    }
+
+    private func load(
+        _ url: URL,
+        key: String,
+        consent: WorkspaceConsent
+    ) async throws(SheetError) -> DocumentModel {
         let workspace = url.deletingLastPathComponent()
         // PLAN.md §1.1: opening a file grants its parent folder, one click, explained inline.
         // Doing it here rather than at the picker means drag-and-drop and `Open Recent` get the
         // same treatment as `Open…`, which is the only way the rule stays true.
+        //
+        // A grant is a real permission — it is what lets Claude Code read and write every file in
+        // that folder — so *how* the path arrived decides whether the open is consent enough on
+        // its own. See ``WorkspaceConsent``.
+        var grantedNow: URL?
         if !store.grants.isAllowed(url) {
+            if consent == .fromOutsideTheApp {
+                guard let confirm = confirmWorkspaceGrant, await confirm(workspace) else {
+                    throw SheetError.pathOutsideWorkspace(path: url.path(percentEncoded: false))
+                }
+            }
             try store.grantWorkspace(UserGrantAuthorization(userSelectedDirectory: workspace))
             reloadGrants()
+            grantedNow = workspace
         }
         try store.grants.check(url)
 
+        let autoRefresh = autoRefreshForNewDocuments ?? Flags.autoRefreshEnabled
         let workbook = try await DocumentWorkbookReader.read(url)
         reader.prime(workbook, for: url)
 
@@ -94,7 +198,7 @@ public final class AppModel {
             suppressor: store.suppressor,
             snapshots: store.snapshots,
             options: DocumentSession.Options(
-                autoRefresh: Flags.autoRefreshEnabled,
+                autoRefresh: autoRefresh,
                 snapshotsEnabled: Flags.snapshotsEnabled
             )
         )
@@ -108,10 +212,14 @@ public final class AppModel {
             session: session,
             reader: reader,
             writer: workbook.meta.readOnlyReason == nil ? writer : nil,
-            autoRefresh: Flags.autoRefreshEnabled
+            autoRefresh: autoRefresh
         )
         open[key] = WeakDocument(model: model)
         reloadRecents()
+        // Said in the window that caused it, not in a dialog nobody reads: the Claude panel in
+        // this document's sidebar is where the workspace path already lives, so the sentence that
+        // explains why it is reachable belongs next to it.
+        if let grantedNow { model.noteWorkspaceGranted(grantedNow) }
         return model
     }
 

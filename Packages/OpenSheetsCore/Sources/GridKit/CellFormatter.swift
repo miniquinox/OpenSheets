@@ -29,6 +29,11 @@ public struct CellFormatter: Sendable {
         self.theme = theme
     }
 
+    /// The palette every ``StyleColor`` in this workbook resolves against: the workbook's own
+    /// theme for the colours it chose, this grid's appearance for the ones that mean "text"
+    /// and "background".
+    public var stylePalette: ColorPalette { theme.stylePalette(basedOn: styles.palette) }
+
     // MARK: - Entry point
 
     /// How the cell at a style should be drawn.
@@ -43,7 +48,7 @@ public struct CellFormatter: Sendable {
     /// The renderer resolves those once per column band rather than once per cell, which is why
     /// this overload exists.
     public func display(of cell: Cell?, style: CellStyle, format: NumberFormat) -> CellDisplay {
-        let palette = theme.stylePalette
+        let palette = stylePalette
         let styleColor = style.font.color.resolved(in: palette)
         let alignment = style.alignment
 

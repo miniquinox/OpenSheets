@@ -182,6 +182,15 @@ public enum SheetError: Error, Sendable, Hashable {
     /// Text longer than ``Limits/maxCellTextLength`` in one cell.
     case cellTextTooLong(ref: String, length: Int, limit: Int)
 
+    /// An edit aimed at a cell whose value belongs to an array formula or a dynamic-array
+    /// spill anchored somewhere else.
+    ///
+    /// Excel refuses the same edit ("You can't change part of an array"), and it has to be a
+    /// refusal rather than a silent no-op: writing the cell would either be discarded by the
+    /// next recalculation or, if it were persisted, produce a `<f t="array" ref="…">` region
+    /// whose cells disagree with the formula — a file Excel reports as damaged.
+    case cellNotIndependentlyEditable(ref: String, anchor: String)
+
     // MARK: - Filesystem (PLAN.md §9)
 
     /// No file at this path.
@@ -340,7 +349,7 @@ extension SheetError {
              .invalidSheetName, .duplicateSheetName, .sheetNotFound, .invalidDefinedName,
              .duplicateDefinedName, .definedNameNotFound, .unknownStyleID,
              .invalidNumberFormat, .invalidFormula, .formulaTooLong, .formulaNestingTooDeep,
-             .circularReference, .invalidArgument:
+             .circularReference, .invalidArgument, .cellNotIndependentlyEditable:
             .validation
 
         case .fileNotFound, .fileNotReadable, .fileNotWritable, .fileTooLarge, .diskFull,
@@ -417,6 +426,7 @@ extension SheetError {
         case .formulaNestingTooDeep: "formula.nestingTooDeep"
         case .circularReference: "formula.circular"
         case .cellTextTooLong: "cell.textTooLong"
+        case .cellNotIndependentlyEditable: "cell.notIndependentlyEditable"
         case .fileNotFound: "file.notFound"
         case .fileNotReadable: "file.notReadable"
         case .fileNotWritable: "file.notWritable"
@@ -553,6 +563,11 @@ extension SheetError {
             "These cells depend on each other in a loop: \(refs.prefix(8).joined(separator: ", "))."
         case let .cellTextTooLong(ref, length, limit):
             "\(ref) holds \(length) characters; a cell can hold \(limit)."
+        case let .cellNotIndependentlyEditable(ref, anchor):
+            """
+            \(ref) is filled in by the formula in \(anchor) and cannot be edited on its own. \
+            Edit \(anchor), or clear it first.
+            """
         case let .fileNotFound(path):
             "There is no file at \(path)."
         case let .fileNotReadable(path, underlying):

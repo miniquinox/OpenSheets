@@ -176,16 +176,36 @@ public struct XLSXWriteOptions: Sendable, Hashable {
     /// captured elements is complete, forever.
     public var salvageUnmodelledSheetElements: Bool
 
+    /// What to do when regenerating a sheet would drop dynamic-array metadata.
+    public var dynamicArrayMetadata: DynamicArrayMetadataPolicy
+
+    /// The two honest answers when a sheet holds `cm`/`vm` attributes we cannot reproduce.
+    ///
+    /// The model has nowhere to keep the metadata indices, so rewriting `sheetN.xml` for such
+    /// a sheet **downgrades** every dynamic array on it to a fixed-size Ctrl-Shift-Enter array
+    /// formula. The file still opens and the numbers are still right; what is lost is the
+    /// array's ability to resize when its inputs change — which is exactly the thing its
+    /// author chose it for, and exactly the kind of loss nobody notices for months.
+    public enum DynamicArrayMetadataPolicy: Sendable, Hashable {
+        /// Refuse the write and say which cell would be damaged. **The default.**
+        case refuse
+        /// Write anyway. For a caller that has told the user what they are losing, or for a
+        /// test that is checking the degradation itself.
+        case degrade
+    }
+
     public init(
         controlCharacters: XLSXEscape.ControlCharacterPolicy = .escape,
         dropStaleCalculationChain: Bool = true,
         requestFullCalculationOnLoad: Bool = true,
-        salvageUnmodelledSheetElements: Bool = true
+        salvageUnmodelledSheetElements: Bool = true,
+        dynamicArrayMetadata: DynamicArrayMetadataPolicy = .refuse
     ) {
         self.controlCharacters = controlCharacters
         self.dropStaleCalculationChain = dropStaleCalculationChain
         self.requestFullCalculationOnLoad = requestFullCalculationOnLoad
         self.salvageUnmodelledSheetElements = salvageUnmodelledSheetElements
+        self.dynamicArrayMetadata = dynamicArrayMetadata
     }
 
     /// The defaults.

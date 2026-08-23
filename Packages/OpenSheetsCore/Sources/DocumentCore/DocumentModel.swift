@@ -7,6 +7,7 @@ import GridKit
 import Observation
 import SheetFormat
 import SheetFormula
+import SheetMCP
 import SheetModel
 import SheetStore
 
@@ -992,11 +993,11 @@ public final class DocumentModel {
     }
 
     /// Adds a neutral line to the sidebar's session feed.
-    private func note(summary: String, cellCount: Int) {
+    private func note(summary: String, cellCount: Int, id: String = "recalc") {
         feedCounter += 1
         feed.insert(
             SessionFeedEntry(
-                id: "recalc-\(feedCounter)",
+                id: "\(id)-\(feedCounter)",
                 timestamp: timestampFormatter.string(from: Date()),
                 summary: summary,
                 cellCount: cellCount,
@@ -1005,6 +1006,21 @@ public final class DocumentModel {
             at: 0
         )
         if feed.count > 50 { feed.removeLast(feed.count - 50) }
+    }
+
+    /// Records that opening this file granted its parent folder (PLAN.md §1.1).
+    ///
+    /// A grant is the difference between Claude Code answering and Claude Code refusing with
+    /// `grant.outsideWorkspace`, so it is worth a line — and it is a permission the user now has,
+    /// which is worth a line for the opposite reason. The sidebar's Claude panel already shows the
+    /// workspace path; this is the sentence next to it that says when it became reachable.
+    public func noteWorkspaceGranted(_ folder: URL) {
+        note(
+            summary: "Granted \(folder.lastPathComponent) to Claude Code — "
+                + "manage workspaces in Settings",
+            cellCount: 0,
+            id: "grant"
+        )
     }
 
     // MARK: - Derived state

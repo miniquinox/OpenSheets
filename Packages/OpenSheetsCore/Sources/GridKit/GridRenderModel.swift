@@ -58,6 +58,44 @@ public struct GridRenderModel: Sendable {
         options.showsGridlines ?? sheet.showsGridlines
     }
 
+    /// Why an edit at `ref` must be refused, or `nil` when it may go ahead.
+    ///
+    /// O(1) in the common case: the flag is on the cell, put there by the reader for a legacy
+    /// array formula and by the recalculation for a spill. The sheet-level lookup behind it is
+    /// only reached for a cell that is inside a region but somehow missing its flag, which is
+    /// a file we read rather than a state we produced.
+    public func editRefusal(at ref: CellRef) -> SheetError? {
+        let cell = sheet.cells[ref]
+        // An anchor holds the formula and is edited normally, so it is never a refusal — and
+        // checking that first means the O(1) flag decides the answer for every ordinary cell.
+        guard sheet.arrayFormulaRanges[ref] == nil else { return nil }
+        let flagged = cell?.flags.contains(.spilledInto) == true
+            || cell?.flags.contains(.arrayFormula) == true
+        guard flagged || cell == nil else { return nil }
+        guard let owner = sheet.spillOwner(of: ref), owner.owns(ref) else { return nil }
+        return SheetError.cellNotIndependentlyEditable(
+            ref: ref.a1String, anchor: owner.anchor.a1String
+        )
+    }
+
+    /// The spill or array region `ref` takes part in, for the outline the renderer draws.
+    public func spillRegion(at ref: CellRef) -> CellRange? {
+        sheet.spillOwner(of: ref)?.region
+    }
+
+    /// What the formula bar should show for `ref`.
+    ///
+    /// A spilled-into cell shows the anchor's formula, because that is what produced the
+    /// number in it — showing the number instead invites the user to retype it, which is the
+    /// edit that has to be refused. ``isEditable`` is `false` for exactly those cells.
+    public func formulaBarText(at ref: CellRef) -> (text: String, isEditable: Bool) {
+        let formatter = CellFormatter(styles: styles, dateSystem: dateSystem, theme: theme)
+        guard let owner = sheet.spillOwner(of: ref), owner.owns(ref) else {
+            return (formatter.editText(of: sheet.cells[ref]), true)
+        }
+        return (formatter.editText(of: sheet.cells[owner.anchor]), false)
+    }
+
     /// The style that applies at a cell — its own, then the row's, then the column's, which is
     /// Excel's precedence and the reason an empty cell in a currency column still looks like money.
     public func effectiveStyleID(at ref: CellRef, cell: Cell?) -> StyleID {

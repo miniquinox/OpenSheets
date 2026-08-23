@@ -210,3 +210,101 @@ and A9 either import `GridKit` — which drags AppKit into the MCP server — or
 **Workaround in use:** `GridSelection` lives in `GridKit` and is a plain `Sendable` value type with
 no AppKit in its signature, so it can move to `SheetModel` unchanged if this is accepted.
 **Breaks:** nobody today; it is additive.
+
+---
+
+# Wave 4 — changes actually made to `SheetModel`
+
+The freeze was lifted for A11 (dynamic arrays and the render-honesty fix), so the entries below
+are a **record of landed changes**, not requests. All of them are additive: no existing
+declaration changed shape, no case was removed, and `Cell` is the same 48 bytes it was.
+
+## [A11] Three new `CellFlags` bits, and one for the writer
+
+`CellFlags` is an `OptionSet` over `UInt16` with bits 0–9 in use; these take 10–13.
+
+- `.uncomputed` (1 << 10) — the formula here could not be evaluated **and there was no cached
+  value to keep**, so `Cell.value` holds a placeholder error rather than a computed one. This is
+  the fix for the failure mode the whole wave is about: `staleCache` promises to keep the
+  producer's number, and a file written by openpyxl, xlsxwriter or pandas never wrote one, so
+  "keep it" rendered as an empty cell — indistinguishable from a blank one.
+- `.spillAnchor` (1 << 11) — this cell holds a dynamic array's formula and owns the region at
+  `Sheet.arrayFormulaRanges[ref]`. Distinct from `.arrayFormula`, which a legacy
+  Ctrl-Shift-Enter formula also carries: this one says the region's **size is a result**, so it
+  changes when the inputs do.
+- `.spilledInto` (1 << 12) — this cell's value is owned by an anchor elsewhere. Renders like any
+  other cell; refuses to be edited.
+- `.hasCellMetadata` (1 << 13) — the `<c>` element carried `cm`/`vm`. The model still has
+  nowhere to keep the indices (A2's entry above is unchanged and still stands); this records
+  only that they existed, which is enough for the writer to refuse rather than silently
+  downgrade a dynamic array to a fixed-size array formula.
+
+Plus `.recalculationOwned`, a named set of the flags a recalculation rewrites wholesale.
+
+**Why flags rather than new storage:** the alternative was a per-cell owner reference, which is
+8 bytes on every cell in the workbook to describe a property a handful of them have.
+`CellFlags` had four spare bits and `Sheet.arrayFormulaRanges` already held exactly the
+anchor→region mapping a spill needs — the two concepts (a CSE array formula and a dynamic-array
+spill) have identical *ownership* semantics, and differ only in who chose the region's size.
+Adding a second dictionary that meant the same thing would have been the real model change.
+
+## [A11] `SpillOwner`, and two lookups on `Sheet`
+
+```swift
+public struct SpillOwner: Sendable, Hashable {
+    public var anchor: CellRef
+    public var region: CellRange
+    public var isDynamic: Bool
+    public func owns(_ ref: CellRef) -> Bool
+}
+
+extension Sheet {
+    public func spillOwner(of ref: CellRef) -> SpillOwner?
+    public func isSpilledInto(_ ref: CellRef) -> Bool
+}
+```
+
+`spillOwner(of:)` is linear in `arrayFormulaRanges`, documented as such, and mirrors
+`merge(containing:)`. The per-frame path in `GridKit` never calls it: it reads `.spilledInto`
+off the cell, which is O(1).
+
+## [A11] `SheetError.cellNotIndependentlyEditable(ref:anchor:)`
+
+Code `cell.notIndependentlyEditable`, category `.validation`. Excel's "You can't change part of
+an array", with the anchor named so the message tells the user which cell to edit instead.
+
+**Breaks:** nobody. The one thing worth knowing is that a `switch` over `SheetError` with no
+`default` will need the new case; the codebase had none outside `SheetError` itself.
+
+## [A11] `ColorPalette` resolves theme slots 0–3 against the appearance
+
+Landed as part of the dark-mode text fix, and it is a change to what an existing method
+*returns*, so it is the least additive thing in this section.
+
+- `RGBAColor` gains `relativeLuminance`, `contrastRatio(against:)`, `composited(over:)` and
+  `isDark`. `GridKit` had a private `relativeLuminance` with a slightly different sRGB
+  threshold; it is gone, because two answers to "how bright is this colour?" in one process is
+  how the grid and the chrome end up disagreeing about whether a backdrop is dark.
+- `ColorPalette` gains `resolvesSemanticThemeSlots: Bool` (default `true`),
+  `forAppearance(ink:canvas:)` and `literalTheme(_:)`.
+- `ColorPalette.theme(_:)` now resolves slots 0–3 semantically: `dk1`→`automatic`,
+  `lt1`→`background`, and the minor pair `dk2`/`lt2` exchange roles on a dark appearance.
+
+**Why:** `<color theme="1"/>` is `dk1`, OOXML's *major text colour*, and it is what openpyxl,
+xlsxwriter, pandas and Excel itself write for ordinary text — 21 of the 70 fixtures in this
+repository declare it, as does `Demo/q4-budget.xlsx`. Resolving it to literal black rendered
+cell text at **1.23:1 against the dark canvas** while the chrome beside it was white. It is now
+14.3:1, the same as `automatic`.
+
+**Not changed:** an explicit `rgb=` stays literal (the user asked for black and Excel honours
+that), `indexed(…)` stays literal, accent slots 4–9 never move, and `tint` still applies on top
+of whichever base was chosen. Nothing about writing changes — this is a resolution-time
+decision and the file still says `theme="1"` afterwards.
+
+**Breaks:** `ColorPalette.office` is bit-for-bit unchanged in behaviour (its `automatic` is
+black and its `background` white, so the semantic slots resolve to what they always did), so
+nothing that was right became wrong. One hazard worth recording: adding a stored property to
+`ColorPalette` changes the layout of `StyleTable` and therefore of `Workbook`, and SwiftPM's
+incremental build did **not** rebuild every dependent — the test binary crashed in
+`swift_retain` inside `WorkbookBuilder.init()` until `rm -rf .build`. A clean build after any
+layout change to a `SheetModel` type, not a debugging session.

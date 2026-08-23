@@ -36,7 +36,12 @@ public enum FunctionNames {
     /// `_xlfn.XLOOKUP`.
     public static func storedName(forDisplay name: String) -> String {
         let upper = normalize(name).name
-        return FunctionCatalog.requiresStoragePrefix(upper) ? "_xlfn." + upper : upper
+        guard FunctionCatalog.requiresStoragePrefix(upper) else { return upper }
+        // `_xlws.` marks a function that only exists on a worksheet, and Excel writes it on
+        // exactly two names. Writing `_xlfn.FILTER` where the file wants
+        // `_xlfn._xlws.FILTER` is `#NAME?` in Excel — the same failure the plain `_xlfn.`
+        // prefix exists to avoid, one level down.
+        return (FunctionCatalog.worksheetScoped.contains(upper) ? "_xlfn._xlws." : "_xlfn.") + upper
     }
 
     /// The name to show in the formula bar for a name read out of a file.
@@ -130,14 +135,24 @@ public enum FunctionCatalog {
             + DateFunctions.signatures
             + StatisticsFunctions.signatures
             + LookupFunctions.signatures
-            + ConditionalFunctions.signatures {
+            + ConditionalFunctions.signatures
+            + ArrayFunctions.signatures
+            + LambdaFunctions.signatures
+            + FinancialFunctions.signatures {
             table[signature.name] = signature
         }
+        // `LAMBDA` and `LET` have no body: the evaluator drives both, because both are about
+        // binding names rather than about values. They are in the table so arity is checked
+        // and so `implementedFunctions` tells the truth about what OpenSheets evaluates.
+        table["LAMBDA"] = FunctionSignature(lazy: "LAMBDA", 1, .max, prefixed: true)
+        table["LET"] = FunctionSignature(lazy: "LET", 3, .max, prefixed: true)
         return table
     }()
 
     /// Names the evaluator drives itself rather than calling with evaluated arguments.
-    static let lazyFunctions: Set<String> = ["IF", "IFERROR", "IFNA", "IFS", "SWITCH", "CHOOSE"]
+    static let lazyFunctions: Set<String> = [
+        "IF", "IFERROR", "IFNA", "IFS", "SWITCH", "CHOOSE", "LET", "LAMBDA",
+    ]
 
     /// Every implemented function, sorted. Public so the MCP surface and the docs can list
     /// exactly what we do.
@@ -152,17 +167,13 @@ public enum FunctionCatalog {
     /// A formula using one of these parses, round-trips, keeps its cached value, and is
     /// flagged ``CellFlags/unsupportedFormula``.
     public static let knownUnimplemented: Set<String> = [
-        // Dynamic arrays — they spill, and we do not.
-        "FILTER", "SORT", "SORTBY", "UNIQUE", "SEQUENCE", "RANDARRAY", "TOCOL", "TOROW",
-        "VSTACK", "HSTACK", "WRAPROWS", "WRAPCOLS", "TAKE", "DROP", "CHOOSECOLS", "CHOOSEROWS",
-        "EXPAND", "GROUPBY", "PIVOTBY", "TEXTSPLIT", "TEXTBEFORE", "TEXTAFTER", "ARRAYTOTEXT",
-        "TRANSPOSE", "MMULT", "MINVERSE", "MDETERM", "FREQUENCY",
-        // LAMBDA and its helpers.
-        "LAMBDA", "LET", "MAP", "REDUCE", "SCAN", "BYROW", "BYCOL", "MAKEARRAY", "ISOMITTED",
-        // Financial.
-        "PMT", "PV", "FV", "RATE", "NPER", "IPMT", "PPMT", "NPV", "IRR", "XIRR", "XNPV",
-        "MIRR", "SLN", "SYD", "DB", "DDB", "VDB", "CUMIPMT", "CUMPRINC", "ACCRINT", "PRICE",
-        "YIELD", "DURATION", "DOLLARDE", "DOLLARFR", "EFFECT", "NOMINAL", "ISPMT",
+        // Dynamic arrays we still do not build. `GROUPBY`/`PIVOTBY` need a whole aggregation
+        // grammar; the matrix three need linear algebra with its own accuracy story.
+        "GROUPBY", "PIVOTBY", "ARRAYTOTEXT", "MMULT", "MINVERSE", "MDETERM", "FREQUENCY",
+        "ISOMITTED",
+        // Financial beyond the annuity family.
+        "RATE", "XIRR", "XNPV", "MIRR", "DB", "DDB", "VDB", "CUMIPMT", "CUMPRINC", "ACCRINT",
+        "PRICE", "YIELD", "DURATION", "DOLLARDE", "DOLLARFR", "EFFECT", "NOMINAL", "ISPMT",
         // Database.
         "DAVERAGE", "DCOUNT", "DCOUNTA", "DGET", "DMAX", "DMIN", "DPRODUCT", "DSTDEV",
         "DSTDEVP", "DSUM", "DVAR", "DVARP",
@@ -208,13 +219,16 @@ public enum FunctionCatalog {
         return storagePrefixedUnimplemented.contains(name)
     }
 
+    /// The display names Excel stores with `_xlfn._xlws.` rather than plain `_xlfn.`.
+    ///
+    /// Confirmed against headless LibreOffice, which accepts `_xlfn._xlws.FILTER` and
+    /// `_xlfn._xlws.SORT` and rejects the same spelling for `UNIQUE` and `SORTBY`.
+    static let worksheetScoped: Set<String> = ["FILTER", "SORT", "ANCHORARRAY", "SINGLE"]
+
     /// Functions we do not implement that nevertheless need the prefix when written back, so
     /// a round-trip of somebody else's `_xlfn.LAMBDA` does not corrupt their file.
     static let storagePrefixedUnimplemented: Set<String> = [
-        "FILTER", "SORT", "SORTBY", "UNIQUE", "SEQUENCE", "RANDARRAY", "TOCOL", "TOROW",
-        "VSTACK", "HSTACK", "WRAPROWS", "WRAPCOLS", "TAKE", "DROP", "CHOOSECOLS", "CHOOSEROWS",
-        "EXPAND", "GROUPBY", "PIVOTBY", "TEXTSPLIT", "TEXTBEFORE", "TEXTAFTER", "ARRAYTOTEXT",
-        "LAMBDA", "LET", "MAP", "REDUCE", "SCAN", "BYROW", "BYCOL", "MAKEARRAY", "ISOMITTED",
+        "GROUPBY", "PIVOTBY", "ARRAYTOTEXT", "ISOMITTED",
         "NORM.DIST", "NORM.INV", "NORM.S.DIST", "NORM.S.INV", "T.DIST", "T.INV", "T.TEST",
         "CHISQ.DIST", "CHISQ.INV", "CHISQ.TEST", "F.DIST", "F.INV", "F.TEST", "Z.TEST",
         "BINOM.DIST", "POISSON.DIST", "EXPON.DIST", "WEIBULL.DIST", "GAMMA.DIST", "BETA.DIST",

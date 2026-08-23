@@ -9,7 +9,153 @@ import SheetModel
 /// UTF-16 code units and reports 2 for the same emoji; ours is the answer a user expects and
 /// the divergence is deliberate.
 enum TextFunctions {
-    static var signatures: [FunctionSignature] { joining + slicing + transforming + searching + conversion }
+    static var signatures: [FunctionSignature] {
+        joining + slicing + transforming + searching + conversion + splitting
+    }
+
+    // MARK: - Delimiter-based slicing (Excel 365)
+
+    /// `TEXTBEFORE`, `TEXTAFTER` and `TEXTSPLIT`, which share one delimiter scanner.
+    ///
+    /// Excel's `instance_num` is 1-based and may be negative to count from the end, and `0` is
+    /// `#VALUE!` rather than "the whole string" — the sort of edge every one of these gets
+    /// wrong if the scanner is written per function instead of once.
+    private static let splitting: [FunctionSignature] = [
+        FunctionSignature("TEXTBEFORE", 2, 6, prefixed: true) { call in
+            try TextFunctions.around(call, wantsPrefix: true)
+        },
+        FunctionSignature("TEXTAFTER", 2, 6, prefixed: true) { call in
+            try TextFunctions.around(call, wantsPrefix: false)
+        },
+        FunctionSignature("TEXTSPLIT", 2, 6, prefixed: true) { call in
+            let text = try call.text(0)
+            let columnDelimiters = try TextFunctions.delimiters(call, at: 1)
+            let rowDelimiters = call.isPresent(2) ? try TextFunctions.delimiters(call, at: 2) : []
+            let ignoreEmpty = try call.boolean(3, default: false)
+            let caseSensitive = try call.integer(4, default: 0) == 0
+            let pad: ScalarValue = call.isPresent(5) ? try call.scalar(5) : .error(.notAvailable)
+
+            let lines = rowDelimiters.isEmpty
+                ? [text]
+                : TextFunctions.split(text, on: rowDelimiters, caseSensitive: caseSensitive)
+            var grid: [[ScalarValue]] = []
+            for line in lines {
+                var fields = columnDelimiters.isEmpty
+                    ? [line]
+                    : TextFunctions.split(line, on: columnDelimiters, caseSensitive: caseSensitive)
+                if ignoreEmpty { fields = fields.filter { !$0.isEmpty } }
+                if fields.isEmpty, ignoreEmpty { continue }
+                grid.append(fields.map { ScalarValue.text($0) })
+            }
+            guard !grid.isEmpty else { throw FormulaFault.cell(.calculation) }
+            let width = grid.map(\.count).max() ?? 1
+            let padded = grid.map { row in
+                row + Array(repeating: pad, count: width - row.count)
+            }
+            return .array(ValueArray(rows: padded))
+        },
+    ]
+
+    /// The text before or after the nth occurrence of a delimiter.
+    private static func around(_ call: FunctionCallSite, wantsPrefix: Bool) throws -> FormulaValue {
+        let text = try call.text(0)
+        let needles = try delimiters(call, at: 1)
+        let instance = try call.integer(2, default: 1)
+        // `match_mode` is `0` for case-sensitive and `1` for case-insensitive, and `0` is the
+        // default — the opposite polarity to `SEARCH`/`FIND`, and the opposite of what the
+        // parameter name suggests. Microsoft documents it this way; getting it backwards is a
+        // silent wrong answer on any text with mixed case.
+        let caseSensitive = try call.integer(3, default: 0) == 0
+        let matchEnd = try call.integer(4, default: 0) == 1
+        guard instance != 0 else { throw FormulaFault.cell(.wrongType) }
+
+        let hits = occurrences(of: needles, in: text, caseSensitive: caseSensitive)
+        guard !hits.isEmpty else {
+            // `match_end` treats the ends of the string as delimiters, which is how
+            // `TEXTBEFORE("abc","x",1,0,1)` is `"abc"` rather than `#N/A`.
+            if matchEnd { return .text(wantsPrefix ? text : "") }
+            if call.isPresent(5) { return call.arguments[5] }
+            throw FormulaFault.cell(.notAvailable)
+        }
+        let wanted = instance > 0 ? instance - 1 : hits.count + instance
+        guard wanted >= 0, wanted < hits.count else {
+            if matchEnd { return .text(wantsPrefix ? text : "") }
+            if call.isPresent(5) { return call.arguments[5] }
+            throw FormulaFault.cell(.notAvailable)
+        }
+        let hit = hits[wanted]
+        let characters = Array(text)
+        return .text(wantsPrefix
+            ? String(characters[0 ..< hit.start])
+            : String(characters[(hit.start + hit.length)...]))
+    }
+
+    /// The delimiter argument, which is one string or an array of them.
+    private static func delimiters(_ call: FunctionCallSite, at index: Int) throws -> [String] {
+        let table = try call.table(index)
+        var result: [String] = []
+        for element in table.values {
+            if let error = element.errorValue { throw FormulaFault.cell(error) }
+            if case .blank = element { continue }
+            switch Coercion.text(element) {
+            case let .success(text) where !text.isEmpty: result.append(text)
+            case .success: continue
+            case let .failure(error): throw FormulaFault.cell(error)
+            }
+        }
+        return result
+    }
+
+    /// Every position where any delimiter matches, left to right, non-overlapping.
+    ///
+    /// Longest match wins at a given position, so `TEXTSPLIT(t, {",", ", "})` splits on the
+    /// two-character delimiter rather than leaving a stray space behind.
+    private static func occurrences(
+        of needles: [String], in text: String, caseSensitive: Bool
+    ) -> [(start: Int, length: Int)] {
+        let characters = Array(text)
+        let candidates = needles.map(Array.init).sorted { $0.count > $1.count }
+        var result: [(start: Int, length: Int)] = []
+        var index = 0
+        while index < characters.count {
+            var matched = 0
+            for needle in candidates where !needle.isEmpty {
+                guard index + needle.count <= characters.count else { continue }
+                var same = true
+                for offset in 0 ..< needle.count {
+                    let a = characters[index + offset]
+                    let b = needle[offset]
+                    if caseSensitive ? a != b : a.lowercased() != b.lowercased() {
+                        same = false
+                        break
+                    }
+                }
+                if same { matched = needle.count; break }
+            }
+            if matched > 0 {
+                result.append((index, matched))
+                index += matched
+            } else {
+                index += 1
+            }
+        }
+        return result
+    }
+
+    /// Splits on any of `needles`, keeping empty fields.
+    static func split(_ text: String, on needles: [String], caseSensitive: Bool) -> [String] {
+        let characters = Array(text)
+        let hits = occurrences(of: needles, in: text, caseSensitive: caseSensitive)
+        guard !hits.isEmpty else { return [text] }
+        var fields: [String] = []
+        var cursor = 0
+        for hit in hits {
+            fields.append(String(characters[cursor ..< hit.start]))
+            cursor = hit.start + hit.length
+        }
+        fields.append(String(characters[cursor...]))
+        return fields
+    }
 
     // MARK: - Joining
 

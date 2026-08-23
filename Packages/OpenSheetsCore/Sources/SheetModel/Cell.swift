@@ -51,8 +51,61 @@ public struct CellFlags: OptionSet, Sendable, Hashable, Codable {
     /// can warn instead of silently producing a file Excel complains about.
     public static let dataValidation = CellFlags(rawValue: 1 << 9)
 
+    /// The formula here could not be evaluated **and there was no cached value to keep**, so
+    /// ``Cell/value`` holds a placeholder error rather than a computed one.
+    ///
+    /// This is the difference between "empty" and "we cannot compute this", and it matters
+    /// more than it looks. A file written by openpyxl, xlsxwriter or pandas ships
+    /// `<f>SUM(…)</f>` with **no** `<v>`, so ``staleCache``'s promise — *keep the cached
+    /// value* — has nothing to keep. Rendering that as an empty cell is indistinguishable
+    /// from a genuinely blank one: the user sees nothing and has no reason to suspect
+    /// anything is missing.
+    ///
+    /// So the value carries the token Excel itself shows for an unrecognised function
+    /// (`#NAME?`, or `#REF!` for an external link) and every consumer renders it without
+    /// knowing about this flag. The **writer** knows: a cell flagged this way is written back
+    /// as `<f>` with no `<v>`, exactly as it arrived, so a placeholder never becomes a
+    /// fabricated error in somebody's file.
+    public static let uncomputed = CellFlags(rawValue: 1 << 10)
+
+    /// This cell holds the formula of a dynamic array, and the result occupies the rectangle
+    /// recorded at ``Sheet/arrayFormulaRanges`` under this address.
+    ///
+    /// Distinct from ``arrayFormula``, which a legacy Ctrl-Shift-Enter formula also carries:
+    /// this one says the region's size is a *result*, so it changes when the inputs change.
+    /// Both are set on a spill anchor.
+    public static let spillAnchor = CellFlags(rawValue: 1 << 11)
+
+    /// This cell's value is owned by a spill anchor elsewhere on the sheet. It holds a real
+    /// value and renders like any other cell, but it is **not independently editable** — an
+    /// edit has to be refused, not silently allowed, because the next recalculation would
+    /// overwrite it and because Excel refuses too.
+    ///
+    /// Find the owner with ``Sheet/spillOwner(of:)``.
+    public static let spilledInto = CellFlags(rawValue: 1 << 12)
+
+    /// The `<c>` element carried `cm` or `vm` attributes — indices into `xl/metadata.xml`,
+    /// which is what marks a cell as belonging to a **modern dynamic array** rather than a
+    /// legacy Ctrl-Shift-Enter one.
+    ///
+    /// The model has nowhere to keep those indices (see A2's entry in
+    /// `docs/agents/MODEL-CHANGE-REQUESTS.md`), so this flag records only that they were
+    /// there. That is enough for the thing that matters: a writer about to regenerate the
+    /// sheet knows it would drop them, and can refuse instead of silently downgrading the
+    /// user's dynamic array to a fixed-size array formula.
+    public static let hasCellMetadata = CellFlags(rawValue: 1 << 13)
+
     /// Nothing special.
     public static let none: CellFlags = []
+
+    /// Every flag the formula engine owns and rewrites on each pass.
+    ///
+    /// Cleared wholesale before a recalculation writes its verdict, so a cell that used to
+    /// spill and no longer does — or that used to be uncomputable and now computes — does not
+    /// keep a flag nothing will ever clear.
+    public static let recalculationOwned: CellFlags = [
+        .staleCache, .uncomputed, .spillAnchor, .spilledInto,
+    ]
 }
 
 /// One cell: a value, optionally a formula, a style, and some honesty flags.

@@ -92,6 +92,7 @@ public enum WorksheetPartWriter {
     /// Serialises `sheet`.
     public static func serialise(_ sheet: Sheet, context: Context) throws(SheetError) -> Output {
         var context = context
+        try refuseToDegradeDynamicArrays(on: sheet, policy: context.options.dynamicArrayMetadata)
         var original: ScannedXMLPart?
         if let xml = context.originalXML {
             original = try WorksheetPartScanner.scan(xml, part: sheet.partPath ?? sheet.name)
@@ -399,6 +400,31 @@ public enum WorksheetPartWriter {
         return attributes
     }
 
+    /// Refuses to regenerate a sheet whose dynamic-array metadata we would silently drop.
+    ///
+    /// The alternative is what OpenSheets did before: rewrite the sheet, lose the `cm`/`vm`
+    /// indices, and hand back a file whose `FILTER` no longer resizes. That is a change the
+    /// user did not ask for, cannot see, and cannot undo — which is the definition of the
+    /// corruption this project refuses to ship. Saying so and stopping is worse for one save
+    /// and better for the file.
+    private static func refuseToDegradeDynamicArrays(
+        on sheet: Sheet, policy: XLSXWriteOptions.DynamicArrayMetadataPolicy
+    ) throws(SheetError) {
+        guard policy == .refuse else { return }
+        var offender: CellRef?
+        sheet.cells.forEachCell(in: .entireSheet) { ref, cell in
+            if offender == nil, cell.flags.contains(.hasCellMetadata) { offender = ref }
+        }
+        guard let offender else { return }
+        throw SheetError.notImplemented(
+            feature: """
+            rewriting sheet '\(sheet.name)': \(offender.a1String) is part of a dynamic array whose \
+            xl/metadata.xml entry OpenSheets cannot reproduce, and saving would downgrade it to a \
+            fixed-size array formula
+            """
+        )
+    }
+
     // MARK: - cells
 
     private static func cell(
@@ -417,6 +443,21 @@ public enum WorksheetPartWriter {
         // An empty formula is not a formula. It arrives from a shared-formula follower whose
         // master was never expanded, and `<f></f>` is a cell Excel reports as damaged — worse
         // than the literal value we already have cached for it.
+        // A cell we could not compute has no value of its own: the placeholder in
+        // `cell.value` exists so the *screen* says "uncomputed" rather than showing a blank.
+        // Writing it would turn our admission into the producer's error, in their file.
+        if cell.flags.contains(.uncomputed) {
+            let source = (cell.formula?.isEmpty ?? true) ? nil : cell.formula
+            guard let source else { return "<c\(attributes)/>" }
+            let stored = XLSXFunctionNames.storedForm(source)
+            let safe = try XLSXEscape.sanitiseCellText(stored, policy: options.controlCharacters, ref: ref.a1String)
+            var arrayAttributes = ""
+            if let region = sheet.arrayFormulaRanges[ref] {
+                arrayAttributes = " t=\"array\" ref=\"\(region.a1String(collapseSingleCell: false))\""
+            }
+            return "<c\(attributes)><f\(arrayAttributes)>\(XLSXEscape.text(safe))</f></c>"
+        }
+
         let formula = (cell.formula?.isEmpty ?? true) ? nil : cell.formula
         if let formula {
             var formulaAttributes = ""

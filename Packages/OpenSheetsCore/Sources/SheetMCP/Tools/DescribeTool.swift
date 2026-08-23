@@ -235,8 +235,12 @@ public enum DescribeTool {
 
             var note: String?
             if document.state == .stale { note = "the file changed on disk since it was read" }
+            // Said before the profile, not after: the numbers underneath it are the ones this
+            // sentence is about, and a caveat printed below a table of totals is a caveat nobody
+            // reads. See `OpenRecalculation`.
+            let text = document.recalculationNotice.map { "\($0)\n\n" + body } ?? body
             return ToolOutput(UntrustedContent.wrap(
-                body,
+                text,
                 source: document.url.path(percentEncoded: false),
                 sheet: sheetName,
                 note: note

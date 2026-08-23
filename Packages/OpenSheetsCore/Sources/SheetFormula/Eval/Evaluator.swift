@@ -20,6 +20,11 @@ struct FormulaEvaluator {
 
     let scope: EvaluationScope
     let origin: SheetCell
+    /// Names bound by an enclosing `LET`, or by the `LAMBDA` this body belongs to.
+    ///
+    /// Empty for an ordinary formula, which is the overwhelmingly common case and costs one
+    /// dictionary-is-empty check per name lookup.
+    var environment: [String: FormulaValue] = [:]
 
     private enum Work {
         case eval(FormulaExpression)
@@ -37,6 +42,15 @@ struct FormulaEvaluator {
         case compareSwitch(FunctionCall, Int)
         case selectChoice(FunctionCall)
         case popNameDepth
+        /// `LET(name, value, …, calculation)`: bind the name at `arguments[index]` to the value
+        /// on the stack, then schedule either the next pair or the calculation.
+        case letBind(FunctionCall, Int)
+        /// Restores the bindings that were in scope before a `LET` opened its own frame. The
+        /// frame travels *in the step* rather than on a parallel stack, so it cannot get out of
+        /// step with the work queue no matter which branch threw.
+        case popEnvironment([String: FormulaValue])
+        /// Applies a ``LambdaValue`` sitting under `count` evaluated arguments.
+        case applyLambda(Int)
     }
 
     /// Evaluates `expression`, or throws ``FormulaFault``.
@@ -46,6 +60,7 @@ struct FormulaEvaluator {
         var selectors: [ScalarValue] = []
         var nameDepth = 0
         var steps = 0
+        var bindings = environment
 
         while let step = work.popLast() {
             steps += 1
@@ -53,7 +68,8 @@ struct FormulaEvaluator {
 
             do {
                 try apply(
-                    step, work: &work, values: &values, selectors: &selectors, nameDepth: &nameDepth
+                    step, work: &work, values: &values, selectors: &selectors, nameDepth: &nameDepth,
+                    bindings: &bindings
                 )
             } catch let fault as FormulaFault {
                 // **An Excel error is a value, not an exception.** `1/0` inside `ISERROR` has to
@@ -74,21 +90,38 @@ struct FormulaEvaluator {
         work: inout [Work],
         values: inout [FormulaValue],
         selectors: inout [ScalarValue],
-        nameDepth: inout Int
+        nameDepth: inout Int,
+        bindings: inout [String: FormulaValue]
     ) throws {
         switch step {
             case let .eval(node):
-                try push(node, into: &work, values: &values, nameDepth: &nameDepth)
+                try push(node, into: &work, values: &values, nameDepth: &nameDepth, bindings: bindings)
             case .popNameDepth:
                 nameDepth -= 1
+            case let .letBind(function, index):
+                try bindLet(function, index, work: &work, values: &values, bindings: &bindings)
+            case let .popEnvironment(saved):
+                bindings = saved
+            case let .applyLambda(count):
+                let arguments = Array(values.suffix(count))
+                values.removeLast(count)
+                let callee = try pop(&values)
+                guard let lambda = callee.lambdaValue else { throw FormulaFault.cell(.wrongType) }
+                values.append(try scope.applyLambda(lambda, arguments: arguments, origin: origin))
             case let .unary(symbol):
                 let operand = try pop(&values)
                 values.append(try applyUnary(symbol, operand))
             case .percent:
-                let operand = try reduce(try pop(&values))
-                values.append(.number(try FunctionCallSite.number(
-                    from: operand, dateSystem: scope.options.dateSystem
-                ) / 100))
+                let operand = try pop(&values)
+                let dateSystem = scope.options.dateSystem
+                let divide: (ScalarValue) throws -> ScalarValue = { element in
+                    .number(try FunctionCallSite.number(from: element, dateSystem: dateSystem) / 100)
+                }
+                if operand.isMultiValued {
+                    values.append(.array(try map(operand, divide)))
+                } else {
+                    values.append(.scalar(try divide(try reduce(operand))))
+                }
             case let .binary(symbol):
                 let right = try pop(&values)
                 let left = try pop(&values)
@@ -144,7 +177,11 @@ struct FormulaEvaluator {
     // MARK: - Dispatch
 
     private func push(
-        _ node: FormulaExpression, into work: inout [Work], values: inout [FormulaValue], nameDepth: inout Int
+        _ node: FormulaExpression,
+        into work: inout [Work],
+        values: inout [FormulaValue],
+        nameDepth: inout Int,
+        bindings: [String: FormulaValue]
     ) throws {
         switch node {
         case let .number(value):
@@ -164,7 +201,7 @@ struct FormulaEvaluator {
         case let .reference(reference):
             values.append(try resolve(reference))
         case let .name(name):
-            try pushName(name, into: &work, values: &values, nameDepth: &nameDepth)
+            try pushName(name, into: &work, values: &values, nameDepth: &nameDepth, bindings: bindings)
         case let .group(inner):
             work.append(.eval(inner))
         case let .unary(symbol, operand):
@@ -189,11 +226,35 @@ struct FormulaEvaluator {
             work.append(.union(parts.count))
             for part in parts.reversed() { work.append(.eval(part)) }
         case let .call(function):
-            try pushCall(function, into: &work)
+            try pushCall(function, into: &work, values: &values, bindings: bindings)
+        case let .invoke(callee, arguments):
+            work.append(.applyLambda(arguments.count))
+            for argument in arguments.reversed() { work.append(.eval(argument)) }
+            work.append(.eval(callee))
         }
     }
 
-    private func pushCall(_ function: FunctionCall, into work: inout [Work]) throws {
+    private func pushCall(
+        _ function: FunctionCall,
+        into work: inout [Work],
+        values: inout [FormulaValue],
+        bindings: [String: FormulaValue]
+    ) throws {
+        // `LAMBDA` never evaluates its arguments: they are parameter *names* and a body, and
+        // evaluating either would be `#NAME?` on a formula Excel accepts.
+        if function.name == "LAMBDA" {
+            values.append(.lambda(try makeLambda(function, bindings: bindings)))
+            return
+        }
+        // `LET(f, LAMBDA(…), f(1))` parses `f(1)` as a call, because the parser cannot know
+        // that `f` will be bound. Rewrite it into an application when the name really is.
+        if FunctionCatalog.signature(for: function.name) == nil,
+           let bound = bindings[function.name], bound.lambdaValue != nil {
+            work.append(.applyLambda(function.arguments.count))
+            for argument in function.arguments.reversed() { work.append(.eval(argument)) }
+            values.append(bound)
+            return
+        }
         guard let signature = FunctionCatalog.signature(for: function.name) else {
             if FunctionCatalog.isKnownButUnimplemented(function.name, wasPrefixed: function.wasPrefixed) {
                 throw FormulaFault.unsupported(.function(function.name))
@@ -209,6 +270,12 @@ struct FormulaEvaluator {
             return
         }
         switch function.name {
+        case "LET":
+            // An even argument count means a name with no value, or a missing calculation.
+            guard function.arguments.count % 2 == 1 else { throw FormulaFault.cell(.wrongType) }
+            work.append(.popEnvironment(bindings))
+            work.append(.letBind(function, 0))
+            work.append(.eval(function.arguments[1]))
         case "IF":
             work.append(.selectBranch(function))
             work.append(.eval(function.arguments[0]))
@@ -317,11 +384,67 @@ struct FormulaEvaluator {
         work.append(.eval(function.arguments[next]))
     }
 
+    // MARK: - LET and LAMBDA
+
+    /// Binds one `LET` name, then schedules the next pair or the final calculation.
+    private func bindLet(
+        _ function: FunctionCall,
+        _ index: Int,
+        work: inout [Work],
+        values: inout [FormulaValue],
+        bindings: inout [String: FormulaValue]
+    ) throws {
+        let value = try pop(&values)
+        bindings[try FormulaEvaluator.bindableName(function.arguments[index])] = value
+        let next = index + 2
+        if next + 1 < function.arguments.count {
+            work.append(.letBind(function, next))
+            work.append(.eval(function.arguments[next + 1]))
+        } else {
+            work.append(.eval(function.arguments[function.arguments.count - 1]))
+        }
+    }
+
+    /// Builds a lambda value, capturing the names in scope where it was written.
+    private func makeLambda(
+        _ function: FunctionCall, bindings: [String: FormulaValue]
+    ) throws -> LambdaValue {
+        guard function.arguments.count >= 1 else { throw FormulaFault.cell(.wrongType) }
+        let parameters = try function.arguments.dropLast().map(FormulaEvaluator.bindableName)
+        return LambdaValue(
+            parameters: parameters,
+            body: function.arguments[function.arguments.count - 1],
+            captured: bindings
+        )
+    }
+
+    /// The name an argument declares, for `LET` and `LAMBDA` parameter positions.
+    ///
+    /// Excel refuses a name that looks like a cell reference (`LET(a1,…)`) — the parser has
+    /// already turned that into `.reference`, so rejecting anything that is not a plain name
+    /// reproduces the rule without a second spelling of it.
+    static func bindableName(_ node: FormulaExpression) throws -> String {
+        guard case let .name(name) = node, name.qualifier == nil else {
+            throw FormulaFault.cell(.unknownName)
+        }
+        return name.name.uppercased()
+    }
+
     // MARK: - Names
 
     private func pushName(
-        _ name: NameReference, into work: inout [Work], values: inout [FormulaValue], nameDepth: inout Int
+        _ name: NameReference,
+        into work: inout [Work],
+        values: inout [FormulaValue],
+        nameDepth: inout Int,
+        bindings: [String: FormulaValue]
     ) throws {
+        // A `LET` or `LAMBDA` binding shadows a workbook-defined name, which is Excel's rule
+        // and the only reading that makes `LET(Total, 1, Total)` mean `1`.
+        if name.qualifier == nil, !bindings.isEmpty, let bound = bindings[name.name.uppercased()] {
+            values.append(bound)
+            return
+        }
         if let qualifier = name.qualifier, qualifier.isExternal {
             throw FormulaFault.unsupported(.externalWorkbook(name.text))
         }
@@ -360,26 +483,77 @@ struct FormulaEvaluator {
     // MARK: - Operators
 
     private func applyUnary(_ symbol: FormulaOperator, _ operand: FormulaValue) throws -> FormulaValue {
-        let scalar = try reduce(operand)
+        if operand.isMultiValued {
+            return .array(try map(operand) { try self.applyUnaryScalar(symbol, $0) })
+        }
+        return .scalar(try applyUnaryScalar(symbol, try reduce(operand)))
+    }
+
+    private func applyUnaryScalar(_ symbol: FormulaOperator, _ scalar: ScalarValue) throws -> ScalarValue {
         if let error = scalar.errorValue { throw FormulaFault.cell(error) }
         // Unary plus is a genuine no-op in Excel: `=+"a"` is `"a"`, not `#VALUE!`.
-        guard symbol == .subtract else { return .scalar(scalar) }
+        guard symbol == .subtract else { return scalar }
         return .number(-(try FunctionCallSite.number(from: scalar, dateSystem: scope.options.dateSystem)))
     }
 
     private func applyBinary(
         _ symbol: FormulaOperator, _ left: FormulaValue, _ right: FormulaValue
     ) throws -> FormulaValue {
-        let lhs = try reduce(left)
-        if let error = lhs.errorValue { throw FormulaFault.cell(error) }
-        let rhs = try reduce(right)
-        if let error = rhs.errorValue { throw FormulaFault.cell(error) }
+        // **Operators broadcast.** `A1:A8>0` is an 8×1 block of booleans, which is what
+        // `FILTER(C2:C9, F2:F9>0)` needs and what Excel 365 does. A single-cell operand — and
+        // a scalar — repeats along both axes.
+        if left.isMultiValued || right.isMultiValued {
+            let a = try FunctionCallSite.table(left, scope: scope)
+            let b = try FunctionCallSite.table(right, scope: scope)
+            let rows = Swift.max(a.rowCount, b.rowCount)
+            let columns = Swift.max(a.columnCount, b.columnCount)
+            guard rows * columns <= scope.options.maxCellsPerAggregate else {
+                throw FormulaFault.cell(.invalidNumber)
+            }
+            var out = [ScalarValue]()
+            out.reserveCapacity(rows * columns)
+            for row in 0 ..< rows {
+                for column in 0 ..< columns {
+                    out.append(FormulaEvaluator.trapping {
+                        try self.binaryScalar(symbol, a.broadcast(row: row, column: column),
+                                              b.broadcast(row: row, column: column))
+                    })
+                }
+            }
+            return .array(ValueArray(rowCount: rows, columnCount: columns, values: out))
+        }
+        return .scalar(try binaryScalar(symbol, try reduce(left), try reduce(right)))
+    }
 
+    /// Runs one element of a broadcast, turning an Excel error into a value the way the main
+    /// loop does — an error inside `{1,0}/0` belongs in that element, not in the whole array.
+    private static func trapping(_ body: () throws -> ScalarValue) -> ScalarValue {
+        do { return try body() } catch let fault as FormulaFault {
+            guard case let .cell(error) = fault else { return .error(.calculation) }
+            return .error(error)
+        } catch { return .error(.wrongType) }
+    }
+
+    /// Applies `transform` to every element of a multi-valued operand.
+    private func map(
+        _ value: FormulaValue, _ transform: (ScalarValue) throws -> ScalarValue
+    ) throws -> ValueArray {
+        let table = try FunctionCallSite.table(value, scope: scope)
+        return ValueArray(
+            rowCount: table.rowCount,
+            columnCount: table.columnCount,
+            values: table.values.map { element in FormulaEvaluator.trapping { try transform(element) } }
+        )
+    }
+
+    private func binaryScalar(
+        _ symbol: FormulaOperator, _ lhs: ScalarValue, _ rhs: ScalarValue
+    ) throws -> ScalarValue {
+        if let error = lhs.errorValue { throw FormulaFault.cell(error) }
+        if let error = rhs.errorValue { throw FormulaFault.cell(error) }
         switch symbol {
         case .concat:
-            let a = try text(lhs)
-            let b = try text(rhs)
-            return try .text(TextFunctions.checkLength(a + b))
+            return try .text(TextFunctions.checkLength(try text(lhs) + (try text(rhs))))
         case .equal, .notEqual, .less, .greater, .lessOrEqual, .greaterOrEqual:
             guard case let .success(order) = Coercion.compare(lhs, rhs) else {
                 throw FormulaFault.cell(.wrongType)
@@ -395,7 +569,7 @@ struct FormulaEvaluator {
         default:
             let a = try FunctionCallSite.number(from: lhs, dateSystem: scope.options.dateSystem)
             let b = try FunctionCallSite.number(from: rhs, dateSystem: scope.options.dateSystem)
-            return try .scalar(arithmetic(symbol, a, b))
+            return try arithmetic(symbol, a, b)
         }
     }
 

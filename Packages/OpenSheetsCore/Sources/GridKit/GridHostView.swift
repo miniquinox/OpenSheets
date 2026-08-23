@@ -45,6 +45,13 @@ public final class GridHostView: NSView {
     /// Where the grid sends everything it cannot do itself.
     public var onEvent: GridEventHandler?
 
+    /// Called when ``beginEdit(at:seed:)`` refuses, with the cell and the reason.
+    ///
+    /// Separate from ``onEvent`` rather than a ``GridEvent`` case: a refusal is not something
+    /// the shell has to act on to stay correct, and adding a case would make every existing
+    /// `switch` over `GridEvent` stop compiling for a message it can choose to ignore.
+    public var onEditRefused: ((CellRef, SheetError) -> Void)?
+
     // MARK: - Views
 
     private let scrollView = NSScrollView()
@@ -859,10 +866,20 @@ public final class GridHostView: NSView {
 
     // MARK: - Editing
 
-    /// Opens the in-cell editor.
+    /// Opens the in-cell editor, unless the cell's value belongs to somebody else.
     public func beginEdit(at ref: CellRef, seed: String?) {
         guard model.options.isEditable else { return }
         let anchor = model.merges.anchor(of: ref)
+        // **Refused, not silently ignored.** A cell whose value belongs to a spill anchor would
+        // be overwritten by the next recalculation, and Excel refuses the same edit. A grid that
+        // just swallowed the keystroke would be indistinguishable from a broken one, so the
+        // refusal is audible, and the reason names the cell that owns this one.
+        if let refusal = model.editRefusal(at: anchor) {
+            scroll(to: anchor)
+            NSSound.beep()
+            onEditRefused?(anchor, refusal)
+            return
+        }
         scroll(to: anchor)
         let cell = model.sheet.cells[anchor]
         let styleID = model.effectiveStyleID(at: anchor, cell: cell)

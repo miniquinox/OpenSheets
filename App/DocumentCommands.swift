@@ -170,7 +170,8 @@ struct DocumentCommands: Commands {
         if let sheet = workbook.sheets.first { tracker.noteSheetReplaced(sheet) }
         guard let bytes = try? XLSXWriter.data(for: workbook, edits: tracker) else { return }
         guard (try? app.store.suppressor.write(bytes, to: destination)) != nil else { return }
-        OpenActions.open(destination)
+        // The save panel is the consent gesture: the user just chose this folder to put a file in.
+        OpenActions.open(destination, consent: .userSelectedInPanel)
     }
 }
 

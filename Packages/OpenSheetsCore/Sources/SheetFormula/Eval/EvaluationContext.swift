@@ -64,6 +64,27 @@ public enum UnsupportedReason: Hashable, Sendable {
     /// A precedent of this cell was itself unsupported, so this cell's inputs are unknown.
     case staleInput(SheetCell)
 
+    /// The token to show when there is **no cached value to keep**.
+    ///
+    /// `staleCache` promises to keep the number Excel computed. A file written by openpyxl,
+    /// xlsxwriter or pandas ships `<f>` with no `<v>`, so there is nothing to keep, and an
+    /// empty cell is indistinguishable from a genuinely blank one — the user sees nothing and
+    /// has no reason to suspect anything is missing. These are the tokens Excel itself shows
+    /// in the same situations, so the cell reads as uncomputed rather than as empty.
+    ///
+    /// The value never reaches the file: a cell carrying it is flagged
+    /// ``CellFlags/uncomputed`` and the writer emits `<f>` with no `<v>`, exactly as it
+    /// arrived.
+    public var placeholderError: CellError {
+        switch self {
+        case .function, .syntax, .threeDimensionalReference: .unknownName
+        case .externalWorkbook: .invalidReference
+        // The precedent shows its own placeholder; an error propagates through arithmetic in
+        // Excel, so this cell shows the same one.
+        case .staleInput: .unknownName
+        }
+    }
+
     /// A sentence for the tooltip A8 shows under the dotted underline.
     public var message: String {
         switch self {
@@ -109,6 +130,12 @@ final class EvaluationScope {
     var unsupported: [SheetCell: UnsupportedReason] = [:]
     /// Cells found to be in a cycle.
     var circular: Set<SheetCell> = []
+    /// How deep `LAMBDA` application currently is.
+    ///
+    /// Applying a lambda re-enters the evaluator, which is the one place in this module that
+    /// recurses. Bounded rather than trusted: `LET(f,LAMBDA(n,f(n)),f(1))` is a formula a user
+    /// can type, and a stack overflow is not an error message.
+    var lambdaDepth = 0
     private var randomState: UInt64
     private let sheetIndex: [String: SheetID]
 
@@ -165,6 +192,31 @@ final class EvaluationScope {
         guard let position = sheetPositions[cell.sheet] else { return false }
         return workbook.sheets[position].hiddenRows[cell.ref.row]
     }
+
+    /// Applies a `LAMBDA` to arguments, in the environment it captured.
+    ///
+    /// Missing trailing arguments bind as blanks, which is what Excel does and what
+    /// `ISOMITTED` would ask about; extra ones are `#VALUE!`.
+    func applyLambda(
+        _ lambda: LambdaValue, arguments: [FormulaValue], origin: SheetCell
+    ) throws -> FormulaValue {
+        guard arguments.count <= lambda.parameters.count else { throw FormulaFault.cell(.wrongType) }
+        guard lambdaDepth < EvaluationScope.maximumLambdaDepth else {
+            throw FormulaFault.cell(.invalidNumber)
+        }
+        var bindings = lambda.captured
+        for (position, name) in lambda.parameters.enumerated() {
+            bindings[name] = position < arguments.count ? arguments[position] : .scalar(.blank)
+        }
+        lambdaDepth += 1
+        defer { lambdaDepth -= 1 }
+        let evaluator = FormulaEvaluator(scope: self, origin: origin, environment: bindings)
+        return try evaluator.evaluate(lambda.body)
+    }
+
+    /// Excel's own limit on `LAMBDA` recursion is memory; ours is a number, so a runaway
+    /// recursion is `#NUM!` rather than a crash.
+    static let maximumLambdaDepth = 128
 
     /// xorshift64*, so `RAND()` is deterministic per seed and identical across machines.
     /// `Double.random(in:)` would use the system generator and make every test a coin flip.

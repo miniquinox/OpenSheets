@@ -312,7 +312,7 @@ public struct FormulaParser: Sendable {
     }
 
     private mutating func parseRangeChain() throws -> FormulaExpression {
-        var left = try parsePrimary()
+        var left = try parseInvocationChain()
         var folds = 0
         while let token = peek(), case .colon = token.kind {
             index += 1
@@ -320,10 +320,58 @@ public struct FormulaParser: Sendable {
             guard folds <= FormulaParser.maxOperatorChain else {
                 throw SheetError.formulaNestingTooDeep(depth: folds, limit: FormulaParser.maxOperatorChain)
             }
-            let right = try parsePrimary()
+            let right = try parseInvocationChain()
             left = .rangeOperator(left, right)
         }
         return left
+    }
+
+    /// A primary followed by any number of `(...)` applications: `LAMBDA(a,a*2)(21)`.
+    ///
+    /// Only a `LAMBDA` call or a bare name can be applied — anything else followed by `(` is
+    /// either an intersection (which needs the whitespace this path refuses) or a syntax error,
+    /// and reading `SUM(A1)(2)` as an application would turn a typo into a `#VALUE!` instead of
+    /// the parse error the user needs to see.
+    private mutating func parseInvocationChain() throws -> FormulaExpression {
+        var left = try parsePrimary()
+        var folds = 0
+        while FormulaParser.isApplicable(left), let token = peek(),
+              case .leftParenthesis = token.kind, !token.hasLeadingWhitespace {
+            folds += 1
+            guard folds <= FormulaParser.maxOperatorChain else {
+                throw SheetError.formulaNestingTooDeep(depth: folds, limit: FormulaParser.maxOperatorChain)
+            }
+            index += 1
+            var arguments: [FormulaExpression] = []
+            let saved = allowsUnion
+            allowsUnion = false
+            defer { allowsUnion = saved }
+            if let next = peek(), case .rightParenthesis = next.kind {
+                index += 1
+            } else {
+                while true {
+                    if let next = peek(), isArgumentTerminator(next) {
+                        arguments.append(.missing)
+                    } else {
+                        arguments.append(try parseExpression(minimumPrecedence: 0))
+                    }
+                    guard let next = peek(), case .comma = next.kind else { break }
+                    index += 1
+                }
+                try expectRightParenthesis(openedAt: token.position)
+            }
+            left = .invoke(left, arguments)
+        }
+        return left
+    }
+
+    /// Whether an expression can stand in front of `(` as the thing being applied.
+    private static func isApplicable(_ node: FormulaExpression) -> Bool {
+        switch node {
+        case let .call(call): call.name == "LAMBDA"
+        case .name, .invoke: true
+        default: false
+        }
     }
 
     /// Whether a token could begin the right-hand side of the space (intersection) operator.

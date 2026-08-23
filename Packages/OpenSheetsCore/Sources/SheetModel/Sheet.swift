@@ -94,6 +94,31 @@ public struct Hyperlink: Sendable, Hashable, Codable {
     }
 }
 
+/// Who owns the value in a cell that did not put it there itself.
+///
+/// Returned by ``Sheet/spillOwner(of:)``. The distinction between the two kinds is not
+/// cosmetic: a legacy array formula's region was chosen by the author and never moves, while a
+/// dynamic array's region is part of its *result* and changes size whenever the inputs do — so
+/// only the second one has to be cleared and rewritten on every recalculation.
+public struct SpillOwner: Sendable, Hashable {
+    /// The cell holding the formula. The top-left of ``region``.
+    public var anchor: CellRef
+    /// Every cell the result occupies, ``anchor`` included.
+    public var region: CellRange
+    /// `true` for a dynamic array (``CellFlags/spillAnchor``), `false` for a legacy
+    /// Ctrl-Shift-Enter array formula.
+    public var isDynamic: Bool
+
+    public init(anchor: CellRef, region: CellRange, isDynamic: Bool) {
+        self.anchor = anchor
+        self.region = region
+        self.isDynamic = isDynamic
+    }
+
+    /// Whether `ref` is a cell this owner writes into rather than the anchor itself.
+    public func owns(_ ref: CellRef) -> Bool { ref != anchor && region.contains(ref) }
+}
+
 /// One worksheet.
 ///
 /// Everything here is a value type, so a `Sheet` can be snapshotted for a diff, handed to a
@@ -161,6 +186,13 @@ public struct Sheet: Sendable, Equatable, Codable, Identifiable {
     /// Needed to write `<f t="array" ref="A1:C3">` back correctly, and to refuse an edit to a
     /// single cell of an array formula — which Excel forbids and which produces a file Excel
     /// will not open.
+    ///
+    /// Both kinds of region live here: a legacy Ctrl-Shift-Enter array formula, whose region
+    /// the author fixed, and a modern **dynamic-array spill**, whose region is a result and
+    /// changes size when the inputs do. ``CellFlags/spillAnchor`` on the anchor tells them
+    /// apart. Ownership is identical either way — the cells inside the region belong to the
+    /// anchor and are not independently editable — which is why one dictionary serves both
+    /// rather than the model growing a second one that means the same thing.
     public var arrayFormulaRanges: [CellRef: CellRange]
 
     /// The `autoFilter` range, when the sheet has one.
@@ -319,6 +351,37 @@ public struct Sheet: Sendable, Equatable, Codable, Identifiable {
     /// pathological. Build an index if you need this per cell per frame.
     public func merge(containing ref: CellRef) -> CellRange? {
         merges.first { $0.contains(ref) }
+    }
+
+    // MARK: - Spill regions
+
+    /// The array formula or dynamic-array spill that owns `ref`, if one does.
+    ///
+    /// `ref` may be the anchor itself — an anchor owns its own cell — so callers deciding
+    /// "may this be edited?" should compare ``SpillOwner/anchor`` against `ref` rather than
+    /// treating any non-`nil` answer as a refusal. ``isSpilledInto(_:)`` does exactly that.
+    ///
+    /// Linear in ``arrayFormulaRanges`` for the same reason ``merge(containing:)`` is linear
+    /// in ``merges``: a sheet with thousands of array formulas is already pathological, and
+    /// the per-frame path in `GridKit` reads ``CellFlags/spilledInto`` off the cell instead,
+    /// which is O(1).
+    public func spillOwner(of ref: CellRef) -> SpillOwner? {
+        for (anchor, region) in arrayFormulaRanges where region.contains(ref) {
+            return SpillOwner(anchor: anchor, region: region, isDynamic: isDynamicSpillAnchor(anchor))
+        }
+        return nil
+    }
+
+    /// Whether `ref` holds a value owned by an anchor somewhere else — the cells an edit must
+    /// be refused on.
+    public func isSpilledInto(_ ref: CellRef) -> Bool {
+        if let cell = cells[ref], cell.flags.contains(.spilledInto) { return true }
+        guard let owner = spillOwner(of: ref) else { return false }
+        return owner.anchor != ref
+    }
+
+    private func isDynamicSpillAnchor(_ anchor: CellRef) -> Bool {
+        cells[anchor]?.flags.contains(.spillAnchor) ?? false
     }
 
     // MARK: - Structural edits

@@ -9,7 +9,10 @@ surprise to a *user* either.
 ## 1. Release gates that are genuinely open
 
 ### 1.1 Nobody has opened our output in Microsoft Excel or Numbers
-Neither is installed in the build environment. A2's round-trip fidelity is proven against
+**CORRECTION (2026-08-23): Excel 16.112.1, Numbers and LibreOffice ARE installed on this machine.**
+Two agents reported Excel as unavailable and the integrator repeated it without checking. The gate
+is runnable; what blocked it was a denied screen-access request, not a missing application. Ask the
+user to grant access, or ask them to run the check themselves. A2's round-trip fidelity is proven against
 `zipfile.testzip()` CRC recomputation and headless LibreOffice only. **PLAN.md §10.7 makes a
 by-hand Excel check a release gate and it has never been run.** Dump files with
 `OPENSHEETS_WRITE_DUMP=<dir> swift test`. Verify at minimum: `passthrough/kitchen-sink.xlsm`

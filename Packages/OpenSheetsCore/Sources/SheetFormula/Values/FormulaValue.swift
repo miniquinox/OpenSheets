@@ -146,10 +146,13 @@ extension ScalarValue {
 
 /// A rectangular block of scalars, row-major.
 ///
-/// Produced by array literals (`{1,2;3,4}`), by reading a range into a value, and by the few
-/// functions that return more than one cell. OpenSheets never *spills* an array into the grid
-/// — that is dynamic arrays, excluded by PLAN.md §5.3 — so an array that reaches a cell is
-/// reduced to its top-left element, which is what pre-365 Excel does.
+/// Produced by array literals (`{1,2;3,4}`), by reading a range into a value, by operators
+/// broadcasting over ranges, and by the dynamic-array functions.
+///
+/// An array that reaches a cell **spills**: the cell becomes an anchor and the result occupies
+/// the rectangle below and to the right of it. See `FormulaEngine`'s spill handling for the
+/// blocking rules and `#SPILL!`. A *reference* that reaches a cell still reduces by implicit
+/// intersection, which is the pre-365 rule and what the workbooks that use it expect.
 public struct ValueArray: Hashable, Sendable {
     /// Rows, at least 1.
     public let rowCount: Int
@@ -204,6 +207,37 @@ public struct ValueArray: Hashable, Sendable {
 
     /// The top-left scalar, which is what an array collapses to in a scalar context.
     public var first: ScalarValue { values.first ?? .error(.notAvailable) }
+
+    /// Whether this holds exactly one scalar, and therefore behaves as one.
+    public var isSingle: Bool { rowCount == 1 && columnCount == 1 }
+
+    /// The scalar at a position under Excel's broadcast rule: an axis of length 1 repeats,
+    /// and an axis that is neither 1 nor long enough yields `#N/A`.
+    ///
+    /// This is the whole of `{1;2;3} * {10,20}` → a 3×2 block, and of `A1:A8>0` → an 8×1
+    /// block of booleans.
+    public func broadcast(row: Int, column: Int) -> ScalarValue {
+        let sourceRow = rowCount == 1 ? 0 : row
+        let sourceColumn = columnCount == 1 ? 0 : column
+        guard sourceRow < rowCount, sourceColumn < columnCount else { return .error(.notAvailable) }
+        return values[sourceRow * columnCount + sourceColumn]
+    }
+
+    /// The rows as arrays of scalars.
+    public var rowsOfValues: [[ScalarValue]] {
+        (0 ..< rowCount).map { row in Array(values[row * columnCount ..< (row + 1) * columnCount]) }
+    }
+
+    /// The columns as arrays of scalars.
+    public var columnsOfValues: [[ScalarValue]] {
+        (0 ..< columnCount).map { column in (0 ..< rowCount).map { self[$0, column] } }
+    }
+
+    /// An array built from rows of equal length.
+    public init(rows: [[ScalarValue]]) {
+        let columns = rows.first?.count ?? 0
+        self.init(rowCount: rows.count, columnCount: columns, values: rows.flatMap { $0 })
+    }
 }
 
 // MARK: - References
@@ -250,6 +284,28 @@ public struct ReferenceValue: Hashable, Sendable {
 
 // MARK: - Values
 
+/// A `LAMBDA(param…, body)` value: an unapplied function, with the names that were in scope
+/// when it was written.
+///
+/// The captured environment is what makes `LET(n,3,MAP(A1:A3,LAMBDA(x,x*n)))` give the same
+/// answer as Excel. Resolving `n` at *call* time instead would be dynamic scoping, which
+/// happens to agree on almost every real formula and disagrees on the ones where somebody
+/// shadowed a name — the class of quietly wrong number this engine exists to refuse.
+public struct LambdaValue: Hashable, Sendable {
+    /// Parameter names, uppercased, in declaration order.
+    public var parameters: [String]
+    /// The expression to evaluate once the parameters are bound.
+    public var body: FormulaExpression
+    /// Names visible where the lambda was written, innermost binding already flattened in.
+    var captured: [String: FormulaValue]
+
+    init(parameters: [String], body: FormulaExpression, captured: [String: FormulaValue]) {
+        self.parameters = parameters
+        self.body = body
+        self.captured = captured
+    }
+}
+
 /// Anything an expression can evaluate to.
 public enum FormulaValue: Hashable, Sendable {
     /// A single value.
@@ -259,6 +315,9 @@ public enum FormulaValue: Hashable, Sendable {
     /// One or more live rectangles. Functions that care about *where* the data is — `OFFSET`,
     /// `INDEX` in reference form, `ROW`, `COLUMNS` — need this rather than the values.
     case reference(ReferenceValue)
+    /// An unapplied `LAMBDA`. `indirect` because the captured environment holds
+    /// ``FormulaValue``s, which would otherwise make the type infinitely sized.
+    indirect case lambda(LambdaValue)
 
     /// A blank.
     public static let blank = FormulaValue.scalar(.blank)
@@ -277,9 +336,24 @@ public enum FormulaValue: Hashable, Sendable {
         switch self {
         case let .scalar(scalar): scalar.errorValue
         case let .array(array): array.count == 1 ? array.first.errorValue : nil
-        case .reference: nil
+        case .reference, .lambda: nil
         }
     }
+
+    /// Whether this value carries more than one cell, and so broadcasts rather than reducing.
+    ///
+    /// A reference counts: `A1:A8>0` is an 8×1 block of booleans in Excel 365, not the one
+    /// cell implicit intersection would pick.
+    var isMultiValued: Bool {
+        switch self {
+        case let .array(array): !array.isSingle
+        case let .reference(reference): reference.parts.count == 1 && !(reference.singleRange?.range.isSingleCell ?? true)
+        case .scalar, .lambda: false
+        }
+    }
+
+    /// The lambda, if this is one.
+    var lambdaValue: LambdaValue? { if case let .lambda(value) = self { value } else { nil } }
 }
 
 extension FormulaValue: CustomStringConvertible {
@@ -288,6 +362,7 @@ extension FormulaValue: CustomStringConvertible {
         case let .scalar(scalar): scalar.description
         case let .array(array): "{\(array.rowCount)x\(array.columnCount)}"
         case let .reference(reference): reference.parts.map(\.description).joined(separator: ",")
+        case let .lambda(lambda): "LAMBDA(\(lambda.parameters.joined(separator: ",")))"
         }
     }
 }

@@ -149,6 +149,7 @@ public final class GridRenderer {
         drawMerges(visible, model: model, context: context, offset: offset)
         drawBorders(visible, rows: rows, model: model, context: context, offset: offset)
         drawContent(visible, rows: rows, model: model, context: context, offset: offset)
+        drawSpillOutline(visible, model: model, context: context, offset: offset)
         drawSelection(visible, model: model, context: context, offset: offset)
     }
 
@@ -755,6 +756,30 @@ public final class GridRenderer {
 
     // MARK: - Selection
 
+    /// Outlines the region a spill occupies while the selection is inside it.
+    ///
+    /// This is the whole visual answer to "why can I not type here?". A spilled-into cell holds
+    /// a real number and would otherwise look exactly like one somebody typed; the outline says
+    /// the number belongs to the formula at the corner, and it appears at the moment the user
+    /// touches the region rather than permanently, which is Excel's behaviour and keeps a sheet
+    /// full of dynamic arrays from looking like a wireframe.
+    private func drawSpillOutline(
+        _ visible: CellRange,
+        model: GridRenderModel,
+        context: CGContext,
+        offset: CGPoint
+    ) {
+        guard let region = model.spillRegion(at: model.selection.active), region.cellCount > 1,
+              region.intersects(visible)
+        else { return }
+        context.saveGState()
+        defer { context.restoreGState() }
+        context.setStrokeColor(palette.accent)
+        context.setLineWidth(1)
+        context.setLineDash(phase: 0, lengths: [3, 2])
+        context.stroke(rect(of: region, model: model, offset: offset).insetBy(dx: 0.5, dy: 0.5))
+    }
+
     private func drawSelection(
         _ visible: CellRange,
         model: GridRenderModel,
@@ -925,7 +950,7 @@ public final class GridRenderer {
         if let existing = resolvedStyles[id] { return existing }
         let style = model.styles[id]
         let fill = style.fill.effectiveColor
-            .map { $0.resolved(in: model.theme.stylePalette) }
+            .map { $0.resolved(in: displayFormatter.stylePalette) }
             .flatMap { $0.alpha > 0 ? $0.cgColor : nil }
         let built = ResolvedStyle(
             style: style,

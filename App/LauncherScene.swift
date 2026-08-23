@@ -50,6 +50,9 @@ struct LauncherScene: View {
     private func perform(_ action: LauncherAction) {
         switch action {
         case let .open(id):
+            // A recent is a click in our own UI, but on a file the user chose some other day. If
+            // its folder is no longer granted — revoked, most likely, which is a decision — that
+            // is worth asking about rather than silently undoing. See `WorkspaceConsent`.
             OpenActions.open(URL(fileURLWithPath: id))
         case .openFile:
             OpenActions.showOpenPanel()

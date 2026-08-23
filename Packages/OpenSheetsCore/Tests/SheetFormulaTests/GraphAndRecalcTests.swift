@@ -218,7 +218,7 @@ struct RecalcTests {
     @Test func anUnsupportedFunctionKeepsItsCachedValueAndIsNeverOverwritten() {
         var workbook = GraphFixture.workbook([
             ("A1", .number(1)),
-            ("B1", .formula("LAMBDA(x,x)", cached: .number(42))),
+            ("B1", .formula("MMULT(A1,A1)", cached: .number(42))),
         ])
         let engine = FormulaEngine(workbook: workbook, options: TestWorkbook.options)
         let result = engine.recalculate(in: workbook, changed: [GraphFixture.cell("A1")])
@@ -226,13 +226,13 @@ struct RecalcTests {
         result.apply(to: &workbook)
         let cell = workbook[GraphFixture.sheetID]?.cells[CellRef(a1: "B1") ?? .origin]
         #expect(cell?.value == .number(42), "the cached value must survive untouched")
-        #expect(cell?.formula == "LAMBDA(x,x)", "and so must the formula")
+        #expect(cell?.formula == "MMULT(A1,A1)", "and so must the formula")
     }
 
     @Test func stalenessPropagatesToDependentsRatherThanGuessing() {
         let workbook = GraphFixture.workbook([
             ("A1", .number(1)),
-            ("B1", .formula("LAMBDA(x,x)+A1", cached: .number(42))),
+            ("B1", .formula("MMULT(A1,A1)+A1", cached: .number(42))),
             ("C1", .formula("B1*2", cached: .number(84))),
         ])
         let engine = FormulaEngine(workbook: workbook, options: TestWorkbook.options)

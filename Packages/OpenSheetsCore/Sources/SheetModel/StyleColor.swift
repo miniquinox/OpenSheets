@@ -112,6 +112,52 @@ public struct RGBAColor: Sendable, Hashable, Codable {
         )
     }
 
+    /// This colour drawn on top of `background`, which is what the eye actually sees.
+    ///
+    /// The grid's ink is not opaque — `#FFFFFF` at 91% over `#1C1C1E` — so any judgement about
+    /// how readable it is has to be made about the composite, not about the channel values.
+    public func composited(over background: RGBAColor) -> RGBAColor {
+        guard alpha < 255 else { return self }
+        let a = Double(alpha) / 255
+        func mix(_ top: UInt8, _ bottom: UInt8) -> UInt8 {
+            UInt8((Double(top) * a + Double(bottom) * (1 - a)).rounded())
+        }
+        return RGBAColor(
+            red: mix(red, background.red),
+            green: mix(green, background.green),
+            blue: mix(blue, background.blue)
+        )
+    }
+
+    /// WCAG 2.1 relative luminance, `0` for black and `1` for white.
+    ///
+    /// Alpha is ignored: composite first with ``composited(over:)`` if it matters, because a
+    /// translucent colour has no luminance of its own.
+    public var relativeLuminance: Double {
+        func channel(_ value: UInt8) -> Double {
+            let normalised = Double(value) / 255
+            return normalised <= 0.040_45
+                ? normalised / 12.92
+                : pow((normalised + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(red) + 0.7152 * channel(green) + 0.0722 * channel(blue)
+    }
+
+    /// The WCAG contrast ratio between two colours, from `1` (identical) to `21`
+    /// (black on white).
+    ///
+    /// PLAN.md §3.5 requires 4.5:1 for text. This is the number that checks it, and it is here
+    /// rather than in a test helper so the requirement is expressible in the code that has to
+    /// meet it.
+    public func contrastRatio(against other: RGBAColor) -> Double {
+        let a = relativeLuminance
+        let b = other.relativeLuminance
+        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+    }
+
+    /// Whether this colour reads as a dark surface.
+    public var isDark: Bool { relativeLuminance < 0.5 }
+
     /// Opaque black. Note this is a *literal* colour — the default text colour is
     /// ``StyleColor/automatic``, which resolves against the grid instead.
     public static let black = RGBAColor(red: 0, green: 0, blue: 0)
@@ -184,16 +230,52 @@ public struct ColorPalette: Sendable, Hashable {
     /// The grid's background, for indexed colour 65.
     public var background: RGBAColor
 
+    /// Whether theme slots 0–3 follow ``automatic`` and ``background`` instead of the literal
+    /// colours in ``themeColors``.
+    ///
+    /// # Why this is on by default
+    ///
+    /// The first four theme slots are **semantic**, not literal: OOXML calls them `dk1`/`lt1`
+    /// (the major text/background pair) and `dk2`/`lt2` (the minor one). `<color theme="1"/>`
+    /// does not mean "black" — it means *"the text colour"*, and Office resolves it against
+    /// whatever the application is currently showing. Excel in dark mode keeps theme-1 text
+    /// readable for exactly this reason.
+    ///
+    /// This matters far more than it sounds. `<color theme="1"/>` is what **every** producer
+    /// writes for ordinary text — openpyxl, xlsxwriter, pandas and Excel itself — so resolving
+    /// it to literal black makes the dark grid unusable for essentially every real workbook,
+    /// not for one unlucky file.
+    ///
+    /// Turn it off to see what the theme part literally says, which is what a colour picker
+    /// showing theme swatches wants. It changes nothing about writing: this is a decision made
+    /// at resolution time, and the file still says `theme="1"` afterwards.
+    public var resolvesSemanticThemeSlots: Bool
+
     public init(
         indexedColors: [RGBAColor],
         themeColors: [RGBAColor],
         automatic: RGBAColor = .black,
-        background: RGBAColor = .white
+        background: RGBAColor = .white,
+        resolvesSemanticThemeSlots: Bool = true
     ) {
         self.indexedColors = indexedColors
         self.themeColors = themeColors
         self.automatic = automatic
         self.background = background
+        self.resolvesSemanticThemeSlots = resolvesSemanticThemeSlots
+    }
+
+    /// This palette's theme and legacy colours, resolved against a particular appearance.
+    ///
+    /// `ink` and `canvas` are the grid's own text and background. Everything the file chose for
+    /// itself — its accents, its hyperlink colour, its minor pair's hues — is kept; only the
+    /// *roles* of the semantic slots follow the appearance.
+    public func forAppearance(ink: RGBAColor, canvas: RGBAColor) -> ColorPalette {
+        var result = self
+        result.automatic = ink
+        result.background = canvas
+        result.resolvesSemanticThemeSlots = true
+        return result
     }
 
     /// The colour at a legacy palette index, falling back to ``automatic``.
@@ -206,7 +288,8 @@ public struct ColorPalette: Sendable, Hashable {
         }
     }
 
-    /// The colour in a theme slot, translating OOXML's swapped indexing.
+    /// The colour in a theme slot, translating OOXML's swapped indexing and resolving the
+    /// semantic slots against the appearance.
     public func theme(_ index: Int) -> RGBAColor {
         // theme="0" means light1 and theme="1" means dark1 — the XML lists them the other way.
         let slot = switch index {
@@ -216,7 +299,31 @@ public struct ColorPalette: Sendable, Hashable {
         case 3: 2
         default: index
         }
+        if resolvesSemanticThemeSlots, let semantic = semanticThemeColor(slot) { return semantic }
         return themeColors.indices.contains(slot) ? themeColors[slot] : automatic
+    }
+
+    /// The appearance-relative reading of `dk1`, `lt1`, `dk2` and `lt2`, or `nil` for the
+    /// accent, hyperlink and followed-hyperlink slots — which are real brand colours and must
+    /// never be swapped.
+    ///
+    /// The major pair becomes the grid's own ink and canvas, which are contrast-tuned. The
+    /// minor pair keeps the file's own two hues and only **exchanges their roles**, so a
+    /// document's secondary shade is still recognisably its own on either appearance.
+    private func semanticThemeColor(_ slot: Int) -> RGBAColor? {
+        let onDark = background.relativeLuminance < automatic.relativeLuminance
+        switch slot {
+        case 0: return automatic                              // dk1 — the major text colour
+        case 1: return background                             // lt1 — the major background
+        case 2: return literalTheme(onDark ? 3 : 2)           // dk2 — the minor text colour
+        case 3: return literalTheme(onDark ? 2 : 3)           // lt2 — the minor background
+        default: return nil
+        }
+    }
+
+    /// A theme slot exactly as the file declares it, with no appearance applied.
+    public func literalTheme(_ slot: Int) -> RGBAColor {
+        themeColors.indices.contains(slot) ? themeColors[slot] : automatic
     }
 
     /// Office's standard theme and the legacy palette every producer starts from.

@@ -495,22 +495,15 @@ SUM(1,{2,3},4)	n:10	mixing arrays and scalars
 -1e308*10	e:#NUM!	overflow is #NUM! in both directions
 1e-320/1e10	n:0	underflow goes to zero
 100000000000000000000+1	n:1e+20	beyond 15 digits the increment is invisible
-LAMBDA(x,x+1)	u:	LAMBDA is a real function we do not implement
-LET(x,1,x+1)	u:	LET is out of scope
-FILTER(Data!A1:A6,Data!A1:A6>20)	u:	dynamic arrays spill; we do not
-SORT(Data!A1:A6)	u:	dynamic array
-UNIQUE(Data!B1:B6)	u:	dynamic array
-SEQUENCE(3)	u:	dynamic array
-PMT(0.05,10,1000)	u:	the financial suite is out of scope
-NPV(0.1,Data!A1:A6)	u:	financial
-IRR(Data!A1:A6)	u:	financial
+MMULT(Data!A1:A6,Data!A1:A6)	u:	matrix algebra is out of scope
+GROUPBY(Data!A1:A6,Data!C1:C6,SUM)	u:	GROUPBY needs an aggregation grammar we do not have
+RATE(10,-100,1000)	u:	RATE needs a root finder we have not written
 DSUM(Data!A1:C6,1,Data!A1:A2)	u:	database functions are out of scope
-TEXTSPLIT("a,b",",")	u:	dynamic array text function
 CELL("address",Data!A1)	u:	CELL exposes host state we do not model
 HYPERLINK("http://x","x")	u:	HYPERLINK is a link, not a value
 GETPIVOTDATA("x",Data!A1)	u:	pivot tables are out of scope
 YEARFRAC(DATE(2024,1,1),DATE(2024,7,1))	u:	YEARFRAC needs day-count bases we do not model
-SUM(LAMBDA(x,x),2)	u:	an unsupported call anywhere makes the whole formula unsupported
+SUM(MMULT(Data!A1:A2,Data!A1:A2),2)	u:	an unsupported call anywhere makes the whole formula unsupported
 NOTAFUNCTION(1)	e:#NAME?	an unknown name is #NAME?, not unsupported
 SUM(NOTAFUNCTION(1))	e:#NAME?	an unknown name inside a call
 UndefinedName	e:#NAME?	an undefined name is #NAME?
@@ -678,3 +671,128 @@ RANDBETWEEN(5,5)	n:5	RANDBETWEEN on a single-value range
 AND(RANDBETWEEN(1,6)>=1,RANDBETWEEN(1,6)<=6)	b:TRUE	RANDBETWEEN stays inside its bounds
 RANDBETWEEN(6,5)	e:#NUM!	RANDBETWEEN with the bounds the wrong way round
 ISNUMBER(TODAY())	b:TRUE	TODAY is a number, like every other date
+
+# --- Financial (§ oracle: LibreOffice 26.2.4.2, which agrees with Excel across this family)
+PMT(0.05,10,1000)	n:-129.504574965457	the payment that clears a 1000 loan over ten periods
+ROUND(PMT(0.05/12,60,-20000),2)	n:377.42	a five-year car loan, monthly
+ROUND(PMT(0.05,10,1000,0,1),6)	n:-123.33769	type 1 pays at the start of the period
+ROUND(FV(0.03,5,-100,0),2)	n:530.91	saving 100 a year for five years
+ROUND(FV(0.05,10,-100,-500,1),4)	n:2135.126	FV with a starting balance and payments in advance
+ROUND(PV(0.06,10,-500),4)	n:3680.0435	what ten payments of 500 are worth today
+ROUND(NPER(0.05,-200,1000),6)	n:5.896313	how long 200 a period takes to clear 1000
+ROUND(IPMT(0.05,1,10,1000),6)	n:-50	the first payment is all interest on the whole balance
+ROUND(IPMT(0.05,3,10,1000),6)	n:-41.850781	interest falls as the balance does
+ROUND(PPMT(0.05,3,10,1000),6)	n:-87.653794	and principal rises to match
+ROUND(NPV(0.08,Data!A1:A4),4)	n:79.6222	NPV discounts the first flow by one period, not zero
+ROUND(NPV(0.1,Data!A1:A6),6)	n:140.394319	six flows
+ROUND(IRR({-100,30,40,50}),6)	n:0.088963	IRR of a conventional cash flow
+SLN(10000,1000,5)	n:1800	straight-line depreciation
+SYD(10000,1000,5,2)	n:2400	sum-of-years-digits, second year
+NPV(-1,1)	e:#DIV/0!	a rate of -100% divides by zero
+
+# --- Modern text (§ oracle: LibreOffice under the stored _xlfn. spelling)
+TEXTBEFORE("a-b-c","-")	s:a	the text before the first delimiter
+TEXTBEFORE("a-b-c","-",2)	s:a-b	instance 2
+TEXTBEFORE("a-b-c","-",-1)	s:a-b	a negative instance counts from the end
+TEXTAFTER("a-b-c","-")	s:b-c	the text after the first delimiter
+TEXTAFTER("a-b-c","-",2)	s:c	instance 2
+TEXTAFTER("a::b","::")	s:b	a multi-character delimiter
+TEXTBEFORE("a-b","x")	e:#N/A	no delimiter and no fallback is #N/A
+TEXTBEFORE("A-b-C","B",1,1)	s:A-	match_mode 1 is case-INsensitive
+TEXTBEFORE("A-b-C","B",1,0,0,"none")	s:none	match_mode 0 is case-sensitive, so this falls back
+TEXTAFTER("abc","x",1,0,1)	s:	match_end treats the end of the text as a delimiter
+TEXTBEFORE("a-b-c","-",9)	e:#N/A	an instance past the end is #N/A
+TEXTBEFORE("a-b-c","-",0)	e:#VALUE!	instance 0 is not "the whole string", it is an error
+TEXTJOIN("|",FALSE,TEXTSPLIT("a,b,c",","))	s:a|b|c	TEXTSPLIT gives one row
+TEXTJOIN("|",FALSE,TEXTSPLIT("a,b;c,d",",",";"))	s:a|b|c|d	with a row delimiter it gives a block
+TEXTJOIN("|",FALSE,TEXTSPLIT("a,,b",","))	s:a||b	empty fields are kept by default
+COUNTA(TEXTSPLIT("a,,b",",",,TRUE))	n:2	ignore_empty drops them
+TEXTJOIN("|",FALSE,TEXTSPLIT("a1b2c",{"1","2"}))	s:a|b|c	an array of delimiters
+COLUMNS(TEXTSPLIT("a,b,c",","))	n:3	the result is 1x3
+TEXTSPLIT("a,b,c",",")	s:a	an array reaching a scalar context collapses to its top-left
+
+# --- Dynamic arrays (§ oracle: LibreOffice under the stored _xlfn./_xlfn._xlws. spellings)
+SUM(SEQUENCE(5))	n:15	SEQUENCE counts from 1 by 1
+SUM(SEQUENCE(2,3))	n:21	rows then columns, filled row-major
+SUM(SEQUENCE(3,3))	n:45	a square
+TEXTJOIN("|",FALSE,SEQUENCE(1,4,10,5))	s:10|15|20|25	an explicit start and step
+TEXTJOIN("|",FALSE,SEQUENCE(3,1,10,-2))	s:10|8|6	a negative step
+SEQUENCE(0)	e:#CALC!	an empty result is #CALC!
+COUNT(FILTER(Data!A1:A6,Data!A1:A6>20))	n:4	FILTER over a comparison that broadcasts
+SUM(FILTER(Data!A1:A6,Data!A1:A6>20))	n:180	and the values that survive it
+TEXTJOIN("|",FALSE,FILTER({1;2;3},{FALSE;FALSE;FALSE},"none"))	s:none	if_empty is returned when nothing matches
+FILTER({1;2;3},{FALSE;FALSE;FALSE})	e:#CALC!	and #CALC! when there is no if_empty
+TEXTJOIN("|",FALSE,FILTER({1,10;2,20;3,30},{TRUE;FALSE;TRUE}))	s:1|10|3|30	a column mask keeps whole rows
+FILTER({1;2;3},{TRUE,FALSE})	e:#VALUE!	a mask of the wrong shape is #VALUE!
+TEXTJOIN("|",FALSE,SORT(Data!B1:B6))	s:alpha|alpha|beta|beta|gamma|gamma	SORT ascending
+TEXTJOIN("|",FALSE,SORT({3;1;2},1,-1))	s:3|2|1	order -1 is descending
+TEXTJOIN("|",FALSE,SORT({"b";"a";"C"}))	s:a|b|C	text sorts without regard to case
+TEXTJOIN("|",FALSE,SORT({1,"b";3,"a"},2))	s:3|a|1|b	sort_index picks the column
+TEXTJOIN("|",FALSE,SORTBY(Data!B1:B3,Data!A1:A3,-1))	s:gamma|beta|alpha	SORTBY orders by a parallel array
+TEXTJOIN("|",FALSE,UNIQUE(Data!B1:B6))	s:alpha|beta|gamma	UNIQUE keeps first appearance order
+COUNTA(UNIQUE(Data!B1:B6))	n:3	three distinct labels
+TEXTJOIN("|",FALSE,UNIQUE({1;2;1;3},FALSE,TRUE))	s:2|3	exactly_once drops anything repeated
+ROWS(RANDARRAY(3,2))	n:3	RANDARRAY's shape is what it claims
+COLUMNS(RANDARRAY(3,2))	n:2	both axes
+COUNTIF(RANDARRAY(4,1),"<1")	n:4	and every value is below the default maximum
+COLUMNS(HSTACK(Data!A1:A3,Data!C1:C3))	n:2	HSTACK widens
+COLUMNS(HSTACK({1;2},{3,4;5,6}))	n:3	widths add rather than aligning
+ROWS(VSTACK(Data!A1:A3,Data!C1:C3))	n:6	VSTACK lengthens
+TEXTJOIN("|",FALSE,VSTACK({1,2},{3,4}))	s:1|2|3|4	stacked row-major
+TEXTJOIN("|",FALSE,TRANSPOSE(Data!A1:A3))	s:10|20|30	TRANSPOSE turns a column into a row
+ROWS(TRANSPOSE(Data!A1:A3))	n:1	and the shape says so
+TEXTJOIN("|",FALSE,TOROW(Data!A1:C2))	s:10|alpha|1.5|20|beta|2.5	TOROW scans by row by default
+TEXTJOIN("|",FALSE,TOROW({1,2;3,4},0,TRUE))	s:1|3|2|4	scan_by_column changes the order
+TEXTJOIN("|",FALSE,TOCOL({1,2;3,4}))	s:1|2|3|4	TOCOL, same scan
+TEXTJOIN("|",FALSE,TAKE(Data!A1:A6,2))	s:10|20	TAKE from the top
+TEXTJOIN("|",FALSE,TAKE({1,2;3,4},-1))	s:3|4	a negative count takes from the bottom
+TEXTJOIN("|",FALSE,DROP(Data!A1:A6,4))	s:50|60	DROP from the top
+TEXTJOIN("|",FALSE,DROP({1,2;3,4},0,1))	s:2|4	dropping a column
+DROP(Data!A1:A6,9)	e:#CALC!	dropping everything is #CALC!
+TEXTJOIN("|",FALSE,CHOOSECOLS(Data!A1:C2,3,1))	s:1.5|10|2.5|20	CHOOSECOLS reorders
+TEXTJOIN("|",FALSE,CHOOSEROWS(Data!A1:A6,-1,1))	s:60|10	negative indices count from the end
+TEXTJOIN("|",FALSE,CHOOSEROWS({1,2;3,4;5,6},2,-1))	s:3|4|5|6	rows come back whole
+CHOOSECOLS(Data!A1:C2,9)	e:#VALUE!	an index past the end is #VALUE!
+TEXTJOIN("|",FALSE,EXPAND(Data!A1:A2,3,1,0))	s:10|20|0	EXPAND pads
+TEXTJOIN("|",FALSE,EXPAND({1,2},2,3,0))	s:1|2|0|0|0|0	on both axes
+EXPAND({1,2},1,1)	e:#VALUE!	EXPAND cannot shrink
+TEXTJOIN("|",FALSE,WRAPROWS(SEQUENCE(1,6),3))	s:1|2|3|4|5|6	WRAPROWS fills rows
+TEXTJOIN("|",FALSE,WRAPCOLS({1;2;3;4;5},2,"x"))	s:1|3|5|2|4|x	WRAPCOLS fills columns and pads the tail
+SEQUENCE(2000,2000)	e:#NUM!	a result larger than a column is #NUM!, not an allocation
+
+# --- Broadcasting: an operator over a range is an array, which is Excel 365 and not
+# --- LibreOffice's non-array reading of the same formula. Excel wins (WAVE-2-ADDENDUM §15).
+SUM(Data!A1:A6*2)	n:420	multiplying a range broadcasts
+SUM({1;2;3}*{10,20})	n:180	3x1 against 1x2 gives 3x2
+SUM({1,2,3}+{10;20})	n:102	and the other way round
+COUNTIF(Data!A1:A6>20,TRUE)	n:4	a comparison over a range is a block of booleans
+SUM(-{1,2,3})	n:-6	unary minus broadcasts too
+SUM({100,200}%)	n:3	so does postfix percent
+COUNT({1,0}/{1,0})	n:1	an error lands in its own element rather than poisoning the array
+ISERROR(INDEX({1,0}/{1,0},1,2))	b:TRUE	and it really is an error there
+INDEX({1,0}/{1,0},1,1)	n:1	while its neighbour computed fine
+TEXTJOIN("|",FALSE,{1,0}/{1,0})	e:#DIV/0!	TEXTJOIN itself still propagates the first error it is handed
+
+# --- LET and LAMBDA
+LET(x,SUM(Data!A1:A6),x*2)	n:420	LET binds a name to a value
+LET(x,1,y,x+1,x*y)	n:2	later bindings see earlier ones
+LET(Total,7,Total)	n:7	a LET name shadows a workbook-defined name
+LET(x,1,2)	n:2	a bound name nobody reads is still legal
+LET(A1,1,A1)	e:#NAME?	a name that looks like a reference is refused, as in Excel
+LAMBDA(a,a*2)(21)	n:42	an immediately-invoked LAMBDA
+LAMBDA(a,b,a&b)("x","y")	s:xy	two parameters
+LET(f,LAMBDA(a,a*3),f(4))	n:12	a LET-bound LAMBDA called by name
+LET(n,3,SUM(MAP(Data!A1:A3,LAMBDA(x,x*n))))	n:180	a LAMBDA closes over the LET around it
+LAMBDA(x,x)	e:#CALC!	a LAMBDA that is never applied is #CALC! (Excel; LibreOffice says #NAME?)
+SUM(BYROW(Data!A1:C2,LAMBDA(r,SUM(r))))	n:34	BYROW collapses each row
+TEXTJOIN("|",FALSE,BYROW(Data!A10:C11,LAMBDA(r,COUNTA(r))))	s:3|3	one result per row
+TEXTJOIN("|",FALSE,BYCOL(Data!A10:C11,LAMBDA(c,COUNT(c))))	s:1|1|1	one result per column
+SUM(MAP(Data!A1:A3,LAMBDA(v,v*2)))	n:120	MAP is elementwise
+SUM(MAP({1,2},{10,20},LAMBDA(a,b,a*b)))	n:50	MAP over two arrays pairs them positionally
+MAP({1,2},{10,20,30},LAMBDA(a,b,a))	e:#VALUE!	mismatched shapes are #VALUE!, not a broadcast
+REDUCE(0,Data!A1:A3,LAMBDA(acc,v,acc+v))	n:60	REDUCE folds
+REDUCE(1,{1,2,3,4},LAMBDA(a,b,a*b))	n:24	a running product
+TEXTJOIN("|",FALSE,SCAN(0,Data!A1:A3,LAMBDA(acc,v,acc+v)))	s:10|30|60	SCAN keeps every step
+SUM(SCAN(1,{1,2,3},LAMBDA(a,b,a*b)))	n:9	1, then 2, then 6
+SUM(MAKEARRAY(2,3,LAMBDA(r,c,r*c)))	n:18	MAKEARRAY is indexed from 1
+ROWS(MAKEARRAY(4,2,LAMBDA(r,c,0)))	n:4	and its shape is what it was asked for

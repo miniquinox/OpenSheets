@@ -78,6 +78,9 @@ public indirect enum FormulaExpression: Hashable, Sendable {
     case name(NameReference)
     /// `SUM(...)`.
     case call(FunctionCall)
+    /// Applying something that is not a named function: `LAMBDA(a,a*2)(21)`, or a `LET`-bound
+    /// name used as a function. The callee is whatever produced a ``LambdaValue``.
+    case invoke(FormulaExpression, [FormulaExpression])
     /// Prefix `-` or `+`.
     case unary(FormulaOperator, FormulaExpression)
     /// Postfix `%`.
@@ -109,6 +112,7 @@ extension FormulaExpression {
     public var children: [FormulaExpression] {
         switch self {
         case let .call(call): call.arguments
+        case let .invoke(callee, arguments): [callee] + arguments
         case let .unary(_, operand): [operand]
         case let .percent(operand): [operand]
         case let .binary(_, lhs, rhs): [lhs, rhs]
@@ -130,6 +134,9 @@ extension FormulaExpression {
         case var .call(call):
             call.arguments = replacements
             return .call(call)
+        case .invoke:
+            guard let callee = replacements.first else { return self }
+            return .invoke(callee, Array(replacements.dropFirst()))
         case let .unary(symbol, _):
             return .unary(symbol, replacements.first ?? .missing)
         case .percent:

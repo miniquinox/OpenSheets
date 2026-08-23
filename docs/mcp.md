@@ -64,6 +64,13 @@ Grants are made **in the OpenSheets app**, and only there:
 
 `opensheets grants` lists what is currently granted.
 
+**Opening a file in the app also grants its folder** (PLAN.md §1.1), which is usually how the
+first grant happens: choose a file in `Open…` and its folder is granted, with a line in the
+document's sidebar saying so. A file the app did not open through one of its own panels — a
+Finder double-click, a drag from another application, a path on the command line — is asked about
+first, once per folder, because "show me this spreadsheet" is not the same request as "and let an
+agent write to everything next to it".
+
 ### Why it works this way
 
 A grant is proof that a human chose a folder in a file picker. The type that carries that proof
@@ -164,6 +171,25 @@ Preview before anything destructive. `delete_rows`, `delete_columns`, `filter` w
 
 `$` anchors are accepted and ignored — a range is a rectangle. `D4:A1` is the same rectangle as
 `A1:D4`.
+
+### Reading a workbook nobody calculated
+
+`.xlsx` stores a formula next to its last computed value, so a file renders correctly with no
+evaluation at all — as long as something evaluated it. openpyxl, pandas and xlsxwriter do not:
+they write `<f>SUM(B2:B14)</f><v>0</v>`, a real formula beside a placeholder. That is the file a
+Claude Code user is most likely to have.
+
+So when a workbook has formulas and **no calculation evidence whatsoever** — no `calcChain.xml`,
+no `<calcPr>` — or asks for `fullCalcOnLoad`, the values are recomputed before they are returned,
+and the result says so. This is the same rule, the same code and the same 50,000-formula ceiling
+the app uses, so the agent and the person are never looking at different numbers for one file.
+Above the ceiling nothing is recomputed and the result says *that* instead, because the totals may
+be the producer's placeholders and there would otherwise be no way to tell.
+
+**It never writes.** The corrected values exist in the reply only; the bytes on disk keep whatever
+the producer put there until somebody calls `recalc`, which is a declared, snapshotted write.
+A workbook that has been through a calculation engine — anything with a `calcPr`, which includes
+every LibreOffice file — is returned exactly as it stands.
 
 ## 6. What `describe` gives you
 
@@ -309,22 +335,47 @@ leaves the original intact rather than a half-written archive.
 
 ## 10. The `opensheets` CLI
 
-The same tools, for a human at a shell. Useful for checking what an agent will see.
+**Every tool in §5 is also a command.** That is a property the tests enforce rather than a claim:
+`CLISurface` is the single table the dispatcher, `--help` and `CLISurfaceTests` all read, so a tool
+with no command is either an explicit exemption with a reason attached or a failing test. The two
+surfaces used to drift — twelve commands against twenty tools, with `recalc` reachable only over
+JSON-RPC — and that is what the table exists to stop.
 
 ```bash
 opensheets describe budget.xlsx
 opensheets get budget.xlsx 'Sheet1!A1:D20'
 opensheets get budget.xlsx 'A:C' --formulas
-opensheets set budget.xlsx B7 42 --preview
 opensheets find budget.xlsx 'Total'
+opensheets filter budget.xlsx Region eq North
+opensheets filter budget.xlsx Units lt 1 --delete --preview
+
+opensheets set budget.xlsx B7 42 --preview
+opensheets format budget.xlsx B2:B20 numberFormat='#,##0.00' bold=true
+opensheets recalc budget.xlsx
+opensheets sort budget.xlsx C:desc B:asc
+
+opensheets insert-rows budget.xlsx 7 3
+opensheets delete-rows budget.xlsx 12
+opensheets insert-cols budget.xlsx D
+opensheets delete-cols budget.xlsx D 2
+opensheets rename-sheet budget.xlsx Sheet1 Summary
+
 opensheets convert budget.xlsx budget.csv
 opensheets diff before.xlsx after.xlsx
 opensheets snapshot budget.xlsx 'before restructuring'
 opensheets snapshots budget.xlsx
 opensheets restore budget.xlsx 01JQ8Z4M7XK2P9V3B1N5C6D7E8
+
+opensheets selection budget.xlsx      # what the app has selected, if it is open
+opensheets reveal budget.xlsx C4:C20  # ask the app to scroll there
 opensheets grants
 opensheets tools
 ```
+
+`format` takes the `set_format` tool's arguments as `key=value` pairs, because there are sixteen of
+them and sixteen flags would be worse. `add-sheet` and `delete-sheet` exist and refuse, exactly as
+the tools do (§8) — a command that is missing and a command that explains why it cannot help are
+not the same thing.
 
 `--json` on any of them for machine-readable output. Exit codes: **0** ok, **1** failed,
 **2** bad usage, **3** the path is not inside a granted folder — so a wrapper script can tell a

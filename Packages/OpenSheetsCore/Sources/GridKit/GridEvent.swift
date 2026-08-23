@@ -64,6 +64,7 @@ public enum GridEvent: Sendable {
     /// A cell was double-clicked somewhere that does not start an edit — a merged cell's body,
     /// for instance. Lets the shell decide.
     case doubleClicked(ref: CellRef)
+
 }
 
 /// A closure the grid calls with events. `@MainActor` because everything in AppKit is.

@@ -183,7 +183,8 @@ struct UnsupportedFormulaTests {
     @Test func aKnownExcelFunctionWeDoNotImplementIsUnsupportedRatherThanWrong() {
         let engine = FormulaEngine(options: TestWorkbook.options)
         let workbook = TestWorkbook.make()
-        for source in ["LAMBDA(x,x)", "LET(x,1,x)", "FILTER(Data!A1:A6,TRUE())", "PMT(1,2,3)", "XIRR(1,2)"] {
+        for source in ["GROUPBY(Data!A1:A6,Data!C1:C6,SUM)", "MMULT(Data!A1:A6,Data!A1:A6)",
+                       "DSUM(Data!A1:C6,1,Data!A1:A2)", "RATE(10,-100,1000)", "XIRR(1,2)"] {
             guard case .keepCached = engine.evaluate(source, at: TestWorkbook.origin, in: workbook) else {
                 Issue.record("\(source) should be unsupported, not evaluated")
                 continue
@@ -200,24 +201,28 @@ struct UnsupportedFormulaTests {
     @Test func theUnsupportedReasonNamesTheFunction() {
         let engine = FormulaEngine(options: TestWorkbook.options)
         guard case let .keepCached(reason) = engine.evaluate(
-            "SUM(1,LAMBDA(x,x))", at: TestWorkbook.origin, in: TestWorkbook.make()
+            "SUM(1,MMULT(Data!A1:A6,Data!A1:A6))", at: TestWorkbook.origin, in: TestWorkbook.make()
         ) else {
             Issue.record("expected an unsupported outcome")
             return
         }
-        #expect(reason == .function("LAMBDA"))
-        #expect(reason.message.contains("LAMBDA"))
+        #expect(reason == .function("MMULT"))
+        #expect(reason.message.contains("MMULT"))
     }
 
     @Test func anUnsupportedFormulaSurvivesAParseAndWriteRoundTrip() throws {
-        for source in ["LAMBDA(x,x+1)", "Table1[#Data]", "FILTER(A1:A9,B1:B9>0)", "LET(x,1,x*2)"] {
+        for source in ["MMULT(A1:A9,B1:B9)", "Table1[#Data]", "GROUPBY(A1:A9,B1:B9,SUM)", "RATE(1,2,3)"] {
             let expression = try FormulaSyntax.parse(source)
             #expect(FormulaSyntax.write(expression) == source)
         }
     }
 
     @Test func unsupportedFunctionsThatNeedThePrefixKeepItOnTheWayBackOut() throws {
-        #expect(try FormulaSyntax.toStorage("FILTER(A1:A9,B1:B9>0)") == "_xlfn.FILTER(A1:A9,B1:B9>0)")
+        // `_xlws.` on top of `_xlfn.` is how Excel spells the two worksheet-scoped ones.
+        #expect(try FormulaSyntax.toStorage("FILTER(A1:A9,B1:B9>0)") == "_xlfn._xlws.FILTER(A1:A9,B1:B9>0)")
+        #expect(try FormulaSyntax.toStorage("SORT(A1:A9)") == "_xlfn._xlws.SORT(A1:A9)")
+        #expect(try FormulaSyntax.toStorage("UNIQUE(A1:A9)") == "_xlfn.UNIQUE(A1:A9)")
+        #expect(try FormulaSyntax.toDisplay("_xlfn._xlws.FILTER(A1:A9,B1:B9>0)") == "FILTER(A1:A9,B1:B9>0)")
         #expect(try FormulaSyntax.toStorage("LAMBDA(x,x)") == "_xlfn.LAMBDA(x,x)")
     }
 }

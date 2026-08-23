@@ -271,10 +271,34 @@ An `.xlsx` is a ZIP of XML parts. We model maybe 30% of them. So:
 byte-identical after `read → write`, and `parse(write(parse(f)))` must equal `parse(f)` over the
 modelled subset.
 
-### 5.3 Formulas: display-first, evaluate-on-demand
-xlsx stores `<f>SUM(A1:A9)</f><v>42</v>` — the formula *and* its last computed value. So v0.1
-renders a completely correct workbook with **zero evaluation**. We only need the engine when the
-user (or Claude) edits something.
+### 5.3 Formulas: the engine is load-bearing — CORRECTED 2026-08-23
+
+> **This section originally said the opposite, and it was wrong for the workflow this product is
+> actually for.** It read: *"xlsx stores the formula and its last computed value, so v0.1 renders a
+> completely correct workbook with zero evaluation."* That is true of files **Excel** wrote. It is
+> false of files **Claude Code** writes — openpyxl, xlsxwriter and pandas all emit
+> `<f>SUM(A1:A9)</f><v/>` with no cached value at all.
+>
+> In the real loop the cache is empty and **the formula engine performs 100% of the rendering.**
+> Measured on 50 formulas a model would plausibly write, saved openpyxl-style: 36 rendered, 14 came
+> back blank. The engine is not a nicety behind a flag; it is the product.
+>
+> Two consequences that follow from this and are now requirements, not options:
+> 1. **Recalculate on open** when the file gives reason to distrust its cache — `fullCalcOnLoad`
+>    set, or formulas present with neither `calcChain` nor `calcPr`. Requiring *both* to be absent
+>    matters: LibreOffice writes `calcPr` with genuinely correct values, and a looser rule would
+>    overwrite them with ours.
+> 2. **An uncomputable formula must render as visibly uncomputed**, never as an empty cell. A blank
+>    is indistinguishable from a genuinely empty cell, so the user has no reason to suspect anything
+>    is missing — the worst available failure for a rendering platform. `#NAME?` is the precedent.
+>
+> Dynamic arrays and spill ranges were excluded here as out of scope. They are back in scope for
+> the same reason: `FILTER`, `SORT`, `UNIQUE`, `SEQUENCE`, `LET` and `LAMBDA` are exactly what a
+> model writes for modern Excel.
+
+xlsx stores `<f>SUM(A1:A9)</f><v>42</v>` — the formula *and* its last computed value — so where a
+cached value **is** present and trustworthy we still render it without evaluating, and only
+recalculate what changes.
 
 - Recalc is incremental over a dependency graph (cell → dependents), topologically ordered, with
   cycle detection → `#CIRCULAR` rather than a hang.
@@ -288,8 +312,9 @@ user (or Claude) edits something.
   SPLIT-likes), date (TODAY, NOW, DATE, YEAR/MONTH/DAY, EDATE, EOMONTH, DATEDIF, WEEKDAY,
   NETWORKDAYS), stats (MEDIAN, STDEV.P/S, VAR, PERCENTILE, QUARTILE, RANK, CORREL),
   conditional aggregates (SUMIF/S, COUNTIF/S, AVERAGEIF/S, MAXIFS, MINIFS).
-- Excluded on purpose: dynamic-array spilling, LAMBDA, LET, financial suite, database functions.
-  They parse and mark `.unsupportedFormula` rather than erroring.
+- **No longer excluded** (see the correction above): dynamic-array spilling, `LAMBDA`, `LET`, and
+  the common financial functions. Still excluded: database functions, cube functions, and the
+  locale-specific East Asian formats.
 
 ### 5.4 CSV / TSV
 Dialect sniffing (delimiter, quote char, line ending), encoding detection (BOM → UTF-8 →

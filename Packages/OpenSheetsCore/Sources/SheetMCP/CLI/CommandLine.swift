@@ -52,6 +52,11 @@ public struct ConsoleWriter: Sendable {
 /// `convert` and `diff` are the exceptions — they are file-level operations with no tool
 /// equivalent, because an agent asking for a whole-file conversion is an agent that should be
 /// asking for a range.
+///
+/// The two surfaces used to be able to drift apart quietly, and did: twelve commands against
+/// twenty tools, with `recalc` reachable only over JSON-RPC. ``CLISurface`` is the single table
+/// both `--help` and the tests read, so a tool with no command is now either an entry in
+/// ``CLISurface/toolsWithoutACommand`` with a reason, or a failing test.
 public enum OpenSheetsCLI {
     /// Runs one invocation. `arguments` excludes the executable name.
     public static func run(
@@ -70,6 +75,10 @@ public enum OpenSheetsCLI {
             case "--preview", "--dry-run": options.preview = true
             case "--formulas": options.formulas = true
             case "--detailed": options.format = "detailed"
+            case "--delete": options.delete = true
+            case "--no-header": options.hasHeader = false
+            case "--header": options.hasHeader = true
+            case "--allow-formulas": options.allowFormulas = true
             case "--sheet":
                 guard index < arguments.count else {
                     console.err("--sheet needs a value")
@@ -130,6 +139,10 @@ public enum OpenSheetsCLI {
 
     // MARK: - Subcommands
 
+    /// Routes one command.
+    ///
+    /// Split by area rather than kept as one switch because the surface is now the whole tool
+    /// list: five smaller routers each stay readable, and `nil` from one simply means "not mine".
     private static func dispatch(
         _ command: String,
         _ arguments: [String],
@@ -138,6 +151,25 @@ public enum OpenSheetsCLI {
         context: ToolContext,
         store: SheetStore
     ) async throws -> Int32 {
+        let routers = [readCommands, writeCommands, structureCommands, snapshotCommands, fileCommands]
+        for route in routers {
+            if let code = try await route(command, arguments, options, console, context, store) {
+                return code
+            }
+        }
+        console.err("unknown command '\(command)'. Try `opensheets help`.")
+        return ExitCode.usage
+    }
+
+    /// `describe`, `get`, `find`, `filter` — the tools that only look.
+    private static func readCommands(
+        _ command: String,
+        _ arguments: [String],
+        options: Options,
+        console: ConsoleWriter,
+        context: ToolContext,
+        store: SheetStore
+    ) async throws -> Int32? {
         switch command {
         case "describe":
             guard let path = arguments.first else { return missing("describe <file>", console) }
@@ -158,6 +190,51 @@ public enum OpenSheetsCLI {
             if let limit = options.limit { payload["maxRows"] = .integer(limit) }
             return await invoke("read_range", arguments: payload, console: console, options: options, context: context)
 
+        case "find":
+            guard arguments.count >= 2 else { return missing("find <file> <query>", console) }
+            var payload: [String: JSONValue] = [
+                "path": .string(arguments[0]),
+                "query": .string(arguments[1]),
+            ]
+            if let sheet = options.sheet { payload["sheet"] = .string(sheet) }
+            if let limit = options.limit { payload["limit"] = .integer(limit) }
+            return await invoke("find", arguments: payload, console: console, options: options, context: context)
+
+        case "filter":
+            guard arguments.count >= 3 else {
+                return missing("filter <file> <column> <op> [value]", console)
+            }
+            var condition: [String: JSONValue] = [
+                "column": .string(arguments[1]),
+                "op": .string(arguments[2]),
+            ]
+            if arguments.count > 3 { condition["value"] = literal(arguments[3]) }
+            var payload: [String: JSONValue] = [
+                "path": .string(arguments[0]),
+                "where": .array([.object(condition)]),
+                // `--delete` rather than a positional verb: the destructive reading of this
+                // command has to be something you typed on purpose, not something you reached
+                // by getting an argument in the wrong order.
+                "action": .string(options.delete ? "delete_rows" : "list"),
+                "preview": .bool(options.preview),
+            ]
+            if let limit = options.limit { payload["limit"] = .integer(limit) }
+            payload.merge(options.sheetArgument) { _, new in new }
+            return await invoke("filter", arguments: payload, console: console, options: options, context: context)
+        default: return nil
+        }
+    }
+
+    /// `set`, `format`, `recalc`, `sort` — the tools that change cells.
+    private static func writeCommands(
+        _ command: String,
+        _ arguments: [String],
+        options: Options,
+        console: ConsoleWriter,
+        context: ToolContext,
+        store: SheetStore
+    ) async throws -> Int32? {
+        switch command {
         case "set":
             guard arguments.count >= 3 else { return missing("set <file> <ref> <value>", console) }
             var payload: [String: JSONValue] = [
@@ -169,16 +246,137 @@ public enum OpenSheetsCLI {
             if let sheet = options.sheet { payload["sheet"] = .string(sheet) }
             return await invoke("write_range", arguments: payload, console: console, options: options, context: context)
 
-        case "find":
-            guard arguments.count >= 2 else { return missing("find <file> <query>", console) }
+        case "format":
+            guard arguments.count >= 3 else {
+                return missing("format <file> <range> <key=value>… (e.g. bold=true numberFormat='#,##0.00')", console)
+            }
             var payload: [String: JSONValue] = [
                 "path": .string(arguments[0]),
-                "query": .string(arguments[1]),
+                "range": .string(arguments[1]),
+                "preview": .bool(options.preview),
             ]
-            if let sheet = options.sheet { payload["sheet"] = .string(sheet) }
-            if let limit = options.limit { payload["limit"] = .integer(limit) }
-            return await invoke("find", arguments: payload, console: console, options: options, context: context)
+            for pair in arguments.dropFirst(2) {
+                guard let separator = pair.firstIndex(of: "=") else {
+                    console.err("`\(pair)` is not key=value. Run `opensheets tools` for the keys set_format takes.")
+                    return ExitCode.usage
+                }
+                payload[String(pair[pair.startIndex ..< separator])] = literal(String(pair[pair.index(after: separator)...]))
+            }
+            payload.merge(options.sheetArgument) { _, new in new }
+            return await invoke("set_format", arguments: payload, console: console, options: options, context: context)
 
+        case "recalc":
+            guard let path = arguments.first else { return missing("recalc <file>", console) }
+            return await invoke(
+                "recalc", arguments: ["path": .string(path), "preview": .bool(options.preview)],
+                console: console, options: options, context: context
+            )
+
+        case "sort":
+            guard arguments.count >= 2 else { return missing("sort <file> <column>[:desc] …", console) }
+            var keys: [JSONValue] = []
+            for key in arguments.dropFirst() {
+                let parts = key.split(separator: ":", maxSplits: 1)
+                let order = parts.count > 1 ? String(parts[1]) : "asc"
+                guard order == "asc" || order == "desc" else {
+                    console.err("sort key `\(key)`: the order after `:` must be asc or desc")
+                    return ExitCode.usage
+                }
+                keys.append(.object(["column": .string(String(parts[0])), "order": .string(order)]))
+            }
+            var payload: [String: JSONValue] = [
+                "path": .string(arguments[0]),
+                "by": .array(keys),
+                "allowFormulas": .bool(options.allowFormulas),
+                "preview": .bool(options.preview),
+            ]
+            if let hasHeader = options.hasHeader { payload["hasHeader"] = .bool(hasHeader) }
+            payload.merge(options.sheetArgument) { _, new in new }
+            return await invoke("sort", arguments: payload, console: console, options: options, context: context)
+        default: return nil
+        }
+    }
+
+    /// Rows, columns and sheets.
+    private static func structureCommands(
+        _ command: String,
+        _ arguments: [String],
+        options: Options,
+        console: ConsoleWriter,
+        context: ToolContext,
+        store: SheetStore
+    ) async throws -> Int32? {
+        switch command {
+        case "insert-rows", "delete-rows":
+            let tool = command == "insert-rows" ? "insert_rows" : "delete_rows"
+            guard arguments.count >= 2, let at = Int(arguments[1]) else {
+                return missing("\(command) <file> <at> [count]", console)
+            }
+            var payload: [String: JSONValue] = [
+                "path": .string(arguments[0]),
+                "at": .integer(at),
+                "count": .integer(arguments.count > 2 ? Int(arguments[2]) ?? 1 : 1),
+                "preview": .bool(options.preview),
+            ]
+            payload.merge(options.sheetArgument) { _, new in new }
+            return await invoke(tool, arguments: payload, console: console, options: options, context: context)
+
+        case "insert-cols", "delete-cols":
+            let tool = command == "insert-cols" ? "insert_columns" : "delete_columns"
+            guard arguments.count >= 2 else { return missing("\(command) <file> <column> [count]", console) }
+            var payload: [String: JSONValue] = [
+                "path": .string(arguments[0]),
+                "count": .integer(arguments.count > 2 ? Int(arguments[2]) ?? 1 : 1),
+                "preview": .bool(options.preview),
+            ]
+            // A letter is what a person has in front of them; a number is what the tool wants.
+            // Both are accepted, and the tool refuses anything that is neither.
+            if let number = Int(arguments[1]) {
+                payload["at"] = .integer(number)
+            } else {
+                payload["column"] = .string(arguments[1])
+            }
+            payload.merge(options.sheetArgument) { _, new in new }
+            return await invoke(tool, arguments: payload, console: console, options: options, context: context)
+
+        case "add-sheet":
+            guard arguments.count >= 2 else { return missing("add-sheet <file> <name>", console) }
+            return await invoke("add_sheet", arguments: [
+                "path": .string(arguments[0]),
+                "name": .string(arguments[1]),
+                "preview": .bool(options.preview),
+            ], console: console, options: options, context: context)
+
+        case "rename-sheet":
+            guard arguments.count >= 3 else { return missing("rename-sheet <file> <old> <new>", console) }
+            return await invoke("rename_sheet", arguments: [
+                "path": .string(arguments[0]),
+                "sheet": .string(arguments[1]),
+                "name": .string(arguments[2]),
+                "preview": .bool(options.preview),
+            ], console: console, options: options, context: context)
+
+        case "delete-sheet":
+            guard arguments.count >= 2 else { return missing("delete-sheet <file> <name>", console) }
+            return await invoke("delete_sheet", arguments: [
+                "path": .string(arguments[0]),
+                "sheet": .string(arguments[1]),
+                "preview": .bool(options.preview),
+            ], console: console, options: options, context: context)
+        default: return nil
+        }
+    }
+
+    /// Restore points, and the two tools that talk to the running app.
+    private static func snapshotCommands(
+        _ command: String,
+        _ arguments: [String],
+        options: Options,
+        console: ConsoleWriter,
+        context: ToolContext,
+        store: SheetStore
+    ) async throws -> Int32? {
+        switch command {
         case "snapshots":
             guard let path = arguments.first else { return missing("snapshots <file>", console) }
             return await invoke(
@@ -198,6 +396,35 @@ public enum OpenSheetsCLI {
             if arguments.count > 1 { payload["label"] = .string(arguments[1]) }
             return await invoke("snapshot", arguments: payload, console: console, options: options, context: context)
 
+        case "selection":
+            guard let path = arguments.first else { return missing("selection <file>", console) }
+            return await invoke(
+                "get_selection", arguments: ["path": .string(path)],
+                console: console, options: options, context: context
+            )
+
+        case "reveal":
+            guard arguments.count >= 2 else { return missing("reveal <file> <range>", console) }
+            var payload: [String: JSONValue] = [
+                "path": .string(arguments[0]),
+                "range": .string(arguments[1]),
+            ]
+            payload.merge(options.sheetArgument) { _, new in new }
+            return await invoke("reveal_range", arguments: payload, console: console, options: options, context: context)
+        default: return nil
+        }
+    }
+
+    /// Whole-file operations and the grant boundary.
+    private static func fileCommands(
+        _ command: String,
+        _ arguments: [String],
+        options: Options,
+        console: ConsoleWriter,
+        context: ToolContext,
+        store: SheetStore
+    ) async throws -> Int32? {
+        switch command {
         case "convert":
             guard arguments.count >= 2 else { return missing("convert <in> <out>", console) }
             return try await convert(arguments[0], arguments[1], options: options, console: console, context: context)
@@ -212,10 +439,7 @@ public enum OpenSheetsCLI {
         case "grant":
             console.err(grantRefusal)
             return ExitCode.denied
-
-        default:
-            console.err("unknown command '\(command)'. Try `opensheets help`.")
-            return ExitCode.usage
+        default: return nil
         }
     }
 
@@ -398,6 +622,16 @@ public enum OpenSheetsCLI {
         var format = "compact"
         var sheet: String?
         var limit: Int?
+        /// `filter --delete`: run the destructive action instead of listing.
+        var delete = false
+        /// `sort`: `nil` means "whatever `describe` would guess", which is the tool's default.
+        var hasHeader: Bool?
+        var allowFormulas = false
+
+        /// The `sheet` argument every tool takes, when one was given.
+        var sheetArgument: [String: JSONValue] {
+            sheet.map { ["sheet": JSONValue.string($0)] } ?? [:]
+        }
     }
 
     /// Turns a command-line word into a cell value. Numbers stay numbers.
@@ -446,40 +680,37 @@ public enum OpenSheetsCLI {
     shelling out to this binary.
     """
 
-    static let usage = """
-    opensheets \(MCPServer.serverVersion) — structural spreadsheet editing
+    /// Generated from ``CLISurface/commands`` so `--help` cannot list a command the dispatcher
+    /// does not have, or miss one it does. See ``CLISurface``.
+    static var usage: String {
+        """
+        opensheets \(MCPServer.serverVersion) — structural spreadsheet editing
 
-    USAGE
-      opensheets <command> [options]
+        USAGE
+          opensheets <command> [options]
 
-    COMMANDS
-      describe <file>                Summarise every sheet: used range, header row, column types
-      get <file> [range]             Read cells (default: the used range)
-      set <file> <ref> <value>       Write one cell
-      find <file> <query>            Search values, report cell references
-      convert <in> <out>             Rewrite as .xlsx / .csv / .tsv
-      diff <a> <b>                   Compare two workbooks
-      snapshot <file> [label]        Take a restore point
-      snapshots <file>               List restore points
-      restore <file> [id]            Put one back (default: the newest)
-      grants                         Show which folders this machine has granted
-      tools                          Show the MCP tool surface
-      serve                          Run as an MCP server on stdin/stdout
+        COMMANDS
+        \(CLISurface.usageBlock)
 
-    OPTIONS
-      --sheet <name>    Act on one sheet
-      --range           (positional, e.g. 'Sheet1!A1:D20' or 'A:C')
-      --detailed        `get`: one JSON object per cell instead of TSV
-      --formulas        `get`: show formulas instead of values
-      --limit <n>       Cap rows or matches
-      --preview         Report what would change without writing
-      --json            Machine-readable output
-      --version, --help
+        OPTIONS
+          --sheet <name>    Act on one sheet
+          --range           (positional, e.g. 'Sheet1!A1:D20' or 'A:C')
+          --detailed        `get`: one JSON object per cell instead of TSV
+          --formulas        `get`: show formulas instead of values
+          --limit <n>       Cap rows or matches
+          --delete          `filter`: delete the matching rows instead of listing them
+          --header / --no-header
+                            `sort`: whether the first row is a header (default: guess)
+          --allow-formulas  `sort`: sort a range that holds formulas, translating them
+          --preview         Report what would change without writing
+          --json            Machine-readable output
+          --version, --help
 
-    EXIT CODES
-      0 ok · 1 failed · 2 bad usage · 3 path not inside a granted folder
+        EXIT CODES
+          0 ok · 1 failed · 2 bad usage · 3 path not inside a granted folder
 
-    MCP SETUP
-      claude mcp add opensheets -- /usr/local/bin/opensheets-mcp
-    """
+        MCP SETUP
+          claude mcp add opensheets -- /usr/local/bin/opensheets-mcp
+        """
+    }
 }

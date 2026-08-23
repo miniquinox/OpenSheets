@@ -95,9 +95,17 @@ let package = Package(
         // A8's document model. The one place that imports every other target at once: it is where
         // the six components are wired together, and it is the only layer allowed to know about
         // more than one of them. The `App/` target on top of this is ~10 files of SwiftUI scene.
+        // `SheetMCP` is here for one type: `OpenRecalculation`, the recalculate-on-open policy
+        // the window and the MCP server must agree on to the cell. It used to live here, which
+        // meant Claude Code read the producer's uncomputed zeroes out of the same file the user
+        // saw real numbers in. `SheetMCP` is the lowest target both front ends can see; the app
+        // already links it through the `OpenSheetsCore` umbrella, so this costs nothing at build
+        // time and removes a whole class of disagreement.
         .target(
             name: "DocumentCore",
-            dependencies: ["SheetModel", "SheetFormat", "SheetFormula", "GridKit", "GlassUI", "SheetStore"],
+            dependencies: [
+                "SheetModel", "SheetFormat", "SheetFormula", "GridKit", "GlassUI", "SheetStore", "SheetMCP",
+            ],
             swiftSettings: strictSettings
         ),
 
@@ -146,7 +154,7 @@ let package = Package(
         .testTarget(name: "SheetMCPTests", dependencies: ["SheetMCP", "TestSupport"], swiftSettings: strictSettings),
         .testTarget(
             name: "DocumentCoreTests",
-            dependencies: ["DocumentCore", "MiniZip", "TestSupport"],
+            dependencies: ["DocumentCore", "MiniZip", "SheetMCP", "TestSupport"],
             swiftSettings: strictSettings
         ),
         .testTarget(name: "TestSupportTests", dependencies: ["TestSupport"], swiftSettings: strictSettings),

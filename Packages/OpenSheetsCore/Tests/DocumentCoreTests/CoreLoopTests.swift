@@ -266,11 +266,12 @@ final class Harness {
         )
     }
 
-    /// `autoRefresh: nil` leaves the flag alone.
+    /// `autoRefresh: nil` takes whatever ``DocumentCore/Flags`` says.
     ///
-    /// It is a `UserDefaults` key, which is **process-wide**: a suite that sets it while another
-    /// suite's document is waiting to go `STALE` turns that test into a flake that reads like a
-    /// watcher bug. Tests that do not care about the watcher pass `nil` and touch nothing.
+    /// It used to be a `UserDefaults` write, which is **process-wide**: a suite that set it while
+    /// another suite's document was waiting to go `STALE` turned that test into a flake that read
+    /// like a watcher bug. It is now set on this harness's own ``DocumentCore/AppModel``, which no
+    /// other suite can see, so the race is gone rather than serialised around.
     init(
         name: String = "budget.xlsx",
         autoRefresh: Bool? = true,
@@ -288,8 +289,13 @@ final class Harness {
         if let sheet = workbook.sheets.first { tracker.noteSheetReplaced(sheet) }
         try XLSXWriter.data(for: workbook, edits: tracker).write(to: url)
 
-        if let autoRefresh { UserDefaults.standard.set(autoRefresh, forKey: "OSFlagAutoRefresh") }
         app = AppModel(store: try store ?? Harness.makeStore())
+        app.autoRefreshForNewDocuments = autoRefresh
+        // Granted up front, so opening the file is not also a first grant. These tests are about
+        // the document loop; the grant flow — who is asked, when, and what the sidebar says about
+        // it afterwards — is `OpenDocumentTests`, and mixing the two would put a workspace notice
+        // in every feed assertion here.
+        try app.store.grantWorkspace(UserGrantAuthorization(userSelectedDirectory: directory))
         model = try await app.openDocument(at: url)
     }
 

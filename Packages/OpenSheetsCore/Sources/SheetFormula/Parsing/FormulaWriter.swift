@@ -109,6 +109,11 @@ public enum FormulaWriter {
             pieces += join(call.arguments.map { Piece.node($0) }, with: String(format.argumentSeparator))
             pieces.append(.text(")"))
             return pieces
+        case let .invoke(callee, arguments):
+            var pieces: [Piece] = [.node(callee), .text("(")]
+            pieces += join(arguments.map { Piece.node($0) }, with: String(format.argumentSeparator))
+            pieces.append(.text(")"))
+            return pieces
         }
     }
 

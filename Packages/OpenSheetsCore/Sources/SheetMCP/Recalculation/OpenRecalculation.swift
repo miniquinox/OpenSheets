@@ -4,6 +4,19 @@ import SheetModel
 
 /// Whether this workbook's cached values can be trusted, and what to do when they cannot.
 ///
+/// # Why this lives in `SheetMCP`
+///
+/// It was written for the app and it belongs to *reading a workbook*, which three front ends do:
+/// the document window, the MCP server, and the `opensheets` command line. When only the app had
+/// it, Claude Code reading the same file through `describe` or `read_range` got the producer's
+/// placeholder zeroes while the user looked at real numbers — the agent and the person disagreeing
+/// about the same file, which is the one thing this product cannot afford.
+///
+/// `SheetMCP` is the lowest target that both front ends can see: it already depends on
+/// `SheetFormula` (which this needs) and on `SheetModel`, and `DocumentCore` can depend on it
+/// without a cycle. `SheetStore` would be the tidier home on paper, but it does not depend on
+/// `SheetFormula` and giving it one to hold a policy enum would be a worse trade.
+///
 /// # The failure this exists to prevent
 ///
 /// PLAN.md §5.3 is right: `.xlsx` stores `<f>SUM(B2:B14)</f><v>42</v>`, so a workbook renders
@@ -69,7 +82,7 @@ public enum OpenRecalculation {
 
     /// The decision, given a formula count the caller already has.
     ///
-    /// Takes the count rather than computing it: ``DocumentModel`` builds a ``FormulaEngine`` on
+    /// Takes the count rather than computing it: ``DocumentCore/DocumentModel`` builds a `FormulaEngine` on
     /// open regardless, and its dependency graph already knows every formula cell — walking a
     /// million cells a second time to count them would be the most expensive part of this.
     public static func decide(formulaCount: Int, meta: WorkbookMeta) -> Decision {
@@ -126,6 +139,69 @@ public enum OpenRecalculation {
                 formulaCount: result.visited.count
             )
         )
+    }
+
+    /// The whole read-side pass, for a caller that has a workbook and nothing else.
+    ///
+    /// **It never writes.** It returns a corrected *copy* for the caller to show; the bytes on
+    /// disk keep the producer's placeholder values until somebody asks for `recalc`, which is a
+    /// separate, declared, snapshotted write. Correcting a read is honesty about what the formulas
+    /// mean; correcting a file is an edit, and an edit nobody asked for is the thing the whole
+    /// sync engine exists to make impossible.
+    ///
+    /// Used by the MCP server and the command line, which — unlike the app — have no formula
+    /// engine lying around and no main thread to stay off.
+    public static func applyForReading(to workbook: Workbook) -> ReadView {
+        let engine = FormulaEngine(workbook: workbook)
+        let decision = decide(formulaCount: engine.graph.formulaCells.count, meta: workbook.meta)
+        switch decision {
+        case .trustCache, .tooLarge:
+            return ReadView(workbook: workbook, decision: decision, outcome: nil)
+        case .recalculate:
+            var corrected = workbook
+            let (result, outcome) = run(engine: engine, on: workbook)
+            result.apply(to: &corrected)
+            return ReadView(workbook: corrected, decision: decision, outcome: outcome)
+        }
+    }
+
+    /// What ``applyForReading(to:)`` produced.
+    public struct ReadView: Sendable {
+        /// The workbook to show. Identical to the input unless a pass ran.
+        public var workbook: Workbook
+        public var decision: Decision
+        /// `nil` unless a pass ran.
+        public var outcome: Outcome?
+
+        public init(workbook: Workbook, decision: Decision, outcome: Outcome?) {
+            self.workbook = workbook
+            self.decision = decision
+            self.outcome = outcome
+        }
+
+        /// The line a tool result carries, or `nil` when there is nothing worth saying.
+        ///
+        /// It says *the file was not changed* every time, because an agent that reads a total of
+        /// 4,182 and then reads the same file with a different tool must not conclude the number
+        /// is on disk. The ceiling case is the one that matters most: the values it is looking at
+        /// may be the producer's placeholders, and this is the only way it can know.
+        public var notice: String? {
+            switch decision {
+            case .trustCache:
+                return nil
+            case let .tooLarge(formulaCount):
+                return ceilingSummary(formulaCount: formulaCount)
+            case .recalculate:
+                guard let outcome, outcome.changedAnything else { return nil }
+                var text = "recalculated \(outcome.correctedCount) "
+                    + (outcome.correctedCount == 1 ? "value" : "values")
+                    + " the file's producer never computed"
+                if outcome.keptCachedCount > 0 {
+                    text += "; \(outcome.keptCachedCount) kept their cached value"
+                }
+                return text + " — shown here only, the file on disk is unchanged (use `recalc` to write them)"
+            }
+        }
     }
 
     /// The line the session feed shows. One sentence, past tense, with the number in it.

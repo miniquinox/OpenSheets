@@ -20,10 +20,22 @@ public struct EditOutcome<Value: Sendable>: Sendable {
 /// An open document, and the facts a tool needs about it.
 public struct LoadedDocument: Sendable {
     public var url: URL
+    /// What to read. Values a producer left uncomputed have been put right *in memory* — see
+    /// ``recalculationNotice`` and ``SheetMCP/OpenRecalculation``.
     public var workbook: Workbook
     /// Where the file stands relative to disk. `stale` means somebody else wrote it since we
     /// read it, and a tool result says so rather than pretending.
     public var state: DocumentSyncState
+    /// Set when ``workbook`` is not literally what the file says, or when it is and should not
+    /// have been. Read tools print it; nothing branches on it.
+    public var recalculationNotice: String?
+
+    public init(url: URL, workbook: Workbook, state: DocumentSyncState, recalculationNotice: String? = nil) {
+        self.url = url
+        self.workbook = workbook
+        self.state = state
+        self.recalculationNotice = recalculationNotice
+    }
 }
 
 /// Everything the tools do to a file, in one place.
@@ -94,6 +106,11 @@ public actor DocumentBroker {
     private let differ = WorkbookDiffer()
     private let log: MCPLog
     private var documents: [String: OpenDocument] = [:]
+    /// One recalculated read view per open document, so a session of `describe`, `find` and three
+    /// `read_range` calls pays for the pass once rather than five times. Dropped whenever the
+    /// session's workbook moves — which is only ever ``edit(path:preview:tool:_:)``,
+    /// ``refresh(path:)`` and ``restore(path:id:)``.
+    private var readViews: [String: OpenRecalculation.ReadView] = [:]
     private var failures = FailureBox()
 
     public init(
@@ -143,11 +160,35 @@ public actor DocumentBroker {
 
     // MARK: - Reading
 
-    /// Opens `path` (or reuses an open session) and returns its workbook.
+    /// Opens `path` (or reuses an open session) and returns its workbook **as it should be read**.
+    ///
+    /// # Why this is not just `session.workbook`
+    ///
+    /// A workbook whose producer never calculated it — openpyxl, pandas, xlsxwriter, which is to
+    /// say most files a Claude Code user has — stores real formulas next to placeholder zeroes.
+    /// The app recalculates those on open so the user sees real numbers; if the server did not,
+    /// `describe` and `read_range` would hand the agent the zeroes, and the agent and the person
+    /// would disagree about the same file. See ``OpenRecalculation``, which is the *same*
+    /// heuristic and the same 50,000-formula ceiling, shared rather than reimplemented.
+    ///
+    /// **Reading never writes.** The corrected workbook lives here; the file on disk keeps the
+    /// producer's values until somebody calls `recalc`. ``edit(path:preview:tool:_:)`` deliberately
+    /// starts from the session's untouched workbook for the same reason: an edit must not smuggle
+    /// a whole-workbook recalculation into its diff.
     public func document(at path: String) async throws(SheetError) -> LoadedDocument {
         let url = try resolve(path)
         let session = try await session(for: url)
-        return LoadedDocument(url: url, workbook: await session.workbook, state: await session.state)
+        let key = DocumentBroker.key(url)
+        let raw = await session.workbook
+
+        if let cached = readViews[key] {
+            return LoadedDocument(url: url, workbook: cached.workbook, state: await session.state, recalculationNotice: cached.notice)
+        }
+        let view = OpenRecalculation.applyForReading(to: raw)
+        readViews[key] = view
+        return LoadedDocument(
+            url: url, workbook: view.workbook, state: await session.state, recalculationNotice: view.notice
+        )
     }
 
     /// Re-reads the file from disk, discarding nothing that was not already saved.
@@ -164,6 +205,9 @@ public actor DocumentBroker {
         // cache hit rather than the blocking bridge. See `CachingWorkbookReader`.
         _ = try await primeFromDisk(url)
         await session.refresh()
+        // A refresh is a re-open: whatever wrote the file is exactly the kind of tool that writes
+        // formulas without computing them, so the read view has to be rebuilt, not reused.
+        readViews[DocumentBroker.key(url)] = nil
         return LoadedDocument(url: url, workbook: await session.workbook, state: await session.state)
     }
 
@@ -212,6 +256,7 @@ public actor DocumentBroker {
         try await throttle(url)
         writer.setEdits(tracker, for: url)
         failures.clear(url)
+        readViews[DocumentBroker.key(url)] = nil
         await session.replaceWorkbook(workbook)
         await session.save()
 
@@ -259,6 +304,7 @@ public actor DocumentBroker {
             reader.prime(url, bytes: bytes, workbook: workbook)
         }
         _ = try await session.restore(id)
+        readViews[DocumentBroker.key(url)] = nil
         return LoadedDocument(url: url, workbook: await session.workbook, state: await session.state)
     }
 
@@ -292,6 +338,7 @@ public actor DocumentBroker {
             await document.session.stop()
         }
         documents.removeAll()
+        readViews.removeAll()
     }
 
     // MARK: - Sessions
@@ -353,6 +400,7 @@ public actor DocumentBroker {
             document.drain.cancel()
             await document.session.stop()
             documents.removeValue(forKey: key)
+            readViews.removeValue(forKey: key)
         }
     }
 

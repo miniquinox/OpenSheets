@@ -458,6 +458,12 @@ private struct SheetBuilder {
         var value = CellValue.empty
         var formula: String?
         var flags = CellFlags()
+        // `cm`/`vm` index into `xl/metadata.xml` and are what distinguish a modern dynamic
+        // array from a legacy array formula. We cannot model the indices, so we record that
+        // they existed — enough for the writer to refuse rather than quietly drop them.
+        if parser.attribute("cm") != nil || parser.attribute("vm") != nil {
+            flags.insert(.hasCellMetadata)
+        }
         var pendingSharedIndex: Int?
 
         while let event = try parser.next() {

@@ -26,12 +26,44 @@ import Foundation
 /// file has been seen to spell it that way.
 public enum XLSXFunctionNames {
     /// Functions whose stored name carries the prefix.
+    ///
+    /// The dynamic-array, `LAMBDA`-helper and modern-text names were confirmed the same way as
+    /// the original nine: by feeding both spellings to a second implementation (headless
+    /// LibreOffice) reading a real `.xlsx` and seeing which one it resolves. Bare `SEQUENCE(`
+    /// is `#NAME?` there and `_xlfn.SEQUENCE(` computes, which is exactly the failure this
+    /// list exists to prevent in Excel.
     public static let prefixed: Set<String> = [
         "IFS", "SWITCH", "CONCAT", "TEXTJOIN", "XLOOKUP", "MAXIFS", "MINIFS", "STDEV.P", "STDEV.S",
+        // Dynamic arrays.
+        "FILTER", "SORT", "SORTBY", "UNIQUE", "SEQUENCE", "RANDARRAY", "TOCOL", "TOROW",
+        "VSTACK", "HSTACK", "WRAPROWS", "WRAPCOLS", "TAKE", "DROP", "CHOOSECOLS", "CHOOSEROWS",
+        "EXPAND",
+        // Modern text.
+        "TEXTSPLIT", "TEXTBEFORE", "TEXTAFTER",
+        // LAMBDA and its helpers.
+        "LAMBDA", "LET", "MAP", "REDUCE", "SCAN", "BYROW", "BYCOL", "MAKEARRAY",
     ]
+
+    /// The two names Excel stores with `_xlfn._xlws.` rather than plain `_xlfn.`.
+    ///
+    /// `_xlws.` marks a function that only exists on a worksheet. Getting this wrong is the
+    /// same `#NAME?` one level down: LibreOffice resolves `_xlfn._xlws.FILTER` and rejects
+    /// `_xlfn.FILTER`, and rejects `_xlfn._xlws.UNIQUE` while resolving `_xlfn.UNIQUE`.
+    public static let worksheetScoped: Set<String> = ["FILTER", "SORT"]
 
     /// The prefix itself.
     public static let prefix = "_xlfn."
+
+    /// The extra prefix worksheet-scoped functions carry on top of ``prefix``.
+    public static let worksheetPrefix = "_xlws."
+
+    /// The stored spelling of one display name.
+    public static func storedName(_ name: String) -> String {
+        guard prefixed.contains(name.uppercased()), !name.hasPrefix(prefix) else { return name }
+        return worksheetScoped.contains(name.uppercased())
+            ? prefix + worksheetPrefix + name
+            : prefix + name
+    }
 
     /// `formula` with every bare occurrence of a prefixed function rewritten to its stored form.
     ///
@@ -74,9 +106,8 @@ public enum XLSXFunctionNames {
                 identifier.append(next)
                 characters = characters.dropFirst()
             }
-            if characters.first == "(", prefixed.contains(identifier.uppercased()),
-               !identifier.hasPrefix(prefix) {
-                result += prefix + identifier
+            if characters.first == "(" {
+                result += storedName(identifier)
             } else {
                 result += identifier
             }
@@ -86,8 +117,11 @@ public enum XLSXFunctionNames {
 
     /// `formula` with the prefix removed, for display.
     public static func displayForm(_ formula: String) -> String {
-        guard formula.contains(prefix) else { return formula }
-        return formula.replacingOccurrences(of: prefix, with: "")
+        guard formula.contains(prefix) || formula.contains(worksheetPrefix) else { return formula }
+        return formula
+            .replacingOccurrences(of: prefix + worksheetPrefix, with: "")
+            .replacingOccurrences(of: prefix, with: "")
+            .replacingOccurrences(of: worksheetPrefix, with: "")
     }
 
     private static func isIdentifierStart(_ character: Character) -> Bool {

@@ -222,13 +222,22 @@ public struct GridTheme: Sendable, Equatable {
 
     /// The palette a ``StyleColor`` resolves against, wired to this theme.
     ///
-    /// ``StyleColor/automatic`` must follow the canvas, or a workbook authored on white text
-    /// disappears on a dark grid. That is what ``ColorPalette/automatic`` is for.
+    /// Two things have to follow the canvas, not one. ``StyleColor/automatic`` is the obvious
+    /// one — a workbook authored on white text disappears on a dark grid. The other is
+    /// `<color theme="1"/>`, which is what every producer writes for ordinary text and which
+    /// means *"the text colour"* rather than *"black"*; see
+    /// ``ColorPalette/resolvesSemanticThemeSlots``. Resolving that one literally is why cell
+    /// text used to render black on the dark canvas while the chrome beside it was white.
     public var stylePalette: ColorPalette {
-        var palette = ColorPalette.office
-        palette.automatic = cellText
-        palette.background = canvasBackground
-        return palette
+        stylePalette(basedOn: .office)
+    }
+
+    /// The same, over a workbook's own theme rather than Office's.
+    ///
+    /// A workbook that ships `xl/theme/theme1.xml` chose its own accents, and those are the
+    /// ones its cells mean. Only the semantic slots follow this theme.
+    public func stylePalette(basedOn base: ColorPalette) -> ColorPalette {
+        base.forAppearance(ink: cellText, canvas: canvasBackground)
     }
 }
 
@@ -334,13 +343,9 @@ public extension RGBAColor {
             alpha: 255
         )
     }
-
-    /// Perceived luminance, `0 ... 1`, for deciding whether to draw light or dark text on a fill.
-    var relativeLuminance: Double {
-        func channel(_ raw: UInt8) -> Double {
-            let value = Double(raw) / 255
-            return value <= 0.039_28 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
-        }
-        return 0.2126 * channel(red) + 0.7152 * channel(green) + 0.0722 * channel(blue)
-    }
 }
+
+// `relativeLuminance` used to live here too, with a slightly different sRGB threshold from the
+// one in `SheetModel.RGBAColor`. Two answers to "how bright is this colour?" in one process is
+// how the grid and the chrome end up disagreeing about whether a backdrop is dark, so there is
+// now one, and it is the WCAG definition.
