@@ -10,11 +10,22 @@ import SheetModel
 ///
 /// # Layout
 ///
-/// The scroll view fills the host. Its `contentInsets` reserve the header strip **and** the
-/// frozen band, so the document view scrolls underneath both without either needing to move.
-/// Headers and frozen panes are `addFloatingSubview(_:for:)` children with fixed frames: they do
-/// not slide, they redraw with a different scroll origin. Fixed frames make the layout
-/// deterministic, which is worth more than saving a redraw.
+/// The scroll view fills the host. Its `contentInsets` reserve the header strip, the frozen band
+/// **and** whatever the shell asked for in ``GridOptions/contentInsets``, so the document view
+/// scrolls underneath all three without any of them needing to move.
+///
+/// **Everything except the document view is a plain subview of the host, framed in the host's own
+/// coordinate space.** Headers and frozen panes do not slide; they redraw with a different scroll
+/// origin. That makes the layout deterministic, which is worth more than saving a redraw.
+///
+/// They were once `addFloatingSubview(_:for:)` children, and that was a real defect: AppKit
+/// re-parents a floating subview into a container it pins to the clip view's visible rect, which
+/// `contentInsets` has *already* offset — so every header landed `(insets.left, insets.top)` too
+/// far right and too far down, the row numbers sat on column A and the column letters sat one
+/// column across from their data. Nothing floats now, and
+/// `GridHostViewTests.headersLineUpWithTheCellsTheyLabelInARealWindow` holds it that way — in a
+/// real `NSWindow`, because AppKit's floating pass never runs on a detached view and that is
+/// precisely why 134 tests missed it.
 @MainActor
 public final class GridHostView: NSView {
     // MARK: - State
@@ -142,15 +153,17 @@ public final class GridHostView: NSView {
             let view = GridPaneView(pane: pane)
             view.host = self
             frozenPaneViews[pane] = view
-            scrollView.addFloatingSubview(view, for: .vertical)
+            addSubview(view)
         }
-        scrollView.addFloatingSubview(frozenOverlay, for: .vertical)
-        // Headers float on the axis they must not move along; their frames are set explicitly on
-        // every layout pass, so AppKit's own positioning never gets a chance to disagree.
-        scrollView.addFloatingSubview(columnHeaderView, for: .vertical)
-        scrollView.addFloatingSubview(rowHeaderView, for: .horizontal)
-        scrollView.addFloatingSubview(cornerView, for: .vertical)
-        scrollView.addFloatingSubview(editor, for: .vertical)
+        addSubview(frozenOverlay)
+        // Plain subviews of the host, above the scroll view. Every one of them is re-framed in
+        // host coordinates on every layout pass, so none of them ever needed AppKit's floating
+        // behaviour — and asking for it put them all `contentInsets` out of place. See the type's
+        // note.
+        addSubview(columnHeaderView)
+        addSubview(rowHeaderView)
+        addSubview(cornerView)
+        addSubview(editor)
 
         NotificationCenter.default.addObserver(
             self,
@@ -161,8 +174,23 @@ public final class GridHostView: NSView {
 
         flashController.setTicker(DisplayLinkTicker(view: documentView))
         flashController.onInvalidate = { [weak self] range in
-            self?.invalidate(range)
+            guard let self else { return }
+            // The renderer reads the tint off the *model*, so the controller's state has to land
+            // there before the repaint it is asking for. Without this line the display link runs,
+            // the cells are invalidated, and every one of them draws with `flash.isActive == false`
+            // — the change highlight decays perfectly and is never once visible.
+            syncFlashIntoModel()
+            invalidate(range)
         }
+    }
+
+    /// Copies the live flash state and the moment to evaluate it at into the render model.
+    ///
+    /// Called on every tick and on every model update, because ``update(model:)`` replaces the
+    /// whole value and would otherwise drop a flash mid-decay the first time the selection moved.
+    private func syncFlashIntoModel() {
+        model.flash = flashController.state
+        model.flashTime = flashController.now()
     }
 
     // MARK: - Model
@@ -176,6 +204,9 @@ public final class GridHostView: NSView {
         let geometryChanged = model.geometry != newModel.geometry
         let themeChanged = model.theme != newModel.theme
         model = newModel
+        // The shell rebuilds the render model from its own state, which knows nothing about a
+        // flash in progress. The controller is the owner of that, so it wins.
+        syncFlashIntoModel()
         if cellsChanged { blocks.update(cells: newModel.sheet.cells) }
         if themeChanged {
             scrollView.backgroundColor = NSColor(cgColor: newModel.theme.canvasBackground.cgColor)
@@ -214,27 +245,45 @@ public final class GridHostView: NSView {
         let headerWidth = model.options.showsHeaders ? measuredHeaderWidth : 0
         let frozenWidth = model.geometry.frozenWidth
         let frozenHeight = model.geometry.frozenHeight
+        // What the shell reserved: the chrome the grid bleeds under at the top, the floating pills
+        // at the bottom. It is scroll range, never a mask — cells pass through it as you scroll.
+        let reserved = model.options.contentInsets
 
         scrollView.frame = bounds
         scrollView.contentInsets = NSEdgeInsets(
-            top: headerHeight + frozenHeight, left: headerWidth + frozenWidth, bottom: 0, right: 0
+            top: reserved.top + headerHeight + frozenHeight,
+            left: reserved.left + headerWidth + frozenWidth,
+            bottom: reserved.bottom,
+            right: reserved.right
         )
+        // Cancels only the grid's *own* reservation, so the scrollers hug the body: they start
+        // below the shell's chrome rather than running up behind it.
         scrollView.scrollerInsets = NSEdgeInsets(top: -headerHeight, left: -headerWidth, bottom: 0, right: 0)
 
         cornerView.isHidden = !model.options.showsHeaders
         columnHeaderView.isHidden = !model.options.showsHeaders
         rowHeaderView.isHidden = !model.options.showsHeaders
-        cornerView.frame = CGRect(x: 0, y: 0, width: headerWidth, height: headerHeight)
-        columnHeaderView.frame = CGRect(
-            x: headerWidth, y: 0, width: max(0, bounds.width - headerWidth), height: headerHeight
+        cornerView.frame = CGRect(
+            x: reserved.left, y: reserved.top, width: headerWidth, height: headerHeight
         )
+        columnHeaderView.frame = CGRect(
+            x: reserved.left + headerWidth,
+            y: reserved.top,
+            width: max(0, bounds.width - reserved.left - headerWidth),
+            height: headerHeight
+        )
+        // Down to the bottom edge, not to the bottom inset: a row drawn under a floating pill is
+        // still a row, and an unlabelled one would look like a rendering fault.
         rowHeaderView.frame = CGRect(
-            x: 0, y: headerHeight, width: headerWidth, height: max(0, bounds.height - headerHeight)
+            x: reserved.left,
+            y: reserved.top + headerHeight,
+            width: headerWidth,
+            height: max(0, bounds.height - reserved.top - headerHeight)
         )
 
-        let bodyOrigin = CGPoint(x: headerWidth, y: headerHeight)
+        let bodyOrigin = CGPoint(x: reserved.left + headerWidth, y: reserved.top + headerHeight)
         let bodySize = CGSize(
-            width: max(0, bounds.width - headerWidth), height: max(0, bounds.height - headerHeight)
+            width: max(0, bounds.width - bodyOrigin.x), height: max(0, bounds.height - bodyOrigin.y)
         )
         frozenPaneViews[.corner]?.frame = CGRect(
             origin: bodyOrigin, size: CGSize(width: frozenWidth, height: frozenHeight)
@@ -294,14 +343,25 @@ public final class GridHostView: NSView {
         return CGPoint(x: max(0, bounds.origin.x + insets.left), y: max(0, bounds.origin.y + insets.top))
     }
 
-    /// The size of the body pane — what a Page Down moves by.
-    public var bodyViewportSize: CGSize {
+    /// The part of the host that is *only* scrolling cells — inside the headers, the frozen band
+    /// and anything the shell reserved.
+    ///
+    /// Content is still drawn outside it: the whole point of a shell inset is that cells pass
+    /// under the chrome and under the floating pills. This is the rectangle that decides how far a
+    /// Page Down moves and what "bring this cell into view" has to clear, and neither of those may
+    /// land a cell somewhere the user cannot read it.
+    var bodyRect: CGRect {
         let insets = scrollView.contentInsets
-        return CGSize(
-            width: max(0, bounds.width - insets.left),
-            height: max(0, bounds.height - insets.top)
+        return CGRect(
+            x: insets.left,
+            y: insets.top,
+            width: max(0, bounds.width - insets.left - insets.right),
+            height: max(0, bounds.height - insets.top - insets.bottom)
         )
     }
+
+    /// The size of the body pane — what a Page Down moves by.
+    public var bodyViewportSize: CGSize { bodyRect.size }
 
     @objc private func scrollViewDidScroll() {
         columnHeaderView.needsDisplay = true
@@ -541,10 +601,7 @@ public final class GridHostView: NSView {
         }
         let local = convert(lastDragWindowPoint, from: nil)
         let insets = scrollView.contentInsets
-        let body = CGRect(
-            x: insets.left, y: insets.top,
-            width: max(0, bounds.width - insets.left), height: max(0, bounds.height - insets.top)
-        )
+        let body = bodyRect
         let edge = 24.0
         var delta = CGPoint.zero
         if local.x < body.minX + edge { delta.x = local.x - (body.minX + edge) }

@@ -40,7 +40,12 @@ let package = Package(
         .library(name: "GlassUI", targets: ["GlassUI"]),
         .library(name: "SheetStore", targets: ["SheetStore"]),
         .library(name: "SheetMCP", targets: ["SheetMCP"]),
+        .library(name: "DocumentCore", targets: ["DocumentCore"]),
         .library(name: "TestSupport", targets: ["TestSupport"]),
+        // A9's binaries. Build with `swift build -c release --product opensheets-mcp`; the
+        // resulting path is what `claude mcp add opensheets -- …` points at (docs/mcp.md).
+        .executable(name: "opensheets", targets: ["opensheets"]),
+        .executable(name: "opensheets-mcp", targets: ["opensheets-mcp"]),
         // One umbrella product so the app target links a single thing (PLAN.md §2.1).
         .library(
             name: "OpenSheetsCore",
@@ -53,6 +58,7 @@ let package = Package(
                 "GlassUI",
                 "SheetStore",
                 "SheetMCP",
+                "DocumentCore",
             ]
         ),
     ],
@@ -84,6 +90,31 @@ let package = Package(
             swiftSettings: strictSettings
         ),
 
+        // MARK: - Wave 2
+
+        // A8's document model. The one place that imports every other target at once: it is where
+        // the six components are wired together, and it is the only layer allowed to know about
+        // more than one of them. The `App/` target on top of this is ~10 files of SwiftUI scene.
+        .target(
+            name: "DocumentCore",
+            dependencies: ["SheetModel", "SheetFormat", "SheetFormula", "GridKit", "GlassUI", "SheetStore"],
+            swiftSettings: strictSettings
+        ),
+
+        // A9's two executables. `opensheets` is the human command line; `opensheets-mcp` is what
+        // `claude mcp add opensheets -- …` points at. Both are three-line shims over
+        // `SheetMCP.OpenSheetsCLI`, so everything they do is covered by `swift test` — a test
+        // target cannot import an executable target's `main.swift`.
+        //
+        // The sources live at `CLI/<name>/` in the repository, which is *outside* this package's
+        // root, and SwiftPM refuses a `path:` that escapes the root ("target is outside the
+        // package root"). `Sources/<name>` is therefore a symlink to it: the layout PLAN.md and
+        // `.swiftlint.yml` describe, built by the package that owns the code they link against.
+        // Neither links AppKit, which is what makes "the CLI cannot mint a grant" a fact about
+        // the binary rather than a promise (PLAN.md §7.2).
+        .executableTarget(name: "opensheets", dependencies: ["SheetMCP"], swiftSettings: strictSettings),
+        .executableTarget(name: "opensheets-mcp", dependencies: ["SheetMCP"], swiftSettings: strictSettings),
+
         // A7's shared toolkit: builders, fakes, matchers. Ships in the package rather than in a
         // test target so every test target can use it without a circular dependency.
         .target(name: "TestSupport", dependencies: ["SheetModel"], swiftSettings: strictSettings),
@@ -113,6 +144,11 @@ let package = Package(
             swiftSettings: strictSettings
         ),
         .testTarget(name: "SheetMCPTests", dependencies: ["SheetMCP", "TestSupport"], swiftSettings: strictSettings),
+        .testTarget(
+            name: "DocumentCoreTests",
+            dependencies: ["DocumentCore", "MiniZip", "TestSupport"],
+            swiftSettings: strictSettings
+        ),
         .testTarget(name: "TestSupportTests", dependencies: ["TestSupport"], swiftSettings: strictSettings),
     ]
 )

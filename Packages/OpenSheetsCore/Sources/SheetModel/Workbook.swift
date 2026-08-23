@@ -302,6 +302,24 @@ public struct WorkbookMeta: Sendable, Hashable, Codable {
     /// recalculates on open rather than trusting our cached value (PLAN.md §5.2).
     public var fullCalculationOnLoad: Bool
 
+    /// Whether anything ever calculated this workbook.
+    ///
+    /// `true` when the package carried `xl/calcChain.xml` or `xl/workbook.xml` carried a
+    /// `<calcPr>` element. Excel writes both; LibreOffice writes `calcPr`; **openpyxl, pandas and
+    /// xlsxwriter write neither**, and a file from one of those stores `<f>SUM(B2:B14)</f><v>0</v>`
+    /// — a formula nothing has ever evaluated, next to a cached value that is simply the
+    /// producer's placeholder.
+    ///
+    /// PLAN.md §5.3 renders the cache and does not evaluate, which is right for a file somebody
+    /// calculated and catastrophic for one nobody did: a `Total` of `0` under a column of real
+    /// figures is plausible, confident and wrong, and it is what every other spreadsheet would
+    /// show correctly, because Excel recalculates on open when the calc metadata is absent.
+    ///
+    /// So this is the flag that says *do not trust the cache*. It is deliberately read as "no
+    /// evidence" rather than "not calculated": it is `false` on a CSV and on a workbook built in
+    /// memory, neither of which came from a package at all.
+    public var hasCalculationEvidence: Bool
+
     /// **Which epoch this workbook's dates count from.** Not a preference — reading a 1904
     /// file as 1900 shifts every date by four years and a day.
     public var dateSystem: DateSystem
@@ -333,6 +351,7 @@ public struct WorkbookMeta: Sendable, Hashable, Codable {
         modified: Date? = nil,
         calculationMode: CalculationMode = .automatic,
         fullCalculationOnLoad: Bool = false,
+        hasCalculationEvidence: Bool = false,
         dateSystem: DateSystem = .excel1900,
         sourceFormat: WorkbookFormat = .new,
         readOnlyReason: ReadOnlyReason? = nil,
@@ -349,6 +368,7 @@ public struct WorkbookMeta: Sendable, Hashable, Codable {
         self.modified = modified
         self.calculationMode = calculationMode
         self.fullCalculationOnLoad = fullCalculationOnLoad
+        self.hasCalculationEvidence = hasCalculationEvidence
         self.dateSystem = dateSystem
         self.sourceFormat = sourceFormat
         self.readOnlyReason = readOnlyReason

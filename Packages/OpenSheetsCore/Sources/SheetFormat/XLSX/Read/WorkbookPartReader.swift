@@ -41,6 +41,15 @@ public struct WorkbookPart: Sendable {
     public var calculationMode: CalculationMode = .automatic
     public var fullCalculationOnLoad = false
 
+    /// Whether a `<calcPr>` element was present at all.
+    ///
+    /// Not the same question as ``calculationMode``, which has a default and therefore cannot tell
+    /// "the file said automatic" from "the file said nothing". Excel and LibreOffice both write
+    /// this element; openpyxl, pandas and xlsxwriter do not, and its absence — together with a
+    /// missing `xl/calcChain.xml` — is the evidence that nothing ever evaluated the formulas whose
+    /// cached values we are about to render. See ``SheetModel/WorkbookMeta/hasCalculationEvidence``.
+    public var hasCalculationProperties = false
+
     /// Whether the workbook declares `<externalReferences>`. Recorded, never followed.
     public var hasExternalReferences = false
 }
@@ -62,6 +71,7 @@ public enum WorkbookPartReader {
                         result.dateSystem = .excel1904
                     }
                 } else if parser.nameIs("calcPr") {
+                    result.hasCalculationProperties = true
                     if let mode = parser.attribute("calcMode") {
                         result.calculationMode = if mode.equals("manual") {
                             .manual

@@ -415,6 +415,13 @@ public enum XLSXReader {
         var meta = WorkbookMeta(
             calculationMode: workbookPart.calculationMode,
             fullCalculationOnLoad: workbookPart.fullCalculationOnLoad,
+            // Either mark is enough: a `calcChain` is the *result* of a calculation and a
+            // `calcPr` is the record that an application which calculates wrote the file. A
+            // package with neither has never been evaluated by anything.
+            hasCalculationEvidence: workbookPart.hasCalculationProperties
+                || archive.entries.contains {
+                    OPCPackage.fileName(of: $0.path).lowercased() == "calcchain.xml"
+                },
             dateSystem: workbookPart.dateSystem,
             sourceFormat: format,
             readOnlyReason: readOnlyReason

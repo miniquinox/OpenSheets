@@ -29,9 +29,12 @@ struct GridHostViewTests {
         return view
     }
 
-    /// Floating subviews live inside AppKit's own container view, so the search has to recurse.
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap { descendants(of: $0) }
+    }
+
+    private func first<T: NSView>(_ type: T.Type, in view: NSView) -> T? {
+        descendants(of: view).compactMap { $0 as? T }.first
     }
 
     private func key(_ code: UInt16, _ flags: NSEvent.ModifierFlags = [], characters: String = "") -> NSEvent {
@@ -51,20 +54,25 @@ struct GridHostViewTests {
 
     // MARK: - Structure
 
-    @Test("The hierarchy is a scroll view with a flipped document view and floating chrome")
+    @Test("The hierarchy is a scroll view with a flipped document view, and chrome beside it")
     func hierarchy() {
         let view = host()
         let scroll = view.contentScrollView
-        let floating = descendants(of: scroll)
         #expect(view.isFlipped)
         #expect(scroll.documentView?.isFlipped == true)
         #expect(scroll.documentView is GridDocumentView)
-        // Headers, corner, three frozen panes, a divider overlay and the editor all float.
-        #expect(floating.contains { $0 is GridColumnHeaderView })
-        #expect(floating.contains { $0 is GridRowHeaderView })
-        #expect(floating.contains { $0 is GridCornerView })
-        #expect(floating.contains { $0 is CellEditor })
-        #expect(floating.filter { $0 is GridPaneView }.count == 3)
+        // Headers, corner, three frozen panes, the divider overlay and the editor are **direct
+        // subviews of the host**, not floating subviews of the scroll view. They are framed in
+        // host coordinates on every layout pass, and `addFloatingSubview` re-parents them into a
+        // container AppKit offsets by `contentInsets` — which put every one of them exactly one
+        // header out of place in a real window. See `headersLineUpWithTheCellsTheyLabel`.
+        let chrome = view.subviews
+        #expect(chrome.contains { $0 is GridColumnHeaderView })
+        #expect(chrome.contains { $0 is GridRowHeaderView })
+        #expect(chrome.contains { $0 is GridCornerView })
+        #expect(chrome.contains { $0 is CellEditor })
+        #expect(chrome.filter { $0 is GridPaneView }.count == 3)
+        #expect(descendants(of: scroll).allSatisfy { !($0 is GridColumnHeaderView) })
     }
 
     @Test("The document view is only as large as the scrolling quadrant")
@@ -87,10 +95,132 @@ struct GridHostViewTests {
         let plain = host()
         let frozen = host(frozen: FrozenPanes(frozenRows: 1, frozenColumns: 1))
         func visiblePanes(_ view: GridHostView) -> Int {
-            descendants(of: view.contentScrollView).compactMap { $0 as? GridPaneView }.filter { !$0.isHidden }.count
+            view.subviews.compactMap { $0 as? GridPaneView }.filter { !$0.isHidden }.count
         }
         #expect(visiblePanes(plain) == 0)
         #expect(visiblePanes(frozen) == 3)
+    }
+
+    // MARK: - In a real window
+
+    /// **The test the other 134 could not have failed.**
+    ///
+    /// Every other test in this suite calls `layoutSubtreeIfNeeded()` on a view that was never
+    /// added to a window. AppKit's floating-subview pass never runs there, so for the whole of
+    /// Wave 1 the row numbers sat on top of column A and the column letters sat one column across
+    /// from the data they label — in the app, and in nothing else.
+    ///
+    /// So this one puts the grid in an `NSWindow` and asserts the headers against **the cells they
+    /// label**, in window coordinates, which is the only claim that actually matters and the only
+    /// one that fails when the header views are attached the wrong way. Under the defect it was
+    /// off by exactly `contentInsets`, in both axes.
+    @Test("Headers line up with the cells they label, in a real window")
+    func headersLineUpWithTheCellsTheyLabel() throws {
+        let view = try Self.hostInWindow()
+        let geometry = view.model.geometry
+        let scrollView = view.contentScrollView
+        let document = try #require(scrollView.documentView)
+        // Searched through the whole subtree, not just the host's own children: the point of this
+        // test is *where the headers draw*, and it must keep failing on the geometry however they
+        // come to be attached.
+        let rowHeader = try #require(first(GridRowHeaderView.self, in: view))
+        let columnHeader = try #require(first(GridColumnHeaderView.self, in: view))
+
+        #expect(scrollView.contentInsets.top > 0, "the column header is paid for out of the insets")
+        #expect(scrollView.contentInsets.left > 0, "and so is the row header")
+
+        for row in [0, 3, 7] {
+            let sheetY = geometry.sheetRect(row: row, column: 0).minY
+            // Where the row header draws the number, and where the body draws the row.
+            let label = rowHeader.convert(CGPoint(x: 0, y: sheetY - view.scrollOrigin.y), to: nil)
+            let cell = document.convert(
+                geometry.documentRect(fromSheet: geometry.sheetRect(row: row, column: 0)).origin, to: nil
+            )
+            #expect(
+                abs(label.y - cell.y) < 0.5,
+                "row \(row + 1)'s number draws at y=\(label.y) and its cells at y=\(cell.y)"
+            )
+        }
+
+        for column in [0, 2, 5] {
+            let sheetX = geometry.sheetRect(row: 0, column: column).minX
+            let label = columnHeader.convert(CGPoint(x: sheetX - view.scrollOrigin.x, y: 0), to: nil)
+            let cell = document.convert(
+                geometry.documentRect(fromSheet: geometry.sheetRect(row: 0, column: column)).origin, to: nil
+            )
+            #expect(
+                abs(label.x - cell.x) < 0.5,
+                "column \(column + 1)'s letter draws at x=\(label.x) and its cells at x=\(cell.x)"
+            )
+        }
+
+        // The corner is the origin of both strips, so it is the one frame that pins the pair.
+        let corner = try #require(first(GridCornerView.self, in: view))
+        #expect(corner.convert(corner.bounds, to: view) == corner.frame)
+    }
+
+    /// A shell inset is scroll range, not a mask: it comes off the viewport and off the resting
+    /// position of the content, and the headers move with it.
+    @Test("Shell content insets are added to the grid's own, and move the headers")
+    func shellContentInsets() throws {
+        let plain = try Self.hostInWindow()
+        let ownInsets = plain.contentScrollView.contentInsets
+        let ownViewport = plain.bodyViewportSize
+
+        let inset = try Self.hostInWindow(insets: GridInsets(top: 80, left: 0, bottom: 40, right: 0))
+        let insets = inset.contentScrollView.contentInsets
+        #expect(insets.top == ownInsets.top + 80)
+        #expect(insets.bottom == 40)
+        #expect(inset.bodyViewportSize.height == ownViewport.height - 120)
+
+        let corner = try #require(first(GridCornerView.self, in: inset))
+        #expect(corner.frame.minY == 80, "the header strip sits below the chrome, not behind it")
+        // Still lines up with the cells, which is the property the insets must not break.
+        let geometry = inset.model.geometry
+        let document = try #require(inset.contentScrollView.documentView)
+        let rowHeader = try #require(first(GridRowHeaderView.self, in: inset))
+        let sheetY = geometry.sheetRect(row: 4, column: 0).minY
+        let label = rowHeader.convert(CGPoint(x: 0, y: sheetY - inset.scrollOrigin.y), to: nil)
+        let cell = document.convert(
+            geometry.documentRect(fromSheet: geometry.sheetRect(row: 4, column: 0)).origin, to: nil
+        )
+        #expect(abs(label.y - cell.y) < 0.5)
+    }
+
+    /// Keeps the window alive for the length of the test: an `NSWindow` that goes out of scope
+    /// takes its content view's layout with it.
+    nonisolated(unsafe) private static var retained: [NSWindow] = []
+
+    private static func hostInWindow(insets: GridInsets = .zero) throws -> GridHostView {
+        var store = CellStore()
+        for row in 0 ..< 12 {
+            for column in 0 ..< 6 {
+                try store.setCell(.number(Double(row * 6 + column)), at: CellRef(row: row, column: column))
+            }
+        }
+        let sheet = Sheet(id: 1, name: "Report", cells: store)
+        var options = GridOptions.default
+        options.contentInsets = insets
+        let view = GridHostView(
+            model: GridRenderModel(
+                sheet: sheet,
+                styles: StyleTable(),
+                options: options,
+                geometry: GridGeometry(sheet: sheet)
+            )
+        )
+        let window = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 900, height: 600),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = view
+        view.frame = CGRect(x: 0, y: 0, width: 900, height: 600)
+        view.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        retained.append(window)
+        return view
     }
 
     // MARK: - Keyboard
@@ -305,14 +435,27 @@ struct GridHostViewTests {
         #expect(view.blocks.rowsWithData(inColumn: 0).contains(20))
     }
 
-    @Test("Flashing marks cells as decaying")
+    @Test("Flashing marks cells as decaying — and reaches the renderer")
     func flash() {
         let view = host()
-        view.flash([CellRef(row: 1, column: 1)])
+        let ref = CellRef(row: 1, column: 1)
+        view.flash([ref])
         #expect(view.flashController.state.isActive)
-        #expect(view.flashController.state.affectedRange == CellRange(CellRef(row: 1, column: 1)))
+        #expect(view.flashController.state.affectedRange == CellRange(ref))
+
+        // The controller is not what draws. `GridRenderer.drawFlashTints` reads `model.flash` and
+        // `model.flashTime`, so a flash that never lands in the model is a flash that decays
+        // perfectly and is never once visible — which is exactly what shipped.
+        #expect(view.model.flash.isActive)
+        #expect(view.model.flash.intensity(of: ref, at: view.model.flashTime) > 0.5)
+
+        // A model update from the shell — a selection change, a repaint — must not drop it.
+        view.update(model: view.model)
+        #expect(view.model.flash.isActive)
+
         view.flashController.cancel()
         #expect(!view.flashController.state.isActive)
+        #expect(!view.model.flash.isActive)
     }
 
     // MARK: - Accessibility
