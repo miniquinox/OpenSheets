@@ -1,0 +1,38 @@
+{
+  "file": "structure/merge-across-frozen-boundary.xlsx",
+  "kind": "xlsx",
+  "proves": "A merged range that crosses the frozen split in both axes - the renderer must clip it per pane instead of drawing it four times.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Straddle",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:D6",
+      "usedRange": "A1:D6",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "straddles the freeze",
+          "numberFormat": "General"
+        },
+        "A3": {
+          "type": "text",
+          "value": "also straddles",
+          "numberFormat": "General"
+        }
+      },
+      "merges": [
+        "A1:D4",
+        "B2:C6"
+      ],
+      "frozen": {
+        "columns": 2,
+        "rows": 2,
+        "topLeftCell": "C3",
+        "state": "frozen"
+      }
+    }
+  ]
+}

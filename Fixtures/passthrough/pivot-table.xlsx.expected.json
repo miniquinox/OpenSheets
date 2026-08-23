@@ -1,0 +1,159 @@
+{
+  "file": "passthrough/pivot-table.xlsx",
+  "kind": "xlsx",
+  "proves": "A pivot table over Data!A1:B5 with its cache definition and cached records. OpenSheets never authors pivots; it must render the flattened result on the Pivot sheet and pass all four pivot parts through untouched.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Data",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:B5",
+      "usedRange": "A1:B5",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "Region",
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "text",
+          "value": "Amount",
+          "numberFormat": "General"
+        },
+        "B5": {
+          "type": "number",
+          "value": 40.0,
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "Pivot",
+      "index": 1,
+      "visibility": "visible",
+      "dimension": "A3:B6",
+      "usedRange": "A3:B6",
+      "cells": {
+        "A3": {
+          "type": "text",
+          "value": "Row Labels",
+          "numberFormat": "General"
+        },
+        "B4": {
+          "type": "number",
+          "value": 40.0,
+          "numberFormat": "General"
+        },
+        "B5": {
+          "type": "number",
+          "value": 60.0,
+          "numberFormat": "General"
+        },
+        "B6": {
+          "type": "number",
+          "value": 100.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "sheetLevelElementsThatMustSurvive": [],
+  "staleRisk": "The pivot cache holds a COPY of Data!A1:B5. Editing Data does not update it. refreshOnLoad=\"1\" is set so Excel rebuilds on open; OpenSheets must warn rather than silently rewrite the cache.",
+  "zipEntries": {
+    "[Content_Types].xml": {
+      "sha256": "1e3f693fc130b31b0ca58c03fd4c459dcdec2617b501c6afefb07d90871c1a03",
+      "crc32": 998388581,
+      "uncompressedSize": 1413,
+      "method": 8
+    },
+    "_rels/.rels": {
+      "sha256": "9f96bb683e71c45171c7ae310bf6c37fb5a834bb9738497ac7084c42ac9c2d9a",
+      "crc32": 2194102534,
+      "uncompressedSize": 296,
+      "method": 8
+    },
+    "xl/workbook.xml": {
+      "sha256": "6fedb60e900467c68b94437781532d4417101837f187338d4bb3aea270d643df",
+      "crc32": 3892014327,
+      "uncompressedSize": 393,
+      "method": 8
+    },
+    "xl/_rels/workbook.xml.rels": {
+      "sha256": "bb4fc8b9e7e4a7104c20bf0e2d366a725d9ccd0f5b43e630dc1ebf93a5ad4761",
+      "crc32": 1789426623,
+      "uncompressedSize": 882,
+      "method": 8
+    },
+    "xl/styles.xml": {
+      "sha256": "e1ea682a7cbe853822975379fca91f2052b29c155c6bfd22876125902d403b86",
+      "crc32": 4234622275,
+      "uncompressedSize": 714,
+      "method": 8
+    },
+    "xl/sharedStrings.xml": {
+      "sha256": "fff6d64d3b32b1aa167ae172e7426ec868714be0abe93bcc1d14e244072b3496",
+      "crc32": 1531963179,
+      "uncompressedSize": 159,
+      "method": 8
+    },
+    "xl/worksheets/sheet1.xml": {
+      "sha256": "4629ab63a905f67f1400c074a50a8a8cc95c9c7ab461500ea1c13750ae2fd118",
+      "crc32": 2680793807,
+      "uncompressedSize": 743,
+      "method": 8
+    },
+    "xl/worksheets/sheet2.xml": {
+      "sha256": "331f4c3e66945cde187f7c374b6c959c98dcea91e44b615ce302208808954d34",
+      "crc32": 4231288886,
+      "uncompressedSize": 672,
+      "method": 8
+    },
+    "xl/pivotCache/pivotCacheDefinition1.xml": {
+      "sha256": "b1e22fb5eca3956f6518218d88cb4e61e6719f1bc46e3e3798b3925f3d2ef57a",
+      "crc32": 1832910125,
+      "uncompressedSize": 711,
+      "method": 8
+    },
+    "xl/pivotCache/_rels/pivotCacheDefinition1.xml.rels": {
+      "sha256": "d67d85b59a9f5af0791c7033735988ad4b349639d3d90d2cb1180375247c5581",
+      "crc32": 2370551815,
+      "uncompressedSize": 306,
+      "method": 8
+    },
+    "xl/pivotCache/pivotCacheRecords1.xml": {
+      "sha256": "e47e72886e3aa69b232ef895da94af1ee693d064af581af5e0d4634efa800269",
+      "crc32": 2543562125,
+      "uncompressedSize": 361,
+      "method": 8
+    },
+    "xl/pivotTables/pivotTable1.xml": {
+      "sha256": "d41949cb2b97e8ff7928495f14ab1b696de53087df2bb3fb8d396bdada8da76e",
+      "crc32": 1667972127,
+      "uncompressedSize": 1024,
+      "method": 8
+    },
+    "xl/pivotTables/_rels/pivotTable1.xml.rels": {
+      "sha256": "2c8e028443b9a1c3cbd94686080230ed6085b5bbce1c0065d4877550c883e2ea",
+      "crc32": 3747117529,
+      "uncompressedSize": 326,
+      "method": 8
+    },
+    "xl/worksheets/_rels/sheet2.xml.rels": {
+      "sha256": "f32af42e9fd31a79bfc995ff7cd0ca73f58b552d169de55119169e4f2ad5a1e7",
+      "crc32": 707691476,
+      "uncompressedSize": 307,
+      "method": 8
+    }
+  },
+  "passthroughEntries": [
+    "xl/pivotCache/_rels/pivotCacheDefinition1.xml.rels",
+    "xl/pivotCache/pivotCacheDefinition1.xml",
+    "xl/pivotCache/pivotCacheRecords1.xml",
+    "xl/pivotTables/_rels/pivotTable1.xml.rels",
+    "xl/pivotTables/pivotTable1.xml",
+    "xl/worksheets/_rels/sheet2.xml.rels"
+  ],
+  "passthroughContract": "After read -> modify one cell of the first sheet -> write, every entry listed in passthroughEntries must be byte-identical to the original (compare inflated bytes AND crc32). Only xl/worksheets/sheet1.xml, xl/sharedStrings.xml and xl/calcChain.xml are allowed to differ."
+}

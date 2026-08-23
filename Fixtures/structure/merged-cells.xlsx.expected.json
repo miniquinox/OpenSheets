@@ -1,0 +1,43 @@
+{
+  "file": "structure/merged-cells.xlsx",
+  "kind": "xlsx",
+  "proves": "Horizontal, rectangular and vertical merges. Only the anchor cell carries a value; the covered cells are absent from the XML entirely.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Merged",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:F8",
+      "usedRange": "A1:F8",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "title spans A1:D1",
+          "numberFormat": "General"
+        },
+        "A2": {
+          "type": "text",
+          "value": "block",
+          "numberFormat": "General"
+        },
+        "A5": {
+          "type": "text",
+          "value": "tall",
+          "numberFormat": "General"
+        },
+        "F5": {
+          "type": "number",
+          "value": 1.0,
+          "numberFormat": "General"
+        }
+      },
+      "merges": [
+        "A1:D1",
+        "A2:B3",
+        "A5:A8"
+      ]
+    }
+  ]
+}

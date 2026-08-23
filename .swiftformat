@@ -1,0 +1,75 @@
+# SwiftFormat configuration for OpenSheets.
+#
+# The point of pinning this is that eleven agents write code into one repository and the diffs
+# have to be about behaviour, not about whether someone's editor reflowed a file. CI runs
+# `--lint`, so a violation is a build failure rather than a review comment.
+#
+# Pinned to a version so an upgrade is a deliberate commit and not a surprise red build.
+--swiftversion 6.0
+
+# 110 rather than 100: this codebase carries long doc comments and descriptive type names, and
+# a tighter limit turns readable signatures into ragged wrapped ones.
+--maxwidth 120
+
+--indent 4
+--tabwidth 4
+--linebreaks lf
+--semicolons never
+--commas always
+--trimwhitespace always
+--emptybraces no-space
+--wraparguments before-first
+--wrapparameters before-first
+--wrapcollections preserve
+--wrapreturntype preserve
+--wrapconditions preserve
+--closingparen balanced
+--funcattributes preserve
+--typeattributes preserve
+--varattributes preserve
+--stripunusedargs closure-only
+--self remove
+--importgrouping alpha
+--patternlet hoist
+--elseposition same-line
+--guardelse auto
+--header ignore
+# Spaced ranges: `0 ..< count`, not `0..<count`. Both are legible; this one is what the
+# codebase already reads like, and picking the other would rewrite every bounds check for no gain.
+--ranges spaced
+--operatorfunc spaced
+--shortoptionals always
+--someany true
+--extensionacl on-declarations
+--redundanttype inferred
+--voidtype void
+
+# Group from five digits up. Grouping at four would turn every year literal in the date tests
+# into `2_023`, which is worse than the thing grouping is meant to fix.
+--decimalgrouping 3,5
+--hexgrouping 4,8
+--binarygrouping 4,8
+--octalgrouping 4,8
+--exponentgrouping disabled
+--fractiongrouping disabled
+
+# Rules we deliberately turn off.
+#
+# `blankLinesAroundMark` and `organizeDeclarations` fight the `// MARK:` layout used throughout
+# `SheetModel`, where marks group a type's API by role rather than by declaration kind.
+#
+# `sortedSwitchCases` would reorder `SheetError`, whose case order is documentation: cases are
+# grouped by subsystem in the order a file is processed.
+#
+# `wrapMultilineStatementBraces` and `blankLineAfterSwitchCase` add churn without adding clarity.
+# `wrapEnumCases` would put `case none, thin, medium, thick` on four lines. For a closed set of
+# style tokens the compact form is the readable one.
+#
+# `hoistTry` rewrites `#expect(try foo() == bar)` into `try #expect(foo() == bar)`, which reads
+# as though the expectation throws rather than the call inside it.
+--disable organizeDeclarations, sortedSwitchCases, wrapMultilineStatementBraces, blankLineAfterSwitchCase, docComments, wrapEnumCases, hoistTry, hoistAwait
+
+# Rules we explicitly want, beyond the defaults.
+--enable isEmpty, redundantParens, redundantReturn, redundantSelf, sortImports, blankLinesAtStartOfScope, blankLinesAtEndOfScope
+
+--exclude .build,Packages/**/.build,Fixtures,Scripts/.venv,DerivedData,build

@@ -1,0 +1,64 @@
+{
+  "file": "formats/serial-60-lotus-bug.xlsx",
+  "kind": "xlsx",
+  "proves": "Serial 60 is 1900-02-29, a date that never happened. Any date conversion that does not special-case serials <= 60 is one day wrong for all of Jan/Feb 1900.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "LotusBug",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:C3",
+      "usedRange": "A1:C3",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 59.0,
+          "numberFormat": "yyyy-mm-dd"
+        },
+        "B1": {
+          "type": "text",
+          "value": "1900-02-28",
+          "numberFormat": "General"
+        },
+        "C1": {
+          "type": "text",
+          "value": "real day",
+          "numberFormat": "General"
+        },
+        "A2": {
+          "type": "number",
+          "value": 60.0,
+          "numberFormat": "yyyy-mm-dd"
+        },
+        "B2": {
+          "type": "text",
+          "value": "1900-02-29",
+          "numberFormat": "General"
+        },
+        "C2": {
+          "type": "text",
+          "value": "DOES NOT EXIST - Lotus 1-2-3 compatibility bug, Excel keeps it",
+          "numberFormat": "General"
+        },
+        "A3": {
+          "type": "number",
+          "value": 61.0,
+          "numberFormat": "yyyy-mm-dd"
+        },
+        "B3": {
+          "type": "text",
+          "value": "1900-03-01",
+          "numberFormat": "General"
+        },
+        "C3": {
+          "type": "text",
+          "value": "real day, off-by-one vs a naive epoch+n calculation",
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "notes": "Expected rendering: A1=1900-02-28, A2=1900-02-29 (fictional), A3=1900-03-01."
+}

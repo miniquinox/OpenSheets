@@ -1,0 +1,39 @@
+{
+  "file": "perf/1m-cells.xlsx",
+  "kind": "xlsx",
+  "proves": "1,000,000 cells. Budget: open < 4 s, < 600 MB RSS (PLAN.md 10.6). Git-ignored: regenerate with Scripts/gen-fixtures.py perf --with-huge.",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Perf",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:CV10000",
+      "usedRange": "A1:CV10000",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "col0",
+          "numberFormat": "General"
+        },
+        "A2": {
+          "type": "number",
+          "value": 1000.0,
+          "numberFormat": "General"
+        },
+        "CV10000": {
+          "type": "number",
+          "value": 9999099.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "cellCount": 1000000,
+  "budget": {
+    "openMs": 4000,
+    "peakRssMb": 600
+  },
+  "generated": true
+}

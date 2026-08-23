@@ -1,0 +1,34 @@
+{
+  "file": "structure/frozen-panes.xlsx",
+  "kind": "xlsx",
+  "proves": "Two frozen header rows/columns (xSplit=2 ySplit=1 state=frozen).",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Frozen",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:E10",
+      "usedRange": "A1:E10",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 101.0,
+          "numberFormat": "General"
+        },
+        "E10": {
+          "type": "number",
+          "value": 1005.0,
+          "numberFormat": "General"
+        }
+      },
+      "frozen": {
+        "columns": 2,
+        "rows": 1,
+        "topLeftCell": "C2",
+        "state": "frozen"
+      }
+    }
+  ]
+}

@@ -1,0 +1,203 @@
+{
+  "file": "passthrough/kitchen-sink.xlsm",
+  "kind": "xlsx",
+  "proves": "Chart + image + conditional format + data validation + comment + autofilter + sheet protection + frozen panes + VBA, all on one sheet. If A2 survives this one intact it survives real workbooks.",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Everything",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:C10",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "Region",
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": 120.0,
+          "numberFormat": "General"
+        },
+        "C8": {
+          "type": "number",
+          "value": 149.0,
+          "numberFormat": "General"
+        },
+        "A10": {
+          "type": "text",
+          "value": "a link",
+          "numberFormat": "General"
+        }
+      },
+      "frozen": {
+        "columns": 1,
+        "rows": 1,
+        "topLeftCell": "B2",
+        "state": "frozen"
+      }
+    }
+  ],
+  "containsMacros": true,
+  "sheetLevelElementsThatMustSurvive": [
+    "conditionalFormatting",
+    "dataValidations",
+    "sheetProtection",
+    "hyperlinks",
+    "printOptions",
+    "pageMargins",
+    "pageSetup",
+    "headerFooter",
+    "drawing",
+    "legacyDrawing",
+    "tableParts"
+  ],
+  "allSheetLevelElementsA2MustConsider": [
+    "conditionalFormatting",
+    "dataValidations",
+    "autoFilter",
+    "sheetProtection",
+    "pageMargins",
+    "pageSetup",
+    "printOptions",
+    "headerFooter",
+    "drawing",
+    "legacyDrawing",
+    "hyperlinks",
+    "extLst",
+    "tableParts",
+    "phoneticPr"
+  ],
+  "zipEntries": {
+    "[Content_Types].xml": {
+      "sha256": "3c8657b465c42722da0bdb41616c53780555601b743b71082d76cde6102111aa",
+      "crc32": 3349021833,
+      "uncompressedSize": 1868,
+      "method": 8
+    },
+    "_rels/.rels": {
+      "sha256": "1285b20099c64699001f9d90ea040ca1c177fa99bc3ae8a841128874820f01a4",
+      "crc32": 3662258162,
+      "uncompressedSize": 587,
+      "method": 8
+    },
+    "xl/_rels/workbook.xml.rels": {
+      "sha256": "8120aa26748563f17c5d0909502fce9fc5d811d07af70aa08d879fb0407db0b0",
+      "crc32": 3026666260,
+      "uncompressedSize": 819,
+      "method": 8
+    },
+    "xl/worksheets/sheet1.xml": {
+      "sha256": "77828bb0a47a2e3b073384cd000d98e5cab7ce8a9da3cd0df3dacc69a73cce85",
+      "crc32": 196261195,
+      "uncompressedSize": 2482,
+      "method": 8
+    },
+    "xl/workbook.xml": {
+      "sha256": "895e38ba0397a0e257a1c48de7c127e8daf29d0e449006ca7445fde0e344ab2c",
+      "crc32": 720855648,
+      "uncompressedSize": 628,
+      "method": 8
+    },
+    "xl/charts/chart1.xml": {
+      "sha256": "65765f3b9b09b92a9e04ceadd492a5d4427828034b127321c146a348e9dd16c9",
+      "crc32": 1116792770,
+      "uncompressedSize": 1743,
+      "method": 8
+    },
+    "xl/drawings/drawing1.xml": {
+      "sha256": "74184807ad6d66eda378b6a28e5bce1be1f69c6dd60c43105209f4b5771c20f9",
+      "crc32": 2695684088,
+      "uncompressedSize": 1780,
+      "method": 8
+    },
+    "xl/drawings/vmlDrawing1.vml": {
+      "sha256": "0eba739e7214230e9e795c1176f2b4471e5ae6f3c947396f29b19dd2ec784617",
+      "crc32": 4211493213,
+      "uncompressedSize": 1017,
+      "method": 8
+    },
+    "xl/comments1.xml": {
+      "sha256": "2d9bbc81cf1961a8492b073fb05ac67253f46ba03597a3b3ce062d22d95d9dc3",
+      "crc32": 65725444,
+      "uncompressedSize": 377,
+      "method": 8
+    },
+    "xl/tables/table1.xml": {
+      "sha256": "831c3057b9bba911ee2aa8365fd2c742d2006fdd5275f58256c611ab819ba180",
+      "crc32": 2861850841,
+      "uncompressedSize": 491,
+      "method": 8
+    },
+    "xl/sharedStrings.xml": {
+      "sha256": "c3b53805e490588789d874465f32c9d209160347f4ed72fde022c79b962d68d3",
+      "crc32": 3817438504,
+      "uncompressedSize": 322,
+      "method": 8
+    },
+    "xl/styles.xml": {
+      "sha256": "f11c9707ed01df0cd641fe22a7af1885baf1759d9c5f6e9711cc5901df7ed317",
+      "crc32": 2229327404,
+      "uncompressedSize": 1473,
+      "method": 8
+    },
+    "xl/theme/theme1.xml": {
+      "sha256": "75104b2164c20dab2578383d827deac3a7eec077c3f7c99a4099a551fdebb134",
+      "crc32": 1413937688,
+      "uncompressedSize": 6994,
+      "method": 8
+    },
+    "xl/worksheets/_rels/sheet1.xml.rels": {
+      "sha256": "6cdc7b5bf1d46ac7e15099f69883be874d8bb9e36fcf9a952d64bd210d854c5f",
+      "crc32": 1885960723,
+      "uncompressedSize": 896,
+      "method": 8
+    },
+    "xl/drawings/_rels/drawing1.xml.rels": {
+      "sha256": "853c42355506b6ff3183bdcb31fef12b640cc02e154d1439af837622b44620e9",
+      "crc32": 3609353398,
+      "uncompressedSize": 427,
+      "method": 8
+    },
+    "xl/media/image1.png": {
+      "sha256": "056e39a0eb5b0327fb1c2ee890d024a02266c4d89a27965142dfbfe4cba976ae",
+      "crc32": 1204017790,
+      "uncompressedSize": 73,
+      "method": 8
+    },
+    "xl/vbaProject.bin": {
+      "sha256": "a7ff61675aafa944f6e6119fcddbdf4b623b035520d7b744ce6eedc155cd1b7e",
+      "crc32": 1049712478,
+      "uncompressedSize": 2048,
+      "method": 8
+    },
+    "docProps/core.xml": {
+      "sha256": "c26fccdf4363742b7a3c977d8234a2b8bdb835824710b6f2ddfe69c04cdc53ed",
+      "crc32": 2431413393,
+      "uncompressedSize": 592,
+      "method": 8
+    },
+    "docProps/app.xml": {
+      "sha256": "06dfb13b6253336698ec39d120655cd2d8a2e2c48e13bf8766a2a424517d442e",
+      "crc32": 822969595,
+      "uncompressedSize": 788,
+      "method": 8
+    }
+  },
+  "passthroughEntries": [
+    "xl/charts/chart1.xml",
+    "xl/comments1.xml",
+    "xl/drawings/_rels/drawing1.xml.rels",
+    "xl/drawings/drawing1.xml",
+    "xl/drawings/vmlDrawing1.vml",
+    "xl/media/image1.png",
+    "xl/tables/table1.xml",
+    "xl/theme/theme1.xml",
+    "xl/vbaProject.bin",
+    "xl/worksheets/_rels/sheet1.xml.rels"
+  ],
+  "passthroughContract": "After read -> modify one cell of the first sheet -> write, every entry listed in passthroughEntries must be byte-identical to the original (compare inflated bytes AND crc32). Only xl/worksheets/sheet1.xml, xl/sharedStrings.xml and xl/calcChain.xml are allowed to differ."
+}

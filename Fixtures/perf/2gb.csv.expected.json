@@ -1,0 +1,32 @@
+{
+  "file": "perf/2gb.csv",
+  "kind": "csv",
+  "proves": "A 2 GB CSV. Must open with < 200 MB RSS - proof the reader streams instead of slurping. Git-ignored; regenerate with --with-huge.",
+  "valuesVerifiedBy": "byte-level authoring (the fixture IS the expectation)",
+  "dialect": {
+    "delimiter": ",",
+    "quote": "\"",
+    "lineEnding": "\n",
+    "encoding": "utf-8",
+    "bom": false
+  },
+  "rowCount": 1,
+  "maxColumns": 4,
+  "ragged": false,
+  "rows": [
+    [
+      "id",
+      "name",
+      "value",
+      "note"
+    ]
+  ],
+  "generated": true,
+  "approxBytes": 2147523124,
+  "budget": {
+    "peakRssMb": 200
+  },
+  "skipChecks": [
+    "rows"
+  ]
+}

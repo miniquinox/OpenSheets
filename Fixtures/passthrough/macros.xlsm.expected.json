@@ -1,0 +1,105 @@
+{
+  "file": "passthrough/macros.xlsm",
+  "kind": "xlsx",
+  "proves": "xl/vbaProject.bin must survive byte-identical and must NEVER be executed (PLAN.md 7.3). The app shows a 'contains macros, not executed' chip.",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Macro",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:A2",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "this workbook declares a VBA project",
+          "numberFormat": "General"
+        },
+        "A2": {
+          "type": "text",
+          "value": "OpenSheets never executes it",
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "containsMacros": true,
+  "sheetLevelElementsThatMustSurvive": [
+    "pageMargins"
+  ],
+  "notes": "The .bin is a synthetic OLE2/CFB container, not compiled VBA. It is inert test data: nothing in OpenSheets parses or runs it.",
+  "zipEntries": {
+    "[Content_Types].xml": {
+      "sha256": "6a2bd82e3e05d2553814ce5df130c7a463acb20319d55b1521c78f22f672414d",
+      "crc32": 2433058522,
+      "uncompressedSize": 1222,
+      "method": 8
+    },
+    "_rels/.rels": {
+      "sha256": "1285b20099c64699001f9d90ea040ca1c177fa99bc3ae8a841128874820f01a4",
+      "crc32": 3662258162,
+      "uncompressedSize": 587,
+      "method": 8
+    },
+    "xl/_rels/workbook.xml.rels": {
+      "sha256": "8120aa26748563f17c5d0909502fce9fc5d811d07af70aa08d879fb0407db0b0",
+      "crc32": 3026666260,
+      "uncompressedSize": 819,
+      "method": 8
+    },
+    "xl/worksheets/sheet1.xml": {
+      "sha256": "02b242f48c105f5399e843833470b5b7ddcf33f58bbeac460d2a20e2cc0810bd",
+      "crc32": 2613308392,
+      "uncompressedSize": 610,
+      "method": 8
+    },
+    "xl/workbook.xml": {
+      "sha256": "2fc977f49d4218e8f15f1a3978e544197bd1553b4e6c33d7736c393bcb1b5c4e",
+      "crc32": 3016521842,
+      "uncompressedSize": 623,
+      "method": 8
+    },
+    "xl/sharedStrings.xml": {
+      "sha256": "19062b2a85182011ea1e212e7b1aac66d5203374d68d2fcd401147c0039c3388",
+      "crc32": 1008751612,
+      "uncompressedSize": 255,
+      "method": 8
+    },
+    "xl/styles.xml": {
+      "sha256": "b955eec7bf81e3497213a0e029a3d7837f6dd31fc9c30c829ac7358fe294b23c",
+      "crc32": 3373972506,
+      "uncompressedSize": 867,
+      "method": 8
+    },
+    "xl/theme/theme1.xml": {
+      "sha256": "75104b2164c20dab2578383d827deac3a7eec077c3f7c99a4099a551fdebb134",
+      "crc32": 1413937688,
+      "uncompressedSize": 6994,
+      "method": 8
+    },
+    "xl/vbaProject.bin": {
+      "sha256": "a7ff61675aafa944f6e6119fcddbdf4b623b035520d7b744ce6eedc155cd1b7e",
+      "crc32": 1049712478,
+      "uncompressedSize": 2048,
+      "method": 8
+    },
+    "docProps/core.xml": {
+      "sha256": "c26fccdf4363742b7a3c977d8234a2b8bdb835824710b6f2ddfe69c04cdc53ed",
+      "crc32": 2431413393,
+      "uncompressedSize": 592,
+      "method": 8
+    },
+    "docProps/app.xml": {
+      "sha256": "1e4289478d0cc472e5f5e9aba4fa7326885f9645f61c494c3437289935ba1348",
+      "crc32": 859160016,
+      "uncompressedSize": 783,
+      "method": 8
+    }
+  },
+  "passthroughEntries": [
+    "xl/vbaProject.bin"
+  ],
+  "passthroughContract": "After read -> modify one cell of the first sheet -> write, every entry listed in passthroughEntries must be byte-identical to the original (compare inflated bytes AND crc32). Only xl/worksheets/sheet1.xml, xl/sharedStrings.xml and xl/calcChain.xml are allowed to differ."
+}

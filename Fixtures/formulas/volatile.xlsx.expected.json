@@ -1,0 +1,51 @@
+{
+  "file": "formulas/volatile.xlsx",
+  "kind": "xlsx",
+  "proves": "TODAY()/NOW() parse and carry a cached value that must NOT be asserted against a constant - the corpus cannot pin a clock.",
+  "valuesVerifiedBy": "LibreOffice 26.2.4.2 0229ac93fcf0d7cbc6376066c6f35021cef002dc recalculation of formulas written without cached values",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Volatile",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:B3",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "TODAY",
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "number",
+          "value": null,
+          "formula": "TODAY()",
+          "numberFormat": null
+        },
+        "A2": {
+          "type": "text",
+          "value": "NOW",
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": null,
+          "formula": "NOW()",
+          "numberFormat": null
+        },
+        "B3": {
+          "type": "boolean",
+          "value": true,
+          "formula": "YEAR(TODAY())>=2024",
+          "numberFormat": null
+        }
+      }
+    }
+  ],
+  "skipChecks": [
+    "cellValue:Volatile!B1",
+    "cellValue:Volatile!B2"
+  ],
+  "notes": "value:null means 'a value must exist, its content is not asserted'."
+}

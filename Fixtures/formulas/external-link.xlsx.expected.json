@@ -1,0 +1,49 @@
+{
+  "file": "formulas/external-link.xlsx",
+  "kind": "xlsx",
+  "proves": "Formulas referencing another workbook ([1]Sheet1!A1) must set the .externalLink cell flag and must NEVER be resolved or fetched.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Linked",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:C1",
+      "usedRange": "A1:C1",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 999.0,
+          "formula": "[1]Sheet1!A1",
+          "numberFormat": "General",
+          "flags": [
+            "externalLink"
+          ]
+        },
+        "B1": {
+          "type": "number",
+          "value": 1998.0,
+          "formula": "[1]Sheet1!A1*2",
+          "numberFormat": "General",
+          "flags": [
+            "externalLink"
+          ]
+        },
+        "C1": {
+          "type": "number",
+          "value": 999.0,
+          "formula": "SUM([1]Sheet1!A1:A5)",
+          "numberFormat": "General",
+          "flags": [
+            "externalLink"
+          ]
+        }
+      }
+    }
+  ],
+  "mustNotHappen": [
+    "any filesystem or network read of the externalLinkPath target"
+  ],
+  "notes": "The link target is a file:/// URL that does not exist. If a test observes an open() on it, the reader is broken (PLAN.md 7.3)."
+}

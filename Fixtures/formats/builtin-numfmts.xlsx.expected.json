@@ -1,0 +1,299 @@
+{
+  "file": "formats/builtin-numfmts.xlsx",
+  "kind": "xlsx",
+  "proves": "The ~25 built-in numFmtIds that are IMPLICIT - they never appear in <numFmts>, so a reader without the hardcoded table renders them all as General.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Builtins",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:B28",
+      "usedRange": "A1:B28",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 0.0,
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "General"
+        },
+        "A2": {
+          "type": "number",
+          "value": 1.0,
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "0"
+        },
+        "A3": {
+          "type": "number",
+          "value": 2.0,
+          "numberFormat": "General"
+        },
+        "B3": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "0.00"
+        },
+        "A4": {
+          "type": "number",
+          "value": 3.0,
+          "numberFormat": "General"
+        },
+        "B4": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "#,##0"
+        },
+        "A5": {
+          "type": "number",
+          "value": 4.0,
+          "numberFormat": "General"
+        },
+        "B5": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "#,##0.00"
+        },
+        "A6": {
+          "type": "number",
+          "value": 9.0,
+          "numberFormat": "General"
+        },
+        "B6": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "0%"
+        },
+        "A7": {
+          "type": "number",
+          "value": 10.0,
+          "numberFormat": "General"
+        },
+        "B7": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "0.00%"
+        },
+        "A8": {
+          "type": "number",
+          "value": 11.0,
+          "numberFormat": "General"
+        },
+        "B8": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "0.00E+00"
+        },
+        "A9": {
+          "type": "number",
+          "value": 12.0,
+          "numberFormat": "General"
+        },
+        "B9": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "# ?/?"
+        },
+        "A10": {
+          "type": "number",
+          "value": 13.0,
+          "numberFormat": "General"
+        },
+        "B10": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "# ??/??"
+        },
+        "A11": {
+          "type": "number",
+          "value": 14.0,
+          "numberFormat": "General"
+        },
+        "B11": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "mm-dd-yy"
+        },
+        "A12": {
+          "type": "number",
+          "value": 15.0,
+          "numberFormat": "General"
+        },
+        "B12": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "d-mmm-yy"
+        },
+        "A13": {
+          "type": "number",
+          "value": 16.0,
+          "numberFormat": "General"
+        },
+        "B13": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "d-mmm"
+        },
+        "A14": {
+          "type": "number",
+          "value": 17.0,
+          "numberFormat": "General"
+        },
+        "B14": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "mmm-yy"
+        },
+        "A15": {
+          "type": "number",
+          "value": 18.0,
+          "numberFormat": "General"
+        },
+        "B15": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "h:mm AM/PM"
+        },
+        "A16": {
+          "type": "number",
+          "value": 19.0,
+          "numberFormat": "General"
+        },
+        "B16": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "h:mm:ss AM/PM"
+        },
+        "A17": {
+          "type": "number",
+          "value": 20.0,
+          "numberFormat": "General"
+        },
+        "B17": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "h:mm"
+        },
+        "A18": {
+          "type": "number",
+          "value": 21.0,
+          "numberFormat": "General"
+        },
+        "B18": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "h:mm:ss"
+        },
+        "A19": {
+          "type": "number",
+          "value": 22.0,
+          "numberFormat": "General"
+        },
+        "B19": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "m/d/yy h:mm"
+        },
+        "A20": {
+          "type": "number",
+          "value": 37.0,
+          "numberFormat": "General"
+        },
+        "B20": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "#,##0 ;(#,##0)"
+        },
+        "A21": {
+          "type": "number",
+          "value": 38.0,
+          "numberFormat": "General"
+        },
+        "B21": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "#,##0 ;[Red](#,##0)"
+        },
+        "A22": {
+          "type": "number",
+          "value": 39.0,
+          "numberFormat": "General"
+        },
+        "B22": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "#,##0.00;(#,##0.00)"
+        },
+        "A23": {
+          "type": "number",
+          "value": 40.0,
+          "numberFormat": "General"
+        },
+        "B23": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "#,##0.00;[Red](#,##0.00)"
+        },
+        "A24": {
+          "type": "number",
+          "value": 45.0,
+          "numberFormat": "General"
+        },
+        "B24": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "mm:ss"
+        },
+        "A25": {
+          "type": "number",
+          "value": 46.0,
+          "numberFormat": "General"
+        },
+        "B25": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "[h]:mm:ss"
+        },
+        "A26": {
+          "type": "number",
+          "value": 47.0,
+          "numberFormat": "General"
+        },
+        "B26": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "mmss.0"
+        },
+        "A27": {
+          "type": "number",
+          "value": 48.0,
+          "numberFormat": "General"
+        },
+        "B27": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "##0.0E+0"
+        },
+        "A28": {
+          "type": "number",
+          "value": 49.0,
+          "numberFormat": "General"
+        },
+        "B28": {
+          "type": "number",
+          "value": 45366.625,
+          "numberFormat": "@"
+        }
+      }
+    }
+  ],
+  "notes": "Column A is the numFmtId; column B is the same serial (45366.625 = 2024-03-15 15:00) rendered through it."
+}

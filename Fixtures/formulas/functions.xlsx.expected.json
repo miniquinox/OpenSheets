@@ -1,0 +1,812 @@
+{
+  "file": "formulas/functions.xlsx",
+  "kind": "xlsx",
+  "proves": "Every function family in PLAN.md 5.3 evaluated once, with the result a real engine cached next to the formula. Column A names the function, column B is it.",
+  "valuesVerifiedBy": "LibreOffice 26.2.4.2 0229ac93fcf0d7cbc6376066c6f35021cef002dc recalculation of formulas written without cached values",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Data",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:D11",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 10.0,
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "text",
+          "value": "alpha",
+          "numberFormat": "General"
+        },
+        "C6": {
+          "type": "number",
+          "value": 6.5,
+          "numberFormat": "General"
+        },
+        "D2": {
+          "type": "text",
+          "value": "hello world",
+          "numberFormat": "General"
+        },
+        "A11": {
+          "type": "number",
+          "value": 1.0,
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "Calc",
+      "index": 1,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:B69",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "SUM",
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "number",
+          "value": 210.0,
+          "formula": "SUM(Data!A1:A6)",
+          "numberFormat": null
+        },
+        "A2": {
+          "type": "text",
+          "value": "AVERAGE",
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": 35.0,
+          "formula": "AVERAGE(Data!A1:A6)",
+          "numberFormat": null
+        },
+        "A3": {
+          "type": "text",
+          "value": "COUNT",
+          "numberFormat": "General"
+        },
+        "B3": {
+          "type": "number",
+          "value": 6.0,
+          "formula": "COUNT(Data!A1:A6)",
+          "numberFormat": null
+        },
+        "A4": {
+          "type": "text",
+          "value": "COUNTA",
+          "numberFormat": "General"
+        },
+        "B4": {
+          "type": "number",
+          "value": 6.0,
+          "formula": "COUNTA(Data!B1:B6)",
+          "numberFormat": null
+        },
+        "A5": {
+          "type": "text",
+          "value": "MIN",
+          "numberFormat": "General"
+        },
+        "B5": {
+          "type": "number",
+          "value": 10.0,
+          "formula": "MIN(Data!A1:A6)",
+          "numberFormat": null
+        },
+        "A6": {
+          "type": "text",
+          "value": "MAX",
+          "numberFormat": "General"
+        },
+        "B6": {
+          "type": "number",
+          "value": 60.0,
+          "formula": "MAX(Data!A1:A6)",
+          "numberFormat": null
+        },
+        "A7": {
+          "type": "text",
+          "value": "ROUND",
+          "numberFormat": "General"
+        },
+        "B7": {
+          "type": "number",
+          "value": 2.57,
+          "formula": "ROUND(2.567,2)",
+          "numberFormat": null
+        },
+        "A8": {
+          "type": "text",
+          "value": "ROUNDUP",
+          "numberFormat": "General"
+        },
+        "B8": {
+          "type": "number",
+          "value": 2.12,
+          "formula": "ROUNDUP(2.111,2)",
+          "numberFormat": null
+        },
+        "A9": {
+          "type": "text",
+          "value": "ROUNDDOWN",
+          "numberFormat": "General"
+        },
+        "B9": {
+          "type": "number",
+          "value": 2.99,
+          "formula": "ROUNDDOWN(2.999,2)",
+          "numberFormat": null
+        },
+        "A10": {
+          "type": "text",
+          "value": "ABS",
+          "numberFormat": "General"
+        },
+        "B10": {
+          "type": "number",
+          "value": 7.5,
+          "formula": "ABS(-7.5)",
+          "numberFormat": null
+        },
+        "A11": {
+          "type": "text",
+          "value": "SQRT",
+          "numberFormat": "General"
+        },
+        "B11": {
+          "type": "number",
+          "value": 12.0,
+          "formula": "SQRT(144)",
+          "numberFormat": null
+        },
+        "A12": {
+          "type": "text",
+          "value": "POWER",
+          "numberFormat": "General"
+        },
+        "B12": {
+          "type": "number",
+          "value": 1024.0,
+          "formula": "POWER(2,10)",
+          "numberFormat": null
+        },
+        "A13": {
+          "type": "text",
+          "value": "MOD",
+          "numberFormat": "General"
+        },
+        "B13": {
+          "type": "number",
+          "value": 2.0,
+          "formula": "MOD(17,5)",
+          "numberFormat": null
+        },
+        "A14": {
+          "type": "text",
+          "value": "SUMPRODUCT",
+          "numberFormat": "General"
+        },
+        "B14": {
+          "type": "number",
+          "value": 170.0,
+          "formula": "SUMPRODUCT(Data!A1:A3,Data!C1:C3)",
+          "numberFormat": null
+        },
+        "A15": {
+          "type": "text",
+          "value": "SUBTOTAL",
+          "numberFormat": "General"
+        },
+        "B15": {
+          "type": "number",
+          "value": 210.0,
+          "formula": "SUBTOTAL(9,Data!A1:A6)",
+          "numberFormat": null
+        },
+        "A16": {
+          "type": "text",
+          "value": "IF",
+          "numberFormat": "General"
+        },
+        "B16": {
+          "type": "text",
+          "value": "yes",
+          "formula": "IF(Data!A1>5,\"yes\",\"no\")",
+          "numberFormat": null
+        },
+        "A17": {
+          "type": "text",
+          "value": "IFS",
+          "numberFormat": "General"
+        },
+        "B17": {
+          "type": "text",
+          "value": "mid",
+          "formula": "_xlfn.IFS(Data!A1>100,\"big\",Data!A1>5,\"mid\",TRUE(),\"small\")",
+          "numberFormat": null
+        },
+        "A18": {
+          "type": "text",
+          "value": "AND",
+          "numberFormat": "General"
+        },
+        "B18": {
+          "type": "boolean",
+          "value": true,
+          "formula": "AND(TRUE(),Data!A1=10)",
+          "numberFormat": null
+        },
+        "A19": {
+          "type": "text",
+          "value": "OR",
+          "numberFormat": "General"
+        },
+        "B19": {
+          "type": "boolean",
+          "value": false,
+          "formula": "OR(FALSE(),Data!A1=99)",
+          "numberFormat": null
+        },
+        "A20": {
+          "type": "text",
+          "value": "NOT",
+          "numberFormat": "General"
+        },
+        "B20": {
+          "type": "boolean",
+          "value": true,
+          "formula": "NOT(FALSE())",
+          "numberFormat": null
+        },
+        "A21": {
+          "type": "text",
+          "value": "IFERROR",
+          "numberFormat": "General"
+        },
+        "B21": {
+          "type": "text",
+          "value": "safe",
+          "formula": "IFERROR(1/0,\"safe\")",
+          "numberFormat": null
+        },
+        "A22": {
+          "type": "text",
+          "value": "SWITCH",
+          "numberFormat": "General"
+        },
+        "B22": {
+          "type": "text",
+          "value": "two",
+          "formula": "_xlfn.SWITCH(2,1,\"one\",2,\"two\",\"other\")",
+          "numberFormat": null
+        },
+        "A23": {
+          "type": "text",
+          "value": "VLOOKUP",
+          "numberFormat": "General"
+        },
+        "B23": {
+          "type": "number",
+          "value": 2.5,
+          "formula": "VLOOKUP(\"beta\",Data!B1:C6,2,FALSE())",
+          "numberFormat": null
+        },
+        "A24": {
+          "type": "text",
+          "value": "HLOOKUP",
+          "numberFormat": "General"
+        },
+        "B24": {
+          "type": "number",
+          "value": 2.0,
+          "formula": "HLOOKUP(\"y\",Data!A10:C11,2,FALSE())",
+          "numberFormat": null
+        },
+        "A25": {
+          "type": "text",
+          "value": "XLOOKUP",
+          "numberFormat": "General"
+        },
+        "B25": {
+          "type": "number",
+          "value": 3.5,
+          "formula": "_xlfn.XLOOKUP(\"gamma\",Data!B1:B6,Data!C1:C6)",
+          "numberFormat": null
+        },
+        "A26": {
+          "type": "text",
+          "value": "INDEX",
+          "numberFormat": "General"
+        },
+        "B26": {
+          "type": "number",
+          "value": 30.0,
+          "formula": "INDEX(Data!A1:A6,3)",
+          "numberFormat": null
+        },
+        "A27": {
+          "type": "text",
+          "value": "MATCH",
+          "numberFormat": "General"
+        },
+        "B27": {
+          "type": "number",
+          "value": 4.0,
+          "formula": "MATCH(40,Data!A1:A6,0)",
+          "numberFormat": null
+        },
+        "A28": {
+          "type": "text",
+          "value": "OFFSET",
+          "numberFormat": "General"
+        },
+        "B28": {
+          "type": "number",
+          "value": 30.0,
+          "formula": "OFFSET(Data!A1,2,0)",
+          "numberFormat": null
+        },
+        "A29": {
+          "type": "text",
+          "value": "INDIRECT",
+          "numberFormat": "General"
+        },
+        "B29": {
+          "type": "number",
+          "value": 20.0,
+          "formula": "INDIRECT(\"Data!A2\")",
+          "numberFormat": null
+        },
+        "A30": {
+          "type": "text",
+          "value": "CHOOSE",
+          "numberFormat": "General"
+        },
+        "B30": {
+          "type": "text",
+          "value": "c",
+          "formula": "CHOOSE(3,\"a\",\"b\",\"c\")",
+          "numberFormat": null
+        },
+        "A31": {
+          "type": "text",
+          "value": "CONCAT",
+          "numberFormat": "General"
+        },
+        "B31": {
+          "type": "text",
+          "value": "alpha-beta",
+          "formula": "_xlfn.CONCAT(Data!B1,\"-\",Data!B2)",
+          "numberFormat": null
+        },
+        "A32": {
+          "type": "text",
+          "value": "TEXTJOIN",
+          "numberFormat": "General"
+        },
+        "B32": {
+          "type": "text",
+          "value": "alpha,beta,gamma",
+          "formula": "_xlfn.TEXTJOIN(\",\",TRUE(),Data!B1:B3)",
+          "numberFormat": null
+        },
+        "A33": {
+          "type": "text",
+          "value": "LEFT",
+          "numberFormat": "General"
+        },
+        "B33": {
+          "type": "text",
+          "value": "hello",
+          "formula": "LEFT(Data!D2,5)",
+          "numberFormat": null
+        },
+        "A34": {
+          "type": "text",
+          "value": "RIGHT",
+          "numberFormat": "General"
+        },
+        "B34": {
+          "type": "text",
+          "value": "world",
+          "formula": "RIGHT(Data!D2,5)",
+          "numberFormat": null
+        },
+        "A35": {
+          "type": "text",
+          "value": "MID",
+          "numberFormat": "General"
+        },
+        "B35": {
+          "type": "text",
+          "value": "world",
+          "formula": "MID(Data!D2,7,5)",
+          "numberFormat": null
+        },
+        "A36": {
+          "type": "text",
+          "value": "LEN",
+          "numberFormat": "General"
+        },
+        "B36": {
+          "type": "number",
+          "value": 11.0,
+          "formula": "LEN(Data!D2)",
+          "numberFormat": null
+        },
+        "A37": {
+          "type": "text",
+          "value": "TRIM",
+          "numberFormat": "General"
+        },
+        "B37": {
+          "type": "text",
+          "value": "padded",
+          "formula": "TRIM(Data!D1)",
+          "numberFormat": null
+        },
+        "A38": {
+          "type": "text",
+          "value": "UPPER",
+          "numberFormat": "General"
+        },
+        "B38": {
+          "type": "text",
+          "value": "MIXED CASE",
+          "formula": "UPPER(Data!D3)",
+          "numberFormat": null
+        },
+        "A39": {
+          "type": "text",
+          "value": "LOWER",
+          "numberFormat": "General"
+        },
+        "B39": {
+          "type": "text",
+          "value": "mixed case",
+          "formula": "LOWER(Data!D3)",
+          "numberFormat": null
+        },
+        "A40": {
+          "type": "text",
+          "value": "PROPER",
+          "numberFormat": "General"
+        },
+        "B40": {
+          "type": "text",
+          "value": "Mixed Case",
+          "formula": "PROPER(Data!D3)",
+          "numberFormat": null
+        },
+        "A41": {
+          "type": "text",
+          "value": "SUBSTITUTE",
+          "numberFormat": "General"
+        },
+        "B41": {
+          "type": "text",
+          "value": "hello there",
+          "formula": "SUBSTITUTE(Data!D2,\"world\",\"there\")",
+          "numberFormat": null
+        },
+        "A42": {
+          "type": "text",
+          "value": "REPLACE",
+          "numberFormat": "General"
+        },
+        "B42": {
+          "type": "text",
+          "value": "HELLO world",
+          "formula": "REPLACE(Data!D2,1,5,\"HELLO\")",
+          "numberFormat": null
+        },
+        "A43": {
+          "type": "text",
+          "value": "TEXT",
+          "numberFormat": "General"
+        },
+        "B43": {
+          "type": "text",
+          "value": "1,234.50",
+          "formula": "TEXT(1234.5,\"#,##0.00\")",
+          "numberFormat": null
+        },
+        "A44": {
+          "type": "text",
+          "value": "VALUE",
+          "numberFormat": "General"
+        },
+        "B44": {
+          "type": "number",
+          "value": 123.45,
+          "formula": "VALUE(\"123.45\")",
+          "numberFormat": null
+        },
+        "A45": {
+          "type": "text",
+          "value": "DATE",
+          "numberFormat": "General"
+        },
+        "B45": {
+          "type": "number",
+          "value": 45366.0,
+          "formula": "DATE(2024,3,15)",
+          "numberFormat": null
+        },
+        "A46": {
+          "type": "text",
+          "value": "YEAR",
+          "numberFormat": "General"
+        },
+        "B46": {
+          "type": "number",
+          "value": 2024.0,
+          "formula": "YEAR(DATE(2024,3,15))",
+          "numberFormat": null
+        },
+        "A47": {
+          "type": "text",
+          "value": "MONTH",
+          "numberFormat": "General"
+        },
+        "B47": {
+          "type": "number",
+          "value": 3.0,
+          "formula": "MONTH(DATE(2024,3,15))",
+          "numberFormat": null
+        },
+        "A48": {
+          "type": "text",
+          "value": "DAY",
+          "numberFormat": "General"
+        },
+        "B48": {
+          "type": "number",
+          "value": 15.0,
+          "formula": "DAY(DATE(2024,3,15))",
+          "numberFormat": null
+        },
+        "A49": {
+          "type": "text",
+          "value": "EDATE",
+          "numberFormat": "General"
+        },
+        "B49": {
+          "type": "number",
+          "value": 45351.0,
+          "formula": "EDATE(DATE(2024,1,31),1)",
+          "numberFormat": null
+        },
+        "A50": {
+          "type": "text",
+          "value": "EOMONTH",
+          "numberFormat": "General"
+        },
+        "B50": {
+          "type": "number",
+          "value": 45351.0,
+          "formula": "EOMONTH(DATE(2024,2,10),0)",
+          "numberFormat": null
+        },
+        "A51": {
+          "type": "text",
+          "value": "DATEDIF",
+          "numberFormat": "General"
+        },
+        "B51": {
+          "type": "number",
+          "value": 74.0,
+          "formula": "DATEDIF(DATE(2024,1,1),DATE(2024,3,15),\"d\")",
+          "numberFormat": null
+        },
+        "A52": {
+          "type": "text",
+          "value": "WEEKDAY",
+          "numberFormat": "General"
+        },
+        "B52": {
+          "type": "number",
+          "value": 6.0,
+          "formula": "WEEKDAY(DATE(2024,3,15))",
+          "numberFormat": null
+        },
+        "A53": {
+          "type": "text",
+          "value": "NETWORKDAYS",
+          "numberFormat": "General"
+        },
+        "B53": {
+          "type": "number",
+          "value": 11.0,
+          "formula": "NETWORKDAYS(DATE(2024,3,1),DATE(2024,3,15))",
+          "numberFormat": null
+        },
+        "A54": {
+          "type": "text",
+          "value": "MEDIAN",
+          "numberFormat": "General"
+        },
+        "B54": {
+          "type": "number",
+          "value": 35.0,
+          "formula": "MEDIAN(Data!A1:A6)",
+          "numberFormat": null
+        },
+        "A55": {
+          "type": "text",
+          "value": "STDEV.P",
+          "numberFormat": "General"
+        },
+        "B55": {
+          "type": "number",
+          "value": 17.0782512765993,
+          "formula": "_xlfn.STDEV.P(Data!A1:A6)",
+          "numberFormat": null
+        },
+        "A56": {
+          "type": "text",
+          "value": "STDEV.S",
+          "numberFormat": "General"
+        },
+        "B56": {
+          "type": "number",
+          "value": 18.7082869338697,
+          "formula": "_xlfn.STDEV.S(Data!A1:A6)",
+          "numberFormat": null
+        },
+        "A57": {
+          "type": "text",
+          "value": "VAR",
+          "numberFormat": "General"
+        },
+        "B57": {
+          "type": "number",
+          "value": 350.0,
+          "formula": "VAR(Data!A1:A6)",
+          "numberFormat": null
+        },
+        "A58": {
+          "type": "text",
+          "value": "PERCENTILE",
+          "numberFormat": "General"
+        },
+        "B58": {
+          "type": "number",
+          "value": 35.0,
+          "formula": "PERCENTILE(Data!A1:A6,0.5)",
+          "numberFormat": null
+        },
+        "A59": {
+          "type": "text",
+          "value": "QUARTILE",
+          "numberFormat": "General"
+        },
+        "B59": {
+          "type": "number",
+          "value": 22.5,
+          "formula": "QUARTILE(Data!A1:A6,1)",
+          "numberFormat": null
+        },
+        "A60": {
+          "type": "text",
+          "value": "RANK",
+          "numberFormat": "General"
+        },
+        "B60": {
+          "type": "number",
+          "value": 4.0,
+          "formula": "RANK(30,Data!A1:A6)",
+          "numberFormat": null
+        },
+        "A61": {
+          "type": "text",
+          "value": "CORREL",
+          "numberFormat": "General"
+        },
+        "B61": {
+          "type": "number",
+          "value": 1.0,
+          "formula": "CORREL(Data!A1:A6,Data!C1:C6)",
+          "numberFormat": null
+        },
+        "A62": {
+          "type": "text",
+          "value": "SUMIF",
+          "numberFormat": "General"
+        },
+        "B62": {
+          "type": "number",
+          "value": 50.0,
+          "formula": "SUMIF(Data!B1:B6,\"alpha\",Data!A1:A6)",
+          "numberFormat": null
+        },
+        "A63": {
+          "type": "text",
+          "value": "SUMIFS",
+          "numberFormat": "General"
+        },
+        "B63": {
+          "type": "number",
+          "value": 70.0,
+          "formula": "SUMIFS(Data!A1:A6,Data!B1:B6,\"beta\")",
+          "numberFormat": null
+        },
+        "A64": {
+          "type": "text",
+          "value": "COUNTIF",
+          "numberFormat": "General"
+        },
+        "B64": {
+          "type": "number",
+          "value": 2.0,
+          "formula": "COUNTIF(Data!B1:B6,\"gamma\")",
+          "numberFormat": null
+        },
+        "A65": {
+          "type": "text",
+          "value": "COUNTIFS",
+          "numberFormat": "General"
+        },
+        "B65": {
+          "type": "number",
+          "value": 1.0,
+          "formula": "COUNTIFS(Data!B1:B6,\"alpha\",Data!A1:A6,\">15\")",
+          "numberFormat": null
+        },
+        "A66": {
+          "type": "text",
+          "value": "AVERAGEIF",
+          "numberFormat": "General"
+        },
+        "B66": {
+          "type": "number",
+          "value": 25.0,
+          "formula": "AVERAGEIF(Data!B1:B6,\"alpha\",Data!A1:A6)",
+          "numberFormat": null
+        },
+        "A67": {
+          "type": "text",
+          "value": "AVERAGEIFS",
+          "numberFormat": "General"
+        },
+        "B67": {
+          "type": "number",
+          "value": 45.0,
+          "formula": "AVERAGEIFS(Data!A1:A6,Data!B1:B6,\"gamma\")",
+          "numberFormat": null
+        },
+        "A68": {
+          "type": "text",
+          "value": "MAXIFS",
+          "numberFormat": "General"
+        },
+        "B68": {
+          "type": "number",
+          "value": 50.0,
+          "formula": "_xlfn.MAXIFS(Data!A1:A6,Data!B1:B6,\"beta\")",
+          "numberFormat": null
+        },
+        "A69": {
+          "type": "text",
+          "value": "MINIFS",
+          "numberFormat": "General"
+        },
+        "B69": {
+          "type": "number",
+          "value": 20.0,
+          "formula": "_xlfn.MINIFS(Data!A1:A6,Data!B1:B6,\"beta\")",
+          "numberFormat": null
+        }
+      }
+    }
+  ],
+  "notes": "Formula TEXT is stored with the OOXML `_xlfn.` prefix for every post-2007 function (IFS, SWITCH, CONCAT, TEXTJOIN, XLOOKUP, MAXIFS, MINIFS, STDEV.P, STDEV.S). A3 must strip/map that prefix; the user never sees it in Excel's formula bar."
+}

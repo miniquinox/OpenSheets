@@ -1,0 +1,37 @@
+{
+  "file": "perf/wide-16384-cols.xlsx",
+  "kind": "xlsx",
+  "proves": "All 16,384 columns x 5 rows. Column-width and style lookup must stay O(1) per cell and RunLengthArray must not allocate 16,384 doubles per sheet.",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Perf",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:XFD5",
+      "usedRange": "A1:XFD5",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "col0",
+          "numberFormat": "General"
+        },
+        "A2": {
+          "type": "number",
+          "value": 1000.0,
+          "numberFormat": "General"
+        },
+        "XFD5": {
+          "type": "number",
+          "value": 20383.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "cellCount": 81920,
+  "budget": {
+    "openMs": 2000
+  }
+}

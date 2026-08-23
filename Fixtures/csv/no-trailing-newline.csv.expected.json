@@ -1,0 +1,30 @@
+{
+  "file": "csv/no-trailing-newline.csv",
+  "kind": "csv",
+  "proves": "The last line has no terminator. A reader that requires one drops the final row.",
+  "valuesVerifiedBy": "byte-level authoring (the fixture IS the expectation)",
+  "dialect": {
+    "delimiter": ",",
+    "quote": "\"",
+    "lineEnding": "\n",
+    "encoding": "utf-8",
+    "bom": false
+  },
+  "rowCount": 3,
+  "maxColumns": 2,
+  "ragged": false,
+  "rows": [
+    [
+      "a",
+      "b"
+    ],
+    [
+      "1",
+      "2"
+    ],
+    [
+      "3",
+      "4"
+    ]
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "file": "structure/rich-text.xlsx",
+  "kind": "xlsx",
+  "proves": "sharedStrings with multi-run rich text, and xml:space=\"preserve\" whitespace. Runs flatten to plain text in the model; the raw part stays in OpaqueParts.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Rich",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:C1",
+      "usedRange": "A1:C1",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "Bold then plain",
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "text",
+          "value": "red italic",
+          "numberFormat": "General"
+        },
+        "C1": {
+          "type": "text",
+          "value": "  leading and trailing  ",
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "passthroughEntries": [
+    "xl/sharedStrings.xml"
+  ],
+  "notes": "C1 proves xml:space=preserve is honoured - trimming it is a silent data change that survives into every later save."
+}

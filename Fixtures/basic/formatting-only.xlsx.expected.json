@@ -1,0 +1,44 @@
+{
+  "file": "basic/formatting-only.xlsx",
+  "kind": "xlsx",
+  "proves": "Cells carrying only a style (no <v>, no <f>) are .empty but still occupy the used range.",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Styled",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:C2",
+      "usedRange": "A1:C2",
+      "cells": {
+        "A1": {
+          "type": "empty",
+          "value": null,
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "empty",
+          "value": null,
+          "numberFormat": "General"
+        },
+        "C1": {
+          "type": "empty",
+          "value": null,
+          "numberFormat": "General"
+        },
+        "A2": {
+          "type": "empty",
+          "value": null,
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "empty",
+          "value": null,
+          "numberFormat": "0.000"
+        }
+      }
+    }
+  ],
+  "notes": "usedRange here is driven by styled-but-valueless cells; a reader that skips cells without <v> will report the wrong dimension."
+}

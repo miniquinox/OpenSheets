@@ -1,0 +1,105 @@
+{
+  "file": "passthrough/data-validation.xlsx",
+  "kind": "xlsx",
+  "proves": "List, integer-range, date and custom-formula validations. Like conditional formatting these are IN-SHEET elements; losing them silently removes a guardrail the file's author put there on purpose.",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Validated",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:C1",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "pick one",
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "text",
+          "value": "1-100",
+          "numberFormat": "General"
+        },
+        "C1": {
+          "type": "text",
+          "value": "a date",
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "sheetLevelElementsThatMustSurvive": [
+    "dataValidations",
+    "pageMargins"
+  ],
+  "dataValidationCount": 4,
+  "zipEntries": {
+    "[Content_Types].xml": {
+      "sha256": "d922d7af45a35a5613fc4bc66aa64635e127b0c538d7e78b2e028f8b4e23b812",
+      "crc32": 977886561,
+      "uncompressedSize": 1167,
+      "method": 8
+    },
+    "_rels/.rels": {
+      "sha256": "1285b20099c64699001f9d90ea040ca1c177fa99bc3ae8a841128874820f01a4",
+      "crc32": 3662258162,
+      "uncompressedSize": 587,
+      "method": 8
+    },
+    "xl/_rels/workbook.xml.rels": {
+      "sha256": "596e47c094f3062e266034ee698571b56b247550b9e1035f0300d54d2f0692b2",
+      "crc32": 4032525636,
+      "uncompressedSize": 697,
+      "method": 8
+    },
+    "xl/worksheets/sheet1.xml": {
+      "sha256": "6b93773914af5b683fb28943ce0517398ff9820c31224084f2d21d9274908920",
+      "crc32": 263394815,
+      "uncompressedSize": 1367,
+      "method": 8
+    },
+    "xl/workbook.xml": {
+      "sha256": "3d5f0d6229375a9d6d9bd96ed078e82775c246906db487d2a5b2803850f05053",
+      "crc32": 2577275709,
+      "uncompressedSize": 553,
+      "method": 8
+    },
+    "xl/sharedStrings.xml": {
+      "sha256": "f0c50ffd2d3f456efc88656501538133f18e4b991b33c2acae7039a4f772480c",
+      "crc32": 1280924523,
+      "uncompressedSize": 226,
+      "method": 8
+    },
+    "xl/styles.xml": {
+      "sha256": "b955eec7bf81e3497213a0e029a3d7837f6dd31fc9c30c829ac7358fe294b23c",
+      "crc32": 3373972506,
+      "uncompressedSize": 867,
+      "method": 8
+    },
+    "xl/theme/theme1.xml": {
+      "sha256": "75104b2164c20dab2578383d827deac3a7eec077c3f7c99a4099a551fdebb134",
+      "crc32": 1413937688,
+      "uncompressedSize": 6994,
+      "method": 8
+    },
+    "docProps/core.xml": {
+      "sha256": "c26fccdf4363742b7a3c977d8234a2b8bdb835824710b6f2ddfe69c04cdc53ed",
+      "crc32": 2431413393,
+      "uncompressedSize": 592,
+      "method": 8
+    },
+    "docProps/app.xml": {
+      "sha256": "2d3fde5d52f0244cce03aec75de62a8d8adafc9accb682ce1ba9936cce6dad18",
+      "crc32": 284207828,
+      "uncompressedSize": 787,
+      "method": 8
+    }
+  },
+  "passthroughEntries": [
+    "docProps/app.xml",
+    "docProps/core.xml"
+  ],
+  "passthroughContract": "After read -> modify one cell of the first sheet -> write, every entry listed in passthroughEntries must be byte-identical to the original (compare inflated bytes AND crc32). Only xl/worksheets/sheet1.xml, xl/sharedStrings.xml and xl/calcChain.xml are allowed to differ."
+}

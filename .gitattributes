@@ -1,0 +1,23 @@
+# Normalise line endings so a Windows checkout does not produce a repo-wide diff.
+* text=auto eol=lf
+
+# Never merge these. A three-way merge of a project file produces something Xcode cannot open,
+# and PLAN.md §13.1 says nobody edits the project file after Wave 0 anyway.
+*.pbxproj -merge -text
+*.xcworkspacedata -merge
+*.xcscheme -merge
+
+# Binary fixtures: no diffing, no line-ending translation.
+*.xlsx binary
+*.xlsm binary
+*.xlsb binary
+*.png binary
+*.gz binary
+*.dmg binary
+
+# CSV fixtures encode their line endings on purpose — that is what they test.
+Fixtures/csv/** -text
+
+# Keep generated and vendored paths out of language statistics and diffs.
+Fixtures/** linguist-vendored
+Scripts/.venv/** linguist-vendored

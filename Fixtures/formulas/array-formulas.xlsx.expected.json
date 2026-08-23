@@ -1,0 +1,41 @@
+{
+  "file": "formulas/array-formulas.xlsx",
+  "kind": "xlsx",
+  "proves": "CSE array formulas: the <f t=\"array\" ref=\"D1:D3\"> master owns a 3-cell spill whose other cells carry only <v>, plus a single-cell array in F1.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Arrays",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:F3",
+      "usedRange": "A1:F3",
+      "cells": {
+        "D1": {
+          "type": "number",
+          "value": 10.0,
+          "formula": "A1:A3*B1:B3",
+          "numberFormat": "General"
+        },
+        "D2": {
+          "type": "number",
+          "value": 40.0,
+          "numberFormat": "General"
+        },
+        "D3": {
+          "type": "number",
+          "value": 90.0,
+          "numberFormat": "General"
+        },
+        "F1": {
+          "type": "number",
+          "value": 140.0,
+          "formula": "SUM(A1:A3*B1:B3)",
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "notes": "D2/D3 legitimately have a value and no formula. Writing them back as plain constants would silently break the array on the next Excel open."
+}

@@ -1,0 +1,110 @@
+{
+  "file": "formulas/shared-formulas.xlsx",
+  "kind": "xlsx",
+  "proves": "A <f t=\"shared\"> master plus 7 empty followers must expand to per-cell formula text with the refs translated (B3 is A3*2, not A1*2).",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Shared",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:B8",
+      "usedRange": "A1:B8",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 1.0,
+          "numberFormat": "General"
+        },
+        "A2": {
+          "type": "number",
+          "value": 2.0,
+          "numberFormat": "General"
+        },
+        "A3": {
+          "type": "number",
+          "value": 3.0,
+          "numberFormat": "General"
+        },
+        "A4": {
+          "type": "number",
+          "value": 4.0,
+          "numberFormat": "General"
+        },
+        "A5": {
+          "type": "number",
+          "value": 5.0,
+          "numberFormat": "General"
+        },
+        "A6": {
+          "type": "number",
+          "value": 6.0,
+          "numberFormat": "General"
+        },
+        "A7": {
+          "type": "number",
+          "value": 7.0,
+          "numberFormat": "General"
+        },
+        "A8": {
+          "type": "number",
+          "value": 8.0,
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "number",
+          "value": 2.0,
+          "formula": "A1*2",
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": 4.0,
+          "formula": "A2*2",
+          "numberFormat": "General"
+        },
+        "B3": {
+          "type": "number",
+          "value": 6.0,
+          "formula": "A3*2",
+          "numberFormat": "General"
+        },
+        "B4": {
+          "type": "number",
+          "value": 8.0,
+          "formula": "A4*2",
+          "numberFormat": "General"
+        },
+        "B5": {
+          "type": "number",
+          "value": 10.0,
+          "formula": "A5*2",
+          "numberFormat": "General"
+        },
+        "B6": {
+          "type": "number",
+          "value": 12.0,
+          "formula": "A6*2",
+          "numberFormat": "General"
+        },
+        "B7": {
+          "type": "number",
+          "value": 14.0,
+          "formula": "A7*2",
+          "numberFormat": "General"
+        },
+        "B8": {
+          "type": "number",
+          "value": 16.0,
+          "formula": "A8*2",
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "skipChecks": [
+    "formulaText:Shared"
+  ],
+  "notes": "skipChecks formulaText: the raw XML holds `<f t=\"shared\" si=\"0\"/>` for B2..B8; the sidecar states the EXPANDED text A1's reader must produce."
+}

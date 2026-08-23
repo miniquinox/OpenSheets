@@ -1,0 +1,65 @@
+{
+  "file": "structure/hidden-sheets.xlsx",
+  "kind": "xlsx",
+  "proves": "visible / hidden / veryHidden. veryHidden cannot be unhidden from Excel's UI and is the one most libraries silently drop on save.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Visible",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:A1",
+      "usedRange": "A1:A1",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "Visible",
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "Hidden",
+      "index": 1,
+      "visibility": "hidden",
+      "dimension": "A1:A1",
+      "usedRange": "A1:A1",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "Hidden",
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "VeryHidden",
+      "index": 2,
+      "visibility": "veryHidden",
+      "dimension": "A1:A1",
+      "usedRange": "A1:A1",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "VeryHidden",
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "AlsoVisible",
+      "index": 3,
+      "visibility": "visible",
+      "dimension": "A1:A1",
+      "usedRange": "A1:A1",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "AlsoVisible",
+          "numberFormat": "General"
+        }
+      }
+    }
+  ]
+}

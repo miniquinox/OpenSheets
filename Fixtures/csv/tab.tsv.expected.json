@@ -1,0 +1,33 @@
+{
+  "file": "csv/tab.tsv",
+  "kind": "csv",
+  "proves": "Tab-separated. RFC 4180 quoting still applies.",
+  "valuesVerifiedBy": "byte-level authoring (the fixture IS the expectation)",
+  "dialect": {
+    "delimiter": "\t",
+    "quote": "\"",
+    "lineEnding": "\n",
+    "encoding": "utf-8",
+    "bom": false
+  },
+  "rowCount": 3,
+  "maxColumns": 3,
+  "ragged": false,
+  "rows": [
+    [
+      "id",
+      "name",
+      "amount"
+    ],
+    [
+      "1",
+      "Ada",
+      "10.5"
+    ],
+    [
+      "2",
+      "Grace",
+      "-3"
+    ]
+  ]
+}

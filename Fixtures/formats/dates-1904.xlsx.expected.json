@@ -1,0 +1,70 @@
+{
+  "file": "formats/dates-1904.xlsx",
+  "kind": "xlsx",
+  "proves": "The 1904 date system. Column A is the wall-clock date as text, column B the serial. dates-1900 and dates-1904 must render IDENTICAL dates.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1904,
+  "sheets": [
+    {
+      "name": "Dates1904",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:B5",
+      "usedRange": "A1:B5",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "1900-01-01",
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "number",
+          "value": -1461.0,
+          "numberFormat": "yyyy-mm-dd"
+        },
+        "A2": {
+          "type": "text",
+          "value": "1900-03-01",
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": -1401.0,
+          "numberFormat": "yyyy-mm-dd"
+        },
+        "A3": {
+          "type": "text",
+          "value": "1970-01-01",
+          "numberFormat": "General"
+        },
+        "B3": {
+          "type": "number",
+          "value": 24107.0,
+          "numberFormat": "yyyy-mm-dd"
+        },
+        "A4": {
+          "type": "text",
+          "value": "2024-03-15",
+          "numberFormat": "General"
+        },
+        "B4": {
+          "type": "number",
+          "value": 43904.0,
+          "numberFormat": "yyyy-mm-dd"
+        },
+        "A5": {
+          "type": "text",
+          "value": "2099-12-31",
+          "numberFormat": "General"
+        },
+        "B5": {
+          "type": "number",
+          "value": 71588.0,
+          "numberFormat": "yyyy-mm-dd"
+        }
+      }
+    }
+  ],
+  "twinFixture": "formats/dates-1900.xlsx",
+  "notes": "The 1904 serials are exactly the 1900 serials minus 1462."
+}

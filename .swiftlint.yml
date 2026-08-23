@@ -1,0 +1,129 @@
+# SwiftLint configuration for OpenSheets.
+#
+# SwiftFormat handles layout; SwiftLint handles the things that are about *judgement* —
+# complexity, force-unwrapping, and the two rules below that encode project policy rather than
+# taste. Keep the two configurations from overlapping: a rule that both tools have an opinion
+# about is a rule that produces unfixable churn.
+
+included:
+  - App
+  - Packages/OpenSheetsCore/Sources
+  - Packages/OpenSheetsCore/Tests
+  - CLI
+
+excluded:
+  - .build
+  - Packages/OpenSheetsCore/.build
+  - Fixtures
+  - Scripts
+  - DerivedData
+  - build
+
+disabled_rules:
+  # SwiftFormat owns line length; two tools disagreeing about it is unfixable churn.
+  - line_length
+  # Same reason: `.swiftformat` sets `--commas always`, so SwiftFormat adds the trailing comma
+  # that this rule removes. One of them has to yield, and layout is SwiftFormat's job.
+  - trailing_comma
+  # This rule prefers the failable `String(bytes:encoding:)` over `String(decoding:as:)`. Its
+  # point — that silently replacing invalid bytes with U+FFFD can hide a corrupt file — is a
+  # real one, but it is guarded far better elsewhere: the reader detects encoding explicitly
+  # and throws `SheetError.textEncodingUndetectable` / `.xmlInvalidEncoding`, and the hostile
+  # corpus asserts those codes. Meanwhile every current use is a test turning known-good JSON
+  # back into a string, where an optional buys nothing.
+  - optional_data_string_conversion
+  # `SheetError` and the model types are long by design. Splitting a frozen interface across
+  # files to satisfy a counter would make it harder to read, not easier.
+  - type_body_length
+  - file_length
+  # Doc comments in this project explain constraints, which takes more than one line.
+  - orphaned_doc_comment
+  # Tests deliberately use long, sentence-like names.
+  - identifier_name
+
+opt_in_rules:
+  - array_init
+  - closure_end_indentation
+  - closure_spacing
+  - collection_alignment
+  - contains_over_filter_count
+  - contains_over_first_not_nil
+  - empty_collection_literal
+  - empty_count
+  - empty_string
+  - fatal_error_message
+  - first_where
+  - flatmap_over_map_reduce
+  - implicitly_unwrapped_optional
+  - last_where
+  - legacy_multiple
+  - literal_expression_end_indentation
+  - modifier_order
+  - operator_usage_whitespace
+  - overridden_super_call
+  - prefer_self_type_over_type_of_self
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - toggle_bool
+  - unavailable_function
+  - unneeded_parentheses_in_closure_argument
+  - yoda_condition
+
+analyzer_rules:
+  - unused_import
+
+# PLAN.md §8 and §13.1: no fatalError, no stringly-typed errors, no silent no-ops. Everything
+# throws a `SheetError`. These two rules are the mechanical half of enforcing that.
+custom_rules:
+  no_fatal_error:
+    name: "No fatalError"
+    regex: '(?<![A-Za-z0-9_.])fatalError\s*\('
+    match_kinds:
+      - identifier
+    message: "PLAN.md §8: throw SheetError.internalInconsistency(detail:) instead of fatalError — it unwinds rather than killing the app."
+    severity: error
+    excluded: ".*Tests/.*"
+
+  no_nserror:
+    name: "No NSError"
+    regex: '(?<![A-Za-z0-9_.])NSError\s*\('
+    message: "PLAN.md §8: wrap the framework failure in a SheetError case rather than letting an NSError escape."
+    severity: error
+    excluded: ".*Tests/.*"
+
+force_cast: error
+force_try: error
+force_unwrapping:
+  severity: error
+
+# `DS` is the house token namespace, carried over from SignalToNoise's design system. Two
+# characters is the point — it appears on every styled view in the app.
+type_name:
+  min_length: 2
+
+# Counting each `case` of an exhaustive switch as a branch measures the size of the enum, not
+# the tangledness of the code. The number-format parser is one long switch over a token
+# vocabulary: linear, readable, and nothing a split would improve.
+cyclomatic_complexity:
+  warning: 20
+  error: 30
+  ignores_case_statements: true
+
+# Long enough for the format-spec folds, which are long because the token vocabulary is, and
+# short enough to still catch a function that grew several jobs.
+function_body_length:
+  warning: 120
+  error: 200
+
+function_parameter_count:
+  warning: 8
+  error: 12
+
+nesting:
+  type_level: 3
+
+large_tuple:
+  warning: 3
+  error: 4
+
+reporter: "github-actions-logging"

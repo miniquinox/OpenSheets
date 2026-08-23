@@ -1,0 +1,34 @@
+{
+  "file": "csv/doubled-quotes.csv",
+  "kind": "csv",
+  "proves": "RFC 4180 escaped quotes: \"\" inside a quoted field means one literal \".",
+  "valuesVerifiedBy": "byte-level authoring (the fixture IS the expectation)",
+  "dialect": {
+    "delimiter": ",",
+    "quote": "\"",
+    "lineEnding": "\n",
+    "encoding": "utf-8",
+    "bom": false
+  },
+  "rowCount": 4,
+  "maxColumns": 2,
+  "ragged": false,
+  "rows": [
+    [
+      "id",
+      "text"
+    ],
+    [
+      "1",
+      "she said \"hi\""
+    ],
+    [
+      "2",
+      "just \"one\" word"
+    ],
+    [
+      "3",
+      "\"fully quoted\""
+    ]
+  ]
+}

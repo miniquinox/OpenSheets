@@ -1,0 +1,23 @@
+{
+  "file": "basic/minimal.xlsx",
+  "kind": "xlsx",
+  "proves": "The smallest legal workbook parses: one sheet, one numeric cell.",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Sheet1",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:A1",
+      "usedRange": "A1:A1",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 42.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ]
+}

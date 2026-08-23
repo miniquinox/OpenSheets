@@ -1,0 +1,74 @@
+{
+  "file": "basic/types.xlsx",
+  "kind": "xlsx",
+  "proves": "Every CellValue case and every cell type code `t` (absent/s/inlineStr/b/e) round-trips.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Types",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:H2",
+      "usedRange": "A1:H2",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 3.25,
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "text",
+          "value": "shared one",
+          "numberFormat": "General"
+        },
+        "C1": {
+          "type": "text",
+          "value": "inline text",
+          "numberFormat": "General"
+        },
+        "D1": {
+          "type": "boolean",
+          "value": true,
+          "numberFormat": "General"
+        },
+        "E1": {
+          "type": "boolean",
+          "value": false,
+          "numberFormat": "General"
+        },
+        "F1": {
+          "type": "error",
+          "value": "#N/A",
+          "numberFormat": "General"
+        },
+        "G1": {
+          "type": "empty",
+          "value": null,
+          "numberFormat": "General"
+        },
+        "H1": {
+          "type": "text",
+          "value": "shared two",
+          "numberFormat": "General"
+        },
+        "A2": {
+          "type": "number",
+          "value": -1e-07,
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": 1.7976931348623157e+308,
+          "numberFormat": "General"
+        },
+        "C2": {
+          "type": "number",
+          "value": 0.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "notes": "B2 is Double.greatestFiniteMagnitude written in OOXML scientific notation; a naive Double(String) that rejects 'E+308' will lose it."
+}

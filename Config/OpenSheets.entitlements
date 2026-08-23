@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Deliberately NOT sandboxed (PLAN.md §7.1). The product is "let Claude Code touch the
+	     file on disk", and a sandboxed app cannot do that without fighting security-scoped
+	     bookmarks at every turn. We are not shipping to the Mac App Store; we ship Developer
+	     ID signed, notarised, with the hardened runtime on.
+
+	     The real boundary is not the sandbox — it is workspace grants (PLAN.md §7.2), enforced
+	     in SheetStore and applied to every path the MCP server touches. -->
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+
+	<!-- Kept even while unsandboxed: we already persist security-scoped bookmarks from
+	     NSOpenPanel, so a future sandboxed build is a build-setting change rather than a
+	     rewrite. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
+
+	<!-- Nothing here grants network access, JIT, unsigned memory, or library-validation
+	     bypass. If a future change appears to need one of those, that is a design smell worth
+	     arguing about before it is worth entitling. -->
+</dict>
+</plist>

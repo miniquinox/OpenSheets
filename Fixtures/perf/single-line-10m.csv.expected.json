@@ -1,0 +1,26 @@
+{
+  "file": "perf/single-line-10m.csv",
+  "kind": "csv",
+  "proves": "A single 10,000,000-character field. Bounds the per-field buffer; a quadratic string append here takes minutes. Git-ignored.",
+  "valuesVerifiedBy": "byte-level authoring (the fixture IS the expectation)",
+  "dialect": {
+    "delimiter": ",",
+    "quote": "\"",
+    "lineEnding": "\n",
+    "encoding": "utf-8",
+    "bom": false
+  },
+  "rowCount": 1,
+  "maxColumns": 1,
+  "ragged": false,
+  "rows": [
+    [
+      "header"
+    ]
+  ],
+  "generated": true,
+  "secondRowFieldLength": 10000000,
+  "skipChecks": [
+    "rows"
+  ]
+}

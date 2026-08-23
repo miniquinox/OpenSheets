@@ -1,0 +1,103 @@
+{
+  "file": "passthrough/conditional-format.xlsx",
+  "kind": "xlsx",
+  "proves": "Four conditional-format rule kinds. THE POINT: <conditionalFormatting> lives INSIDE sheet1.xml, the one part the writer re-emits, so it cannot be passed through. A2 must model it or splice the original fragment back verbatim.",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Rules",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:C8",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "Region",
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": 120.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "sheetLevelElementsThatMustSurvive": [
+    "conditionalFormatting",
+    "extLst",
+    "pageMargins"
+  ],
+  "conditionalFormatRuleCount": 4,
+  "notes": "The data-bar rule is written twice: a legacy <cfRule type=dataBar> AND a modern <x14:conditionalFormatting> inside <extLst>. Dropping either one loses the rule in some Excel versions. The dxf styles it points at live in xl/styles.xml <dxfs>, which A2 also rewrites.",
+  "zipEntries": {
+    "[Content_Types].xml": {
+      "sha256": "d922d7af45a35a5613fc4bc66aa64635e127b0c538d7e78b2e028f8b4e23b812",
+      "crc32": 977886561,
+      "uncompressedSize": 1167,
+      "method": 8
+    },
+    "_rels/.rels": {
+      "sha256": "1285b20099c64699001f9d90ea040ca1c177fa99bc3ae8a841128874820f01a4",
+      "crc32": 3662258162,
+      "uncompressedSize": 587,
+      "method": 8
+    },
+    "xl/_rels/workbook.xml.rels": {
+      "sha256": "596e47c094f3062e266034ee698571b56b247550b9e1035f0300d54d2f0692b2",
+      "crc32": 4032525636,
+      "uncompressedSize": 697,
+      "method": 8
+    },
+    "xl/worksheets/sheet1.xml": {
+      "sha256": "a61e855914728e469688e54cc3f97c0f11b5a47d9968ec85fb6eaa047fa7ca00",
+      "crc32": 2285256149,
+      "uncompressedSize": 3310,
+      "method": 8
+    },
+    "xl/workbook.xml": {
+      "sha256": "ffb9fe58970aab807e451d50401d2f157654707b965eb42ad79b18c69bf0b6ca",
+      "crc32": 3864573368,
+      "uncompressedSize": 549,
+      "method": 8
+    },
+    "xl/sharedStrings.xml": {
+      "sha256": "d3ad19931dceecf17a43444292d47038b155d20e8f0d2f75c510a41d3a684e03",
+      "crc32": 3512189834,
+      "uncompressedSize": 300,
+      "method": 8
+    },
+    "xl/styles.xml": {
+      "sha256": "74ebc9818956b92b7a563c565b0a3d65fe54805bb4611378ef114b1ede2fe9b3",
+      "crc32": 3358142093,
+      "uncompressedSize": 985,
+      "method": 8
+    },
+    "xl/theme/theme1.xml": {
+      "sha256": "75104b2164c20dab2578383d827deac3a7eec077c3f7c99a4099a551fdebb134",
+      "crc32": 1413937688,
+      "uncompressedSize": 6994,
+      "method": 8
+    },
+    "docProps/core.xml": {
+      "sha256": "c26fccdf4363742b7a3c977d8234a2b8bdb835824710b6f2ddfe69c04cdc53ed",
+      "crc32": 2431413393,
+      "uncompressedSize": 592,
+      "method": 8
+    },
+    "docProps/app.xml": {
+      "sha256": "86b785a69698dba1e2fb3aaa794483a28d548075ab3d817c1c89e793e33b8043",
+      "crc32": 2605572599,
+      "uncompressedSize": 783,
+      "method": 8
+    }
+  },
+  "passthroughEntries": [
+    "docProps/app.xml",
+    "docProps/core.xml",
+    "xl/theme/theme1.xml"
+  ],
+  "passthroughContract": "After read -> modify one cell of the first sheet -> write, every entry listed in passthroughEntries must be byte-identical to the original (compare inflated bytes AND crc32). Only xl/worksheets/sheet1.xml, xl/sharedStrings.xml and xl/calcChain.xml are allowed to differ."
+}

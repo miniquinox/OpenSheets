@@ -1,0 +1,139 @@
+{
+  "file": "passthrough/chart.xlsx",
+  "kind": "xlsx",
+  "proves": "A real column chart. Its parts (chart1.xml, drawing1.xml and their rels) must survive a cell edit byte-identical, and the <drawing r:id> element inside sheet1.xml must be re-emitted or the chart vanishes from the sheet.",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Data",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:C8",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "Region",
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "text",
+          "value": "Q1",
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": 120.0,
+          "numberFormat": "General"
+        },
+        "C8": {
+          "type": "number",
+          "value": 149.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "sheetLevelElementsThatMustSurvive": [
+    "drawing",
+    "pageMargins"
+  ],
+  "staleRisk": "Editing B2:C8 changes the chart's source values. The chart XML does not cache them, so it stays correct - but a chart with a cached <c:numCache> would go stale and must be warned about, not 'fixed'.",
+  "zipEntries": {
+    "[Content_Types].xml": {
+      "sha256": "84de3e6817ab0c428089b6f4523462cf2c7a6cb993c2297e92d64f8d2a4c9a7d",
+      "crc32": 1243426296,
+      "uncompressedSize": 1411,
+      "method": 8
+    },
+    "_rels/.rels": {
+      "sha256": "1285b20099c64699001f9d90ea040ca1c177fa99bc3ae8a841128874820f01a4",
+      "crc32": 3662258162,
+      "uncompressedSize": 587,
+      "method": 8
+    },
+    "xl/_rels/workbook.xml.rels": {
+      "sha256": "596e47c094f3062e266034ee698571b56b247550b9e1035f0300d54d2f0692b2",
+      "crc32": 4032525636,
+      "uncompressedSize": 697,
+      "method": 8
+    },
+    "xl/worksheets/sheet1.xml": {
+      "sha256": "9acdb844c7a33089b517d9e9721d6177956449787afb8443d8f38e616f2a8b1b",
+      "crc32": 2139853691,
+      "uncompressedSize": 1332,
+      "method": 8
+    },
+    "xl/workbook.xml": {
+      "sha256": "c0755558bc16fe004ac06923b935773599fbe346b6bb5c8b0857c9a2fb288910",
+      "crc32": 1387577792,
+      "uncompressedSize": 548,
+      "method": 8
+    },
+    "xl/charts/chart1.xml": {
+      "sha256": "2ce715aeb880e4aab6cbfe90c181084eb9f769527aa32a69f0e303ec0b409a43",
+      "crc32": 268719825,
+      "uncompressedSize": 2930,
+      "method": 8
+    },
+    "xl/drawings/drawing1.xml": {
+      "sha256": "2afef9f186ebc7fa33d423b58813efde1555ee2c8b5cc01651add671471f4e8e",
+      "crc32": 1845569484,
+      "uncompressedSize": 1002,
+      "method": 8
+    },
+    "xl/sharedStrings.xml": {
+      "sha256": "d3ad19931dceecf17a43444292d47038b155d20e8f0d2f75c510a41d3a684e03",
+      "crc32": 3512189834,
+      "uncompressedSize": 300,
+      "method": 8
+    },
+    "xl/styles.xml": {
+      "sha256": "b955eec7bf81e3497213a0e029a3d7837f6dd31fc9c30c829ac7358fe294b23c",
+      "crc32": 3373972506,
+      "uncompressedSize": 867,
+      "method": 8
+    },
+    "xl/theme/theme1.xml": {
+      "sha256": "75104b2164c20dab2578383d827deac3a7eec077c3f7c99a4099a551fdebb134",
+      "crc32": 1413937688,
+      "uncompressedSize": 6994,
+      "method": 8
+    },
+    "xl/worksheets/_rels/sheet1.xml.rels": {
+      "sha256": "959a2cb8f146e52e35ae2867b15312494897ae807bcc2d6939be16a41d94da42",
+      "crc32": 509624633,
+      "uncompressedSize": 298,
+      "method": 8
+    },
+    "xl/drawings/_rels/drawing1.xml.rels": {
+      "sha256": "94e44809df14b68fb9178f901cdec00ba80ea5b63bbc1c0e811c930f99957495",
+      "crc32": 463053519,
+      "uncompressedSize": 292,
+      "method": 8
+    },
+    "docProps/core.xml": {
+      "sha256": "c26fccdf4363742b7a3c977d8234a2b8bdb835824710b6f2ddfe69c04cdc53ed",
+      "crc32": 2431413393,
+      "uncompressedSize": 592,
+      "method": 8
+    },
+    "docProps/app.xml": {
+      "sha256": "f83fe5baa11e99308fdcc455638637daf179e85e83043324bbc3dd28dc182aba",
+      "crc32": 3762043513,
+      "uncompressedSize": 782,
+      "method": 8
+    }
+  },
+  "passthroughEntries": [
+    "docProps/app.xml",
+    "docProps/core.xml",
+    "xl/charts/chart1.xml",
+    "xl/drawings/_rels/drawing1.xml.rels",
+    "xl/drawings/drawing1.xml",
+    "xl/theme/theme1.xml",
+    "xl/worksheets/_rels/sheet1.xml.rels"
+  ],
+  "passthroughContract": "After read -> modify one cell of the first sheet -> write, every entry listed in passthroughEntries must be byte-identical to the original (compare inflated bytes AND crc32). Only xl/worksheets/sheet1.xml, xl/sharedStrings.xml and xl/calcChain.xml are allowed to differ."
+}

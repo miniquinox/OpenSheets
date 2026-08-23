@@ -1,0 +1,189 @@
+{
+  "file": "formats/custom-numfmts.xlsx",
+  "kind": "xlsx",
+  "proves": "Custom format codes: negative-in-red, currency, percent, scientific, accounting alignment, conditional sections, elapsed time, and the text placeholder @.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Custom",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:B17",
+      "usedRange": "A1:B17",
+      "cells": {
+        "B1": {
+          "type": "number",
+          "value": 1234.5678,
+          "numberFormat": "0.000"
+        },
+        "A1": {
+          "type": "text",
+          "value": "0.000",
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": 1234567.0,
+          "numberFormat": "#,##0"
+        },
+        "A2": {
+          "type": "text",
+          "value": "#,##0",
+          "numberFormat": "General"
+        },
+        "B3": {
+          "type": "number",
+          "value": 1234.5,
+          "numberFormat": "#,##0.00"
+        },
+        "A3": {
+          "type": "text",
+          "value": "#,##0.00",
+          "numberFormat": "General"
+        },
+        "B4": {
+          "type": "number",
+          "value": 0.4267,
+          "numberFormat": "0%"
+        },
+        "A4": {
+          "type": "text",
+          "value": "0%",
+          "numberFormat": "General"
+        },
+        "B5": {
+          "type": "number",
+          "value": 0.4267,
+          "numberFormat": "0.00%"
+        },
+        "A5": {
+          "type": "text",
+          "value": "0.00%",
+          "numberFormat": "General"
+        },
+        "B6": {
+          "type": "number",
+          "value": 12345.6789,
+          "numberFormat": "0.00E+00"
+        },
+        "A6": {
+          "type": "text",
+          "value": "0.00E+00",
+          "numberFormat": "General"
+        },
+        "B7": {
+          "type": "number",
+          "value": 1999.5,
+          "numberFormat": "$#,##0.00"
+        },
+        "A7": {
+          "type": "text",
+          "value": "$#,##0.00",
+          "numberFormat": "General"
+        },
+        "B8": {
+          "type": "number",
+          "value": -1999.5,
+          "numberFormat": "$#,##0.00;[Red]($#,##0.00)"
+        },
+        "A8": {
+          "type": "text",
+          "value": "$#,##0.00;[Red]($#,##0.00)",
+          "numberFormat": "General"
+        },
+        "B9": {
+          "type": "number",
+          "value": -42.5,
+          "numberFormat": "#,##0.00;[Red]-#,##0.00"
+        },
+        "A9": {
+          "type": "text",
+          "value": "#,##0.00;[Red]-#,##0.00",
+          "numberFormat": "General"
+        },
+        "B10": {
+          "type": "number",
+          "value": -7.25,
+          "numberFormat": "0.00_);[Red](0.00)"
+        },
+        "A10": {
+          "type": "text",
+          "value": "0.00_);[Red](0.00)",
+          "numberFormat": "General"
+        },
+        "B11": {
+          "type": "text",
+          "value": "0012",
+          "numberFormat": "@"
+        },
+        "A11": {
+          "type": "text",
+          "value": "@",
+          "numberFormat": "General"
+        },
+        "B12": {
+          "type": "number",
+          "value": 88.25,
+          "numberFormat": "\"EUR \"#,##0.00"
+        },
+        "A12": {
+          "type": "text",
+          "value": "\"EUR \"#,##0.00",
+          "numberFormat": "General"
+        },
+        "B13": {
+          "type": "number",
+          "value": 45366.0,
+          "numberFormat": "yyyy-mm-dd"
+        },
+        "A13": {
+          "type": "text",
+          "value": "yyyy-mm-dd",
+          "numberFormat": "General"
+        },
+        "B14": {
+          "type": "number",
+          "value": 45366.5,
+          "numberFormat": "dd/mm/yyyy hh:mm"
+        },
+        "A14": {
+          "type": "text",
+          "value": "dd/mm/yyyy hh:mm",
+          "numberFormat": "General"
+        },
+        "B15": {
+          "type": "number",
+          "value": 1.5,
+          "numberFormat": "[h]:mm:ss"
+        },
+        "A15": {
+          "type": "text",
+          "value": "[h]:mm:ss",
+          "numberFormat": "General"
+        },
+        "B16": {
+          "type": "number",
+          "value": 12500.0,
+          "numberFormat": "[>=1000]#,##0,\"k\";#,##0"
+        },
+        "A16": {
+          "type": "text",
+          "value": "[>=1000]#,##0,\"k\";#,##0",
+          "numberFormat": "General"
+        },
+        "B17": {
+          "type": "number",
+          "value": 3.5,
+          "numberFormat": "_-* #,##0.00_-;-* #,##0.00_-;_-* \"-\"??_-;_-@_-"
+        },
+        "A17": {
+          "type": "text",
+          "value": "_-* #,##0.00_-;-* #,##0.00_-;_-* \"-\"??_-;_-@_-",
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "notes": "Column A repeats the format code as text so a failing render is readable side by side."
+}

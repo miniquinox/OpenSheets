@@ -1,0 +1,48 @@
+{
+  "file": "structure/hyperlinks.xlsx",
+  "kind": "xlsx",
+  "proves": "External http, file:// and internal-location hyperlinks plus a HYPERLINK() formula. All four are inert until clicked and must show the resolved URL first.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Links",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:D1",
+      "usedRange": "A1:D1",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "external link",
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "text",
+          "value": "file link",
+          "numberFormat": "General"
+        },
+        "C1": {
+          "type": "text",
+          "value": "internal link",
+          "numberFormat": "General"
+        },
+        "D1": {
+          "type": "text",
+          "value": "fn link",
+          "formula": "HYPERLINK(\"https://example.invalid/fn\",\"fn link\")",
+          "numberFormat": "General"
+        }
+      },
+      "hyperlinks": {
+        "A1": "https://example.invalid/never-fetched",
+        "B1": "file:///etc/passwd",
+        "C1": "#Links!A100"
+      }
+    }
+  ],
+  "mustNotHappen": [
+    "opening file:///etc/passwd",
+    "any network request"
+  ]
+}

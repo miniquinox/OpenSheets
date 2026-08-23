@@ -1,0 +1,17 @@
+{
+  "file": "basic/empty-workbook.xlsx",
+  "kind": "xlsx",
+  "proves": "A sheet with zero cells yields usedRange == nil, not a crash or a 1x1 range.",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Empty",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:A1",
+      "usedRange": null,
+      "cells": {}
+    }
+  ]
+}

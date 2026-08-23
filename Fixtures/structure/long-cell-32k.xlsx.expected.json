@@ -1,0 +1,36 @@
+{
+  "file": "structure/long-cell-32k.xlsx",
+  "kind": "xlsx",
+  "proves": "A 32,763-character cell - just under Excel's 32,767 limit, so it must be ACCEPTED. Its hostile twin (40,000 chars) must be rejected.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Long",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:B1",
+      "usedRange": "A1:B1",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": null,
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "number",
+          "value": 32763.0,
+          "formula": "LEN(A1)",
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "skipChecks": [
+    "cellValue:Long!A1"
+  ],
+  "expectCellLength": {
+    "Long!A1": 32763
+  },
+  "notes": "The sidecar asserts the LENGTH, not the 32 KB of text."
+}

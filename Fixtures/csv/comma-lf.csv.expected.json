@@ -1,0 +1,33 @@
+{
+  "file": "csv/comma-lf.csv",
+  "kind": "csv",
+  "proves": "The baseline: comma, LF, trailing newline, no quoting needed.",
+  "valuesVerifiedBy": "byte-level authoring (the fixture IS the expectation)",
+  "dialect": {
+    "delimiter": ",",
+    "quote": "\"",
+    "lineEnding": "\n",
+    "encoding": "utf-8",
+    "bom": false
+  },
+  "rowCount": 3,
+  "maxColumns": 3,
+  "ragged": false,
+  "rows": [
+    [
+      "id",
+      "name",
+      "amount"
+    ],
+    [
+      "1",
+      "Ada",
+      "10.5"
+    ],
+    [
+      "2",
+      "Grace",
+      "-3"
+    ]
+  ]
+}

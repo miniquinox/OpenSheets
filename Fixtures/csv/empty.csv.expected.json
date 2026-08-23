@@ -1,0 +1,17 @@
+{
+  "file": "csv/empty.csv",
+  "kind": "csv",
+  "proves": "Zero bytes. Must open as an empty sheet, not fail and not hang.",
+  "valuesVerifiedBy": "byte-level authoring (the fixture IS the expectation)",
+  "dialect": {
+    "delimiter": ",",
+    "quote": "\"",
+    "lineEnding": "\n",
+    "encoding": "utf-8",
+    "bom": false
+  },
+  "rowCount": 0,
+  "maxColumns": 0,
+  "ragged": false,
+  "rows": []
+}

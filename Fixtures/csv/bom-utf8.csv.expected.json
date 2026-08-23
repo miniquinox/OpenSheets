@@ -1,0 +1,26 @@
+{
+  "file": "csv/bom-utf8.csv",
+  "kind": "csv",
+  "proves": "UTF-8 BOM. It must be consumed, not delivered as part of the first field name.",
+  "valuesVerifiedBy": "byte-level authoring (the fixture IS the expectation)",
+  "dialect": {
+    "delimiter": ",",
+    "quote": "\"",
+    "lineEnding": "\n",
+    "encoding": "utf-8",
+    "bom": true
+  },
+  "rowCount": 2,
+  "maxColumns": 2,
+  "ragged": false,
+  "rows": [
+    [
+      "id",
+      "name"
+    ],
+    [
+      "1",
+      "Äda"
+    ]
+  ]
+}

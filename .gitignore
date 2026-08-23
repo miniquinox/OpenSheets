@@ -7,3 +7,29 @@ xcuserdata/
 Fixtures/perf/*.csv
 Fixtures/perf/1m-cells.xlsx
 build/
+
+# --- venv for Scripts/gen-fixtures.py (A7) ---
+Scripts/.venv/
+
+# --- A0: Xcode and SwiftPM artefacts ---
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+Packages/OpenSheetsCore/.build/
+Packages/OpenSheetsCore/.swiftpm/
+.netrc
+
+# Package.resolved IS committed: CI must build the same GRDB every agent built against.
+# (Listed here so nobody "helpfully" ignores it later.)
+!Packages/OpenSheetsCore/Package.resolved
+
+# --- A0: local tool and coverage output ---
+*.profdata
+*.profraw
+coverage.txt
+build.log
+.swiftlint.cache

@@ -1,0 +1,61 @@
+{
+  "file": "basic/multi-sheet.xlsx",
+  "kind": "xlsx",
+  "proves": "Sheet order, sheet naming and per-sheet used ranges are independent.",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Alpha",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:B2",
+      "usedRange": "A1:B2",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "first",
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": 1.5,
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "Beta",
+      "index": 1,
+      "visibility": "visible",
+      "dimension": "A1:A2",
+      "usedRange": "A1:A2",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "second",
+          "numberFormat": "General"
+        },
+        "A2": {
+          "type": "boolean",
+          "value": true,
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "Gamma",
+      "index": 2,
+      "visibility": "visible",
+      "dimension": "C3:C3",
+      "usedRange": "C3:C3",
+      "cells": {
+        "C3": {
+          "type": "number",
+          "value": 7.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ]
+}

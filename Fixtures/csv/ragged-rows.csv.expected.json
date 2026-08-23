@@ -1,0 +1,44 @@
+{
+  "file": "csv/ragged-rows.csv",
+  "kind": "csv",
+  "proves": "Rows of 3, 3, 2, 1 and 5 fields. Short rows pad, long rows widen the sheet; neither is an error, but the count of ragged rows is reported.",
+  "valuesVerifiedBy": "byte-level authoring (the fixture IS the expectation)",
+  "dialect": {
+    "delimiter": ",",
+    "quote": "\"",
+    "lineEnding": "\n",
+    "encoding": "utf-8",
+    "bom": false
+  },
+  "rowCount": 5,
+  "maxColumns": 5,
+  "ragged": true,
+  "rows": [
+    [
+      "a",
+      "b",
+      "c"
+    ],
+    [
+      "1",
+      "2",
+      "3"
+    ],
+    [
+      "4",
+      "5"
+    ],
+    [
+      "6"
+    ],
+    [
+      "7",
+      "8",
+      "9",
+      "10",
+      "11"
+    ]
+  ],
+  "raggedRowCount": 3,
+  "maxColumnsSeen": 5
+}

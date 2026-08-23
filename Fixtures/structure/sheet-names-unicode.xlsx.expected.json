@@ -1,0 +1,94 @@
+{
+  "file": "structure/sheet-names-unicode.xlsx",
+  "kind": "xlsx",
+  "proves": "Emoji, RTL Arabic, exactly 31 characters, two names differing only by case, and a name with a double space. Case-insensitive sheet lookup breaks here.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "📊 Data",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:A1",
+      "usedRange": "A1:A1",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 1.0,
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "ورقة العمل",
+      "index": 1,
+      "visibility": "visible",
+      "dimension": "A1:A1",
+      "usedRange": "A1:A1",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 1.0,
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "ThisSheetNameIsExactly31Charsxx",
+      "index": 2,
+      "visibility": "visible",
+      "dimension": "A1:A1",
+      "usedRange": "A1:A1",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 1.0,
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "Report",
+      "index": 3,
+      "visibility": "visible",
+      "dimension": "A1:A1",
+      "usedRange": "A1:A1",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 1.0,
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "report",
+      "index": 4,
+      "visibility": "visible",
+      "dimension": "A1:A1",
+      "usedRange": "A1:A1",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 1.0,
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "A B  C",
+      "index": 5,
+      "visibility": "visible",
+      "dimension": "A1:A1",
+      "usedRange": "A1:A1",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 1.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "notes": "Excel forbids creating Report/report in its UI but happily OPENS a file that contains both. Sheet lookup must be case-SENSITIVE and ordinal."
+}

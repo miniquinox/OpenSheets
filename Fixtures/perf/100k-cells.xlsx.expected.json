@@ -1,0 +1,37 @@
+{
+  "file": "perf/100k-cells.xlsx",
+  "kind": "xlsx",
+  "proves": "100,000 cells. Budget: open to first paint < 800 ms (PLAN.md 10.6).",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Perf",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:CV1000",
+      "usedRange": "A1:CV1000",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "col0",
+          "numberFormat": "General"
+        },
+        "A2": {
+          "type": "number",
+          "value": 1000.0,
+          "numberFormat": "General"
+        },
+        "CV1000": {
+          "type": "number",
+          "value": 999099.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "cellCount": 100000,
+  "budget": {
+    "openToFirstPaintMs": 800
+  }
+}

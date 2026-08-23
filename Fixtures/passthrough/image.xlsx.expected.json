@@ -1,0 +1,120 @@
+{
+  "file": "passthrough/image.xlsx",
+  "kind": "xlsx",
+  "proves": "An embedded PNG. xl/media/image1.png is binary and MUST be copied through as already-deflated bytes - re-encoding it changes the file for no reason.",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Pictures",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:A1",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "an image lives at C3",
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "sheetLevelElementsThatMustSurvive": [
+    "drawing",
+    "pageMargins"
+  ],
+  "zipEntries": {
+    "[Content_Types].xml": {
+      "sha256": "690e506d7f17e5e02d0e7b8000210ee08176172f60de773fc29d73ef0e66d9cf",
+      "crc32": 1400925702,
+      "uncompressedSize": 1337,
+      "method": 8
+    },
+    "_rels/.rels": {
+      "sha256": "1285b20099c64699001f9d90ea040ca1c177fa99bc3ae8a841128874820f01a4",
+      "crc32": 3662258162,
+      "uncompressedSize": 587,
+      "method": 8
+    },
+    "xl/_rels/workbook.xml.rels": {
+      "sha256": "596e47c094f3062e266034ee698571b56b247550b9e1035f0300d54d2f0692b2",
+      "crc32": 4032525636,
+      "uncompressedSize": 697,
+      "method": 8
+    },
+    "xl/worksheets/sheet1.xml": {
+      "sha256": "dd0f14ab5f83f286c59f9c2a7121b43262aa19f7b40d811cb3ffd9fd7ffc3abe",
+      "crc32": 1846109299,
+      "uncompressedSize": 544,
+      "method": 8
+    },
+    "xl/workbook.xml": {
+      "sha256": "54e4f95a9197303924e158d12ddd1b15f5e880c0ffc95f6360bbe61b72e811b5",
+      "crc32": 3666621823,
+      "uncompressedSize": 552,
+      "method": 8
+    },
+    "xl/drawings/drawing1.xml": {
+      "sha256": "e3280dc4d2b7d61fd5ff9e3e84b07a985c4b9f1760dfa6186a99616554a9f443",
+      "crc32": 3775535650,
+      "uncompressedSize": 999,
+      "method": 8
+    },
+    "xl/sharedStrings.xml": {
+      "sha256": "af6872ec37031553ee17563425516e3d0681005972a13c39937b3bc96571baf8",
+      "crc32": 3485570862,
+      "uncompressedSize": 195,
+      "method": 8
+    },
+    "xl/styles.xml": {
+      "sha256": "b955eec7bf81e3497213a0e029a3d7837f6dd31fc9c30c829ac7358fe294b23c",
+      "crc32": 3373972506,
+      "uncompressedSize": 867,
+      "method": 8
+    },
+    "xl/theme/theme1.xml": {
+      "sha256": "75104b2164c20dab2578383d827deac3a7eec077c3f7c99a4099a551fdebb134",
+      "crc32": 1413937688,
+      "uncompressedSize": 6994,
+      "method": 8
+    },
+    "xl/worksheets/_rels/sheet1.xml.rels": {
+      "sha256": "959a2cb8f146e52e35ae2867b15312494897ae807bcc2d6939be16a41d94da42",
+      "crc32": 509624633,
+      "uncompressedSize": 298,
+      "method": 8
+    },
+    "xl/drawings/_rels/drawing1.xml.rels": {
+      "sha256": "a6d59a73bcb25fd6c8f84dd5bf540897da73ef9f522830e7a3a1ebaf24193294",
+      "crc32": 3294582230,
+      "uncompressedSize": 291,
+      "method": 8
+    },
+    "xl/media/image1.png": {
+      "sha256": "056e39a0eb5b0327fb1c2ee890d024a02266c4d89a27965142dfbfe4cba976ae",
+      "crc32": 1204017790,
+      "uncompressedSize": 73,
+      "method": 8
+    },
+    "docProps/core.xml": {
+      "sha256": "c26fccdf4363742b7a3c977d8234a2b8bdb835824710b6f2ddfe69c04cdc53ed",
+      "crc32": 2431413393,
+      "uncompressedSize": 592,
+      "method": 8
+    },
+    "docProps/app.xml": {
+      "sha256": "c84ed333a61c593d9dcc74074125114beffdffc4c51b7bba7e6831d6906dcacf",
+      "crc32": 3456749010,
+      "uncompressedSize": 786,
+      "method": 8
+    }
+  },
+  "passthroughEntries": [
+    "xl/drawings/_rels/drawing1.xml.rels",
+    "xl/drawings/drawing1.xml",
+    "xl/media/image1.png",
+    "xl/worksheets/_rels/sheet1.xml.rels"
+  ],
+  "passthroughContract": "After read -> modify one cell of the first sheet -> write, every entry listed in passthroughEntries must be byte-identical to the original (compare inflated bytes AND crc32). Only xl/worksheets/sheet1.xml, xl/sharedStrings.xml and xl/calcChain.xml are allowed to differ."
+}

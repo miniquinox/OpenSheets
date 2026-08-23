@@ -1,0 +1,53 @@
+{
+  "file": "formulas/cached-errors.xlsx",
+  "kind": "xlsx",
+  "proves": "A literal cached error value with no <f> at all - Excel writes these after a delete, and a reader that only creates errors from formulas will drop them.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Cached",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:B7",
+      "usedRange": "A1:B7",
+      "cells": {
+        "B1": {
+          "type": "error",
+          "value": "#DIV/0!",
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "error",
+          "value": "#REF!",
+          "numberFormat": "General"
+        },
+        "B3": {
+          "type": "error",
+          "value": "#NAME?",
+          "numberFormat": "General"
+        },
+        "B4": {
+          "type": "error",
+          "value": "#VALUE!",
+          "numberFormat": "General"
+        },
+        "B5": {
+          "type": "error",
+          "value": "#N/A",
+          "numberFormat": "General"
+        },
+        "B6": {
+          "type": "error",
+          "value": "#NULL!",
+          "numberFormat": "General"
+        },
+        "B7": {
+          "type": "error",
+          "value": "#NUM!",
+          "numberFormat": "General"
+        }
+      }
+    }
+  ]
+}

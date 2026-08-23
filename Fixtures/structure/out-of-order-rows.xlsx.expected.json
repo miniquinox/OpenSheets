@@ -1,0 +1,53 @@
+{
+  "file": "structure/out-of-order-rows.xlsx",
+  "kind": "xlsx",
+  "proves": "Rows AND cells appear out of order, and <dimension> is missing entirely. Any reader that assumes monotonic r or trusts dimension gets this wrong.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Jumbled",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:E9",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 11.0,
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "number",
+          "value": 22.0,
+          "numberFormat": "General"
+        },
+        "A7": {
+          "type": "number",
+          "value": 71.0,
+          "numberFormat": "General"
+        },
+        "C7": {
+          "type": "number",
+          "value": 73.0,
+          "numberFormat": "General"
+        },
+        "B9": {
+          "type": "number",
+          "value": 92.0,
+          "numberFormat": "General"
+        },
+        "D9": {
+          "type": "number",
+          "value": 94.0,
+          "numberFormat": "General"
+        },
+        "E9": {
+          "type": "number",
+          "value": 95.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "file": "formulas/error-formulas.xlsx",
+  "kind": "xlsx",
+  "proves": "All seven Excel error kinds arise from real evaluation and are cached as t=\"e\".",
+  "valuesVerifiedBy": "LibreOffice 26.2.4.2 0229ac93fcf0d7cbc6376066c6f35021cef002dc recalculation of formulas written without cached values",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Errors",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:B7",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "DIV/0",
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "error",
+          "value": "#DIV/0!",
+          "formula": "1/0",
+          "numberFormat": null
+        },
+        "A2": {
+          "type": "text",
+          "value": "N/A",
+          "numberFormat": "General"
+        },
+        "B2": {
+          "type": "error",
+          "value": "#N/A",
+          "formula": "NA()",
+          "numberFormat": null
+        },
+        "A3": {
+          "type": "text",
+          "value": "VALUE",
+          "numberFormat": "General"
+        },
+        "B3": {
+          "type": "error",
+          "value": "#VALUE!",
+          "formula": "SQRT(\"not a number\")",
+          "numberFormat": null
+        },
+        "A4": {
+          "type": "text",
+          "value": "NAME",
+          "numberFormat": "General"
+        },
+        "B4": {
+          "type": "error",
+          "value": "#NAME?",
+          "formula": "nosuchfunction()",
+          "numberFormat": null
+        },
+        "A5": {
+          "type": "text",
+          "value": "NUM",
+          "numberFormat": "General"
+        },
+        "B5": {
+          "type": "error",
+          "value": "#NUM!",
+          "formula": "ASIN(5)",
+          "numberFormat": null
+        },
+        "A6": {
+          "type": "text",
+          "value": "NULL",
+          "numberFormat": "General"
+        },
+        "B6": {
+          "type": "error",
+          "value": "#NULL!",
+          "formula": "SUM(A1:A2 C1:C2)",
+          "numberFormat": null
+        },
+        "A7": {
+          "type": "text",
+          "value": "REF",
+          "numberFormat": "General"
+        },
+        "B7": {
+          "type": "error",
+          "value": "#REF!",
+          "formula": "INDEX(A1:A3,99)",
+          "numberFormat": null
+        }
+      }
+    }
+  ],
+  "notes": "Engines DISAGREE on which error a bad argument produces: SQRT(-1) is #NUM! in Excel but #VALUE! in LibreOffice, and OFFSET past the edge is #REF! in Excel but #VALUE! in LibreOffice. The formulas here were chosen because both engines agree on them. A3 must NOT treat a recalculation oracle as authoritative for error KIND - only for value."
+}

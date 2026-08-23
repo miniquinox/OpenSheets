@@ -1,0 +1,28 @@
+{
+  "file": "perf/single-cell-at-XFD1048576.xlsx",
+  "kind": "xlsx",
+  "proves": "One cell at the last legal address. usedRange is enormous but the sheet holds ONE cell - anything that allocates per-cell over the used range dies here.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Corner",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "XFD1048576:XFD1048576",
+      "usedRange": "XFD1048576:XFD1048576",
+      "cells": {
+        "XFD1048576": {
+          "type": "number",
+          "value": 1.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "cellCount": 1,
+  "budget": {
+    "openMs": 500,
+    "peakRssMb": 100
+  }
+}

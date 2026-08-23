@@ -1,0 +1,62 @@
+{
+  "file": "csv/formula-injection.csv",
+  "kind": "csv",
+  "proves": "Values that Excel would execute if this CSV were opened there. On EXPORT they must be prefixed with ' (PLAN.md 7.3); on IMPORT they stay inert text.",
+  "valuesVerifiedBy": "byte-level authoring (the fixture IS the expectation)",
+  "dialect": {
+    "delimiter": ",",
+    "quote": "\"",
+    "lineEnding": "\n",
+    "encoding": "utf-8",
+    "bom": false
+  },
+  "rowCount": 9,
+  "maxColumns": 2,
+  "ragged": false,
+  "rows": [
+    [
+      "label",
+      "payload"
+    ],
+    [
+      "equals",
+      "=1+1"
+    ],
+    [
+      "plus",
+      "+1+1"
+    ],
+    [
+      "minus",
+      "-1+1"
+    ],
+    [
+      "at",
+      "@SUM(A1)"
+    ],
+    [
+      "cmd",
+      "=cmd|' /C calc'!A0"
+    ],
+    [
+      "tab",
+      "\t=1+1"
+    ],
+    [
+      "cr",
+      "\r=1+1"
+    ],
+    [
+      "hyperlink",
+      "=HYPERLINK(\"http://x\",\"click\")"
+    ]
+  ],
+  "dangerousPrefixes": [
+    "=",
+    "+",
+    "-",
+    "@",
+    "\t",
+    "\r"
+  ]
+}

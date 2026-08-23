@@ -1,0 +1,37 @@
+{
+  "file": "formulas/circular-reference.xlsx",
+  "kind": "xlsx",
+  "proves": "A 2-cell cycle and a 1-cell self-reference must yield #CIRCULAR, never a hang.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Loop",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:C1",
+      "usedRange": "A1:C1",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 0.0,
+          "formula": "B1+1",
+          "numberFormat": "General"
+        },
+        "B1": {
+          "type": "number",
+          "value": 0.0,
+          "formula": "A1+1",
+          "numberFormat": "General"
+        },
+        "C1": {
+          "type": "number",
+          "value": 0.0,
+          "formula": "C1",
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "notes": "Reading is unaffected (cached 0 is displayed). It is A3's recalc that must detect the cycle. calcPr iterate=1 is present on purpose."
+}

@@ -1,0 +1,33 @@
+{
+  "file": "structure/split-panes.xlsx",
+  "kind": "xlsx",
+  "proves": "A SPLIT pane: same <pane> element but state is absent, and xSplit/ySplit are 1/20th-of-a-point offsets, not counts. Reading them as counts gives a 2130-column freeze.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Split",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:E10",
+      "usedRange": "A1:E10",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 101.0,
+          "numberFormat": "General"
+        },
+        "E10": {
+          "type": "number",
+          "value": 1005.0,
+          "numberFormat": "General"
+        }
+      },
+      "split": {
+        "xSplitTwips": 2130,
+        "ySplitTwips": 900,
+        "topLeftCell": "D5"
+      }
+    }
+  ]
+}

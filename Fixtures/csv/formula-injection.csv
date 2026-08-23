@@ -1,0 +1,9 @@
+label,payload
+equals,=1+1
+plus,+1+1
+minus,-1+1
+at,@SUM(A1)
+cmd,"=cmd|' /C calc'!A0"
+tab,"	=1+1"
+cr,"=1+1"
+hyperlink,"=HYPERLINK(""http://x"",""click"")"

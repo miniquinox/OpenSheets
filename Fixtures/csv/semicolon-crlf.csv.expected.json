@@ -1,0 +1,34 @@
+{
+  "file": "csv/semicolon-crlf.csv",
+  "kind": "csv",
+  "proves": "European dialect: semicolon delimiter, CRLF, comma as the DECIMAL separator. Sniffing the delimiter as ',' here splits 10,5 into two columns.",
+  "valuesVerifiedBy": "byte-level authoring (the fixture IS the expectation)",
+  "dialect": {
+    "delimiter": ";",
+    "quote": "\"",
+    "lineEnding": "\r\n",
+    "encoding": "utf-8",
+    "bom": false
+  },
+  "rowCount": 3,
+  "maxColumns": 3,
+  "ragged": false,
+  "rows": [
+    [
+      "id",
+      "name",
+      "amount"
+    ],
+    [
+      "1",
+      "Ada",
+      "10,5"
+    ],
+    [
+      "2",
+      "Grace",
+      "-3"
+    ]
+  ],
+  "decimalSeparator": ","
+}

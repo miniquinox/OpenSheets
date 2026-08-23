@@ -1,0 +1,63 @@
+{
+  "file": "formats/text-format.xlsx",
+  "kind": "xlsx",
+  "proves": "numFmt @ forces text. '0012' must keep its leading zeros and '=1+1' must stay a string, not become a formula, on read OR on re-save.",
+  "valuesVerifiedBy": "hand-authored raw OOXML (the bytes ARE the expectation)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "AsText",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": "A1:A9",
+      "usedRange": "A1:A9",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "0012",
+          "numberFormat": "@"
+        },
+        "A2": {
+          "type": "text",
+          "value": "1.23",
+          "numberFormat": "@"
+        },
+        "A3": {
+          "type": "text",
+          "value": "  42  ",
+          "numberFormat": "@"
+        },
+        "A4": {
+          "type": "text",
+          "value": "1e5",
+          "numberFormat": "@"
+        },
+        "A5": {
+          "type": "text",
+          "value": "TRUE",
+          "numberFormat": "@"
+        },
+        "A6": {
+          "type": "text",
+          "value": "=1+1",
+          "numberFormat": "@"
+        },
+        "A7": {
+          "type": "text",
+          "value": "+1-800-555",
+          "numberFormat": "@"
+        },
+        "A8": {
+          "type": "text",
+          "value": "-",
+          "numberFormat": "@"
+        },
+        "A9": {
+          "type": "text",
+          "value": "00:30",
+          "numberFormat": "@"
+        }
+      }
+    }
+  ]
+}

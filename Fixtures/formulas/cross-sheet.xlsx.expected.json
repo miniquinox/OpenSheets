@@ -1,0 +1,69 @@
+{
+  "file": "formulas/cross-sheet.xlsx",
+  "kind": "xlsx",
+  "proves": "References across sheets, including a sheet whose name needs single-quoting.",
+  "valuesVerifiedBy": "LibreOffice 26.2.4.2 0229ac93fcf0d7cbc6376066c6f35021cef002dc recalculation of formulas written without cached values",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Source",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:A2",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 100.0,
+          "numberFormat": "General"
+        },
+        "A2": {
+          "type": "number",
+          "value": 250.0,
+          "numberFormat": "General"
+        }
+      }
+    },
+    {
+      "name": "Middle",
+      "index": 1,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:A3",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 200.0,
+          "formula": "Source!A1*2",
+          "numberFormat": null
+        },
+        "A2": {
+          "type": "number",
+          "value": 350.0,
+          "formula": "SUM(Source!A1:A2)",
+          "numberFormat": null
+        },
+        "A3": {
+          "type": "number",
+          "value": 8.0,
+          "formula": "'Far Away'!A1+1",
+          "numberFormat": null
+        }
+      }
+    },
+    {
+      "name": "Far Away",
+      "index": 2,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:A1",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 7.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ]
+}

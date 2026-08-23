@@ -1,0 +1,118 @@
+{
+  "file": "passthrough/comments.xlsx",
+  "kind": "xlsx",
+  "proves": "Legacy comments. xl/comments1.xml and the VML that positions them are separate parts (passthrough-able), but the <legacyDrawing r:id> pointer inside sheet1.xml is not - drop it and the comments become orphans.",
+  "valuesVerifiedBy": "openpyxl authoring (literal values, no evaluation involved)",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Annotated",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:B3",
+      "cells": {
+        "A1": {
+          "type": "text",
+          "value": "hover me",
+          "numberFormat": "General"
+        },
+        "B3": {
+          "type": "number",
+          "value": 42.0,
+          "numberFormat": "General"
+        }
+      }
+    }
+  ],
+  "sheetLevelElementsThatMustSurvive": [
+    "legacyDrawing",
+    "pageMargins"
+  ],
+  "zipEntries": {
+    "[Content_Types].xml": {
+      "sha256": "f06d63cc15b2aa24a73334d61b9ef8e20b9c8ea3736de74f1bc1b92cf869f88e",
+      "crc32": 1445964642,
+      "uncompressedSize": 1391,
+      "method": 8
+    },
+    "_rels/.rels": {
+      "sha256": "1285b20099c64699001f9d90ea040ca1c177fa99bc3ae8a841128874820f01a4",
+      "crc32": 3662258162,
+      "uncompressedSize": 587,
+      "method": 8
+    },
+    "xl/_rels/workbook.xml.rels": {
+      "sha256": "596e47c094f3062e266034ee698571b56b247550b9e1035f0300d54d2f0692b2",
+      "crc32": 4032525636,
+      "uncompressedSize": 697,
+      "method": 8
+    },
+    "xl/worksheets/sheet1.xml": {
+      "sha256": "74d8d239c12a51f310a07640e3432636ffb8e2744300ec496961c79530f120ac",
+      "crc32": 425005688,
+      "uncompressedSize": 605,
+      "method": 8
+    },
+    "xl/workbook.xml": {
+      "sha256": "82b2de9e0230094319a74b6d889aed43b3e813d0f83db05813bd1385295754b1",
+      "crc32": 4043912385,
+      "uncompressedSize": 553,
+      "method": 8
+    },
+    "xl/drawings/vmlDrawing1.vml": {
+      "sha256": "932334c36de91960fa34d9a40339dfdee8b0205b72cfe8737b3b7b2c80ac8221",
+      "crc32": 520664183,
+      "uncompressedSize": 1631,
+      "method": 8
+    },
+    "xl/comments1.xml": {
+      "sha256": "fe8d0b5df179f843ecda9bbbd88001470a550ba737cb4c74f8eb293c40cb3ee6",
+      "crc32": 4185182114,
+      "uncompressedSize": 565,
+      "method": 8
+    },
+    "xl/sharedStrings.xml": {
+      "sha256": "e4d8b8dc8d84336ee66b48675a82cb93be419bf7f043908efe58a600171698ee",
+      "crc32": 3085840338,
+      "uncompressedSize": 183,
+      "method": 8
+    },
+    "xl/styles.xml": {
+      "sha256": "b12e62ca62ffafd254c53c36e7b7f76fbc02307761feba867c68e7fb51ce98c8",
+      "crc32": 984191,
+      "uncompressedSize": 951,
+      "method": 8
+    },
+    "xl/theme/theme1.xml": {
+      "sha256": "75104b2164c20dab2578383d827deac3a7eec077c3f7c99a4099a551fdebb134",
+      "crc32": 1413937688,
+      "uncompressedSize": 6994,
+      "method": 8
+    },
+    "xl/worksheets/_rels/sheet1.xml.rels": {
+      "sha256": "b99cdda770020e482c5af5ebe23628a036738c72d5bf3a3522861317df9fbe03",
+      "crc32": 324044980,
+      "uncompressedSize": 439,
+      "method": 8
+    },
+    "docProps/core.xml": {
+      "sha256": "c26fccdf4363742b7a3c977d8234a2b8bdb835824710b6f2ddfe69c04cdc53ed",
+      "crc32": 2431413393,
+      "uncompressedSize": 592,
+      "method": 8
+    },
+    "docProps/app.xml": {
+      "sha256": "1554707bf66452cd0524b8f2f8cfe3a0c4db1b736613d67a6bc83423304f25c4",
+      "crc32": 2798514508,
+      "uncompressedSize": 787,
+      "method": 8
+    }
+  },
+  "passthroughEntries": [
+    "xl/comments1.xml",
+    "xl/drawings/vmlDrawing1.vml",
+    "xl/worksheets/_rels/sheet1.xml.rels"
+  ],
+  "passthroughContract": "After read -> modify one cell of the first sheet -> write, every entry listed in passthroughEntries must be byte-identical to the original (compare inflated bytes AND crc32). Only xl/worksheets/sheet1.xml, xl/sharedStrings.xml and xl/calcChain.xml are allowed to differ."
+}

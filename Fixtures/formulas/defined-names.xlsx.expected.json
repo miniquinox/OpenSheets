@@ -1,0 +1,44 @@
+{
+  "file": "formulas/defined-names.xlsx",
+  "kind": "xlsx",
+  "proves": "Workbook-scoped defined names resolve inside formulas and survive as ranges.",
+  "valuesVerifiedBy": "LibreOffice 26.2.4.2 0229ac93fcf0d7cbc6376066c6f35021cef002dc recalculation of formulas written without cached values",
+  "dateSystem": 1900,
+  "sheets": [
+    {
+      "name": "Budget",
+      "index": 0,
+      "visibility": "visible",
+      "dimension": null,
+      "usedRange": "A1:E3",
+      "cells": {
+        "A1": {
+          "type": "number",
+          "value": 100.0,
+          "numberFormat": "General"
+        },
+        "C1": {
+          "type": "number",
+          "value": 0.08,
+          "numberFormat": "General"
+        },
+        "E1": {
+          "type": "number",
+          "value": 600.0,
+          "formula": "SUM(Revenue)",
+          "numberFormat": null
+        },
+        "E2": {
+          "type": "number",
+          "value": 648.0,
+          "formula": "SUM(Revenue)*(1+GrowthRate)",
+          "numberFormat": null
+        }
+      }
+    }
+  ],
+  "definedNames": {
+    "Revenue": "Budget!$A$1:$A$3",
+    "GrowthRate": "Budget!$C$1"
+  }
+}
