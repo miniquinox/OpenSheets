@@ -1,0 +1,484 @@
+<title>OpenSheets Build Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root{
+    --ground:#FAFAF8; --surface:#FFFFFF; --surface-2:#F4F4F1;
+    --ink:#16161A; --ink-2:#3B3B44; --muted:#6E6E78;
+    --rule:#E3E3E7; --rule-strong:#CFCFD6;
+    --accent:#5B5BD6; --accent-soft:#5B5BD614; --accent-line:#5B5BD64D;
+    --amber:#A9701A; --amber-soft:#A9701A14;
+    --jade:#2C7A5C; --jade-soft:#2C7A5C14;
+    --hdr:#EDEDEA;
+    --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    --cond:"IBM Plex Sans Condensed","IBM Plex Sans",-apple-system,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --shadow:0 1px 2px rgba(20,20,30,.05), 0 8px 24px -12px rgba(20,20,30,.14);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D0D10; --surface:#15151A; --surface-2:#1B1B21;
+      --ink:#F0F0EE; --ink-2:#C6C6CE; --muted:#8C8C98;
+      --rule:#26262D; --rule-strong:#3A3A44;
+      --accent:#8E8EF2; --accent-soft:#8E8EF21F; --accent-line:#8E8EF259;
+      --amber:#D6A343; --amber-soft:#D6A3431F;
+      --jade:#55B98B; --jade-soft:#55B98B1F;
+      --hdr:#1F1F26;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D0D10; --surface:#15151A; --surface-2:#1B1B21;
+    --ink:#F0F0EE; --ink-2:#C6C6CE; --muted:#8C8C98;
+    --rule:#26262D; --rule-strong:#3A3A44;
+    --accent:#8E8EF2; --accent-soft:#8E8EF21F; --accent-line:#8E8EF259;
+    --amber:#D6A343; --amber-soft:#D6A3431F;
+    --jade:#55B98B; --jade-soft:#55B98B1F;
+    --hdr:#1F1F26;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--sans); font-size:16px; line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:0 clamp(16px,4vw,48px) 96px}
+  .col{max-width:68ch}
+
+  /* ── masthead ─────────────────────────────────────── */
+  .mast{padding:clamp(48px,7vw,88px) 0 0}
+  .kicker{
+    font-family:var(--mono); font-size:11.5px; font-weight:500;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  }
+  .kicker b{color:var(--accent); font-weight:500}
+  h1{
+    font-family:var(--cond); font-weight:700;
+    font-size:clamp(40px,7.2vw,76px); line-height:.98; letter-spacing:-.02em;
+    margin:18px 0 0; text-wrap:balance;
+  }
+  .thesis{
+    font-size:clamp(17px,2.2vw,21px); line-height:1.5; color:var(--ink-2);
+    margin:20px 0 0; max-width:60ch; text-wrap:pretty;
+  }
+  .thesis em{font-style:normal; color:var(--accent); font-weight:500}
+
+  /* meta strip rendered as a spreadsheet row */
+  .meta{margin:40px 0 0; border:1px solid var(--rule); border-radius:8px; overflow:hidden; background:var(--surface)}
+  .meta-grid{display:grid; grid-template-columns:repeat(4,1fr); min-width:640px}
+  .meta-scroll{overflow-x:auto}
+  .meta-cell{padding:11px 14px; border-right:1px solid var(--rule)}
+  .meta-cell:last-child{border-right:0}
+  .meta-head .meta-cell{
+    background:var(--hdr); font-family:var(--mono); font-size:10.5px; font-weight:500;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+    border-bottom:1px solid var(--rule); padding:7px 14px;
+  }
+  .meta-body .meta-cell{font-family:var(--mono); font-size:13.5px; font-variant-numeric:tabular-nums; color:var(--ink)}
+
+  /* ── sections ─────────────────────────────────────── */
+  section{margin:clamp(56px,8vw,92px) 0 0}
+  .eyebrow{
+    font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--muted);
+    display:flex; align-items:center; gap:10px; margin:0 0 14px;
+  }
+  .eyebrow::after{content:""; flex:1; height:1px; background:var(--rule)}
+  h2{
+    font-family:var(--cond); font-weight:600; font-size:clamp(26px,3.6vw,36px);
+    line-height:1.1; letter-spacing:-.012em; margin:0 0 14px; text-wrap:balance;
+  }
+  h3{
+    font-family:var(--cond); font-weight:600; font-size:19px; line-height:1.25;
+    margin:32px 0 8px; letter-spacing:-.005em;
+  }
+  p{margin:0 0 15px}
+  .col p:last-child{margin-bottom:0}
+  strong{font-weight:600}
+  code{
+    font-family:var(--mono); font-size:.875em; background:var(--surface-2);
+    border:1px solid var(--rule); border-radius:4px; padding:.08em .34em;
+    color:var(--ink-2); white-space:nowrap;
+  }
+  a{color:var(--accent); text-underline-offset:3px}
+  a:focus-visible, .loop:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:4px}
+
+  /* ── core-loop figure ─────────────────────────────── */
+  .loop{
+    margin:26px 0 0; display:grid; gap:14px;
+    grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  }
+  .step{
+    background:var(--surface); border:1px solid var(--rule); border-radius:10px;
+    padding:14px 15px 15px; box-shadow:var(--shadow); position:relative;
+  }
+  .step-n{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; color:var(--muted);
+    text-transform:uppercase; margin:0 0 6px;
+  }
+  .step h4{font-family:var(--cond); font-size:16px; font-weight:600; margin:0 0 5px; letter-spacing:-.005em}
+  .step p{font-size:13.5px; line-height:1.5; color:var(--ink-2); margin:0}
+  .step.hi{border-color:var(--accent-line); background:linear-gradient(var(--accent-soft),var(--accent-soft)) var(--surface)}
+  .step.hi .step-n{color:var(--accent)}
+
+  /* miniature grid that flashes, echoing the app's change highlight */
+  .minigrid{display:grid; grid-template-columns:repeat(5,1fr); border:1px solid var(--rule); border-radius:6px; overflow:hidden; margin:0 0 11px}
+  .mg{height:17px; border-right:1px solid var(--rule); border-bottom:1px solid var(--rule); background:var(--surface)}
+  .mg:nth-child(5n){border-right:0}
+  .mg:nth-child(n+16){border-bottom:0}
+  .mg.hdr{background:var(--hdr); height:13px}
+  .mg.flash{animation:flash 3.4s ease-out 1 both}
+  .mg.f2{animation-delay:.12s}
+  .mg.f3{animation-delay:.24s}
+  @keyframes flash{
+    0%,8%{background:var(--accent); }
+    100%{background:var(--surface)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .mg.flash{animation:none; background:var(--accent-soft); box-shadow:inset 0 0 0 1px var(--accent-line)}
+  }
+
+  /* ── generic table ────────────────────────────────── */
+  .tscroll{overflow-x:auto; margin:22px 0 0; border:1px solid var(--rule); border-radius:8px; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; min-width:560px; font-size:14px}
+  th,td{text-align:left; padding:9px 14px; border-bottom:1px solid var(--rule); vertical-align:top}
+  thead th{
+    background:var(--hdr); font-family:var(--mono); font-weight:500; font-size:10.5px;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--muted); white-space:nowrap;
+  }
+  tbody tr:last-child td{border-bottom:0}
+  td.m, th.m{font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap}
+  .rowhead{
+    font-family:var(--mono); font-weight:600; font-size:13px; color:var(--accent);
+    background:var(--surface-2); border-right:1px solid var(--rule); width:1%; white-space:nowrap;
+  }
+  .wave-band td{background:var(--surface-2)}
+  .wave-band td{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--muted); padding:7px 14px; font-weight:500;
+  }
+
+  /* ── pills ────────────────────────────────────────── */
+  .pill{
+    display:inline-block; font-family:var(--mono); font-size:10.5px; font-weight:500;
+    letter-spacing:.06em; padding:2px 7px; border-radius:999px; white-space:nowrap;
+    border:1px solid transparent;
+  }
+  .pill.par{color:var(--jade); background:var(--jade-soft); border-color:var(--jade)}
+  .pill.solo{color:var(--amber); background:var(--amber-soft); border-color:var(--amber)}
+
+  /* ── layer stack ──────────────────────────────────── */
+  .stack{display:grid; gap:9px; margin:22px 0 0}
+  .layer{
+    border:1px solid var(--rule); border-radius:9px; background:var(--surface);
+    padding:13px 16px; display:grid; gap:3px;
+  }
+  .layer.top{border-style:dashed; background:transparent}
+  .layer.core{border-color:var(--accent-line); background:linear-gradient(var(--accent-soft),var(--accent-soft)) var(--surface)}
+  .layer-t{font-family:var(--cond); font-weight:600; font-size:16px; letter-spacing:-.005em}
+  .layer-s{font-family:var(--mono); font-size:12px; color:var(--muted); line-height:1.55}
+  .mods{display:flex; flex-wrap:wrap; gap:7px; margin:22px 0 0}
+  .mod{
+    flex:1 1 160px; border:1px solid var(--rule); border-radius:8px; background:var(--surface);
+    padding:11px 13px;
+  }
+  .mod b{font-family:var(--mono); font-size:12.5px; font-weight:600; display:block; color:var(--ink)}
+  .mod span{font-size:12.5px; color:var(--muted); line-height:1.45; display:block; margin-top:3px}
+  .mod i{font-family:var(--mono); font-style:normal; font-size:10.5px; color:var(--accent); letter-spacing:.06em}
+
+  /* ── concern cards ────────────────────────────────── */
+  .concerns{display:grid; gap:14px; margin:24px 0 0; grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .concern{
+    border:1px solid var(--rule); border-left:2px solid var(--amber); border-radius:8px;
+    background:var(--surface); padding:15px 17px;
+  }
+  .concern h4{font-family:var(--cond); font-size:16.5px; font-weight:600; margin:0 0 7px; letter-spacing:-.005em}
+  .concern p{font-size:13.5px; line-height:1.55; color:var(--ink-2); margin:0 0 9px}
+  .concern p:last-child{margin:0}
+  .concern .fix{color:var(--ink); font-weight:500}
+  .concern .fix::before{content:"→ "; color:var(--amber); font-family:var(--mono)}
+
+  /* ── glass tiers ──────────────────────────────────── */
+  .rule-note{
+    margin:24px 0 0; border:1px solid var(--accent-line); border-radius:9px;
+    background:linear-gradient(var(--accent-soft),var(--accent-soft)) var(--surface);
+    padding:15px 18px; font-size:15px; line-height:1.55;
+  }
+  .rule-note b{font-family:var(--cond); font-size:16px; display:block; margin-bottom:4px}
+
+  footer{
+    margin:clamp(64px,9vw,110px) 0 0; padding-top:22px; border-top:1px solid var(--rule);
+    font-family:var(--mono); font-size:12px; color:var(--muted);
+    display:flex; gap:16px; flex-wrap:wrap; justify-content:space-between;
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div class="kicker"><span>macOS 26 · Swift 6.3</span><span>·</span><b>Architecture &amp; build plan</b><span>·</span><span>v0.1</span></div>
+    <h1>OpenSheets</h1>
+    <p class="thesis">A native macOS spreadsheet that opens <code>.xlsx</code> and <code>.csv</code>, renders them in real Liquid Glass, and treats <em>Claude Code as a first-class co-editor of the file on disk</em>. No Microsoft account, no plugin store, no cloud. The file is the API.</p>
+
+    <div class="meta">
+      <div class="meta-scroll">
+        <div class="meta-grid meta-head">
+          <div class="meta-cell">Target</div>
+          <div class="meta-cell">Toolchain</div>
+          <div class="meta-cell">Agents</div>
+          <div class="meta-cell">Waves</div>
+        </div>
+        <div class="meta-grid meta-body">
+          <div class="meta-cell">macOS 26.0+</div>
+          <div class="meta-cell">Xcode 26.6 · Swift 6.3</div>
+          <div class="meta-cell">11</div>
+          <div class="meta-cell">4</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="eyebrow">The premise</div>
+    <div class="col">
+      <h2>Don't out-feature Excel. Out-sync it.</h2>
+      <p>People pirate Excel at home because work accounts block AI plugins, then bolt on weak third-party assistants. But the strongest spreadsheet agent already exists — Claude Code. It just has no good surface. It can already read and write files; what it lacks is a viewer that stays in sync and a structured way to touch a workbook without corrupting it.</p>
+      <p>So the bet is narrow and deliberate: <strong>visualisation and sync fidelity are the product.</strong> Depth comes from Claude. We build fast, gorgeous rendering, honest editing, and a watertight file-watch loop. We don't build a charting engine, pivot authoring, or all 500 Excel functions — and we never execute a macro.</p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="eyebrow">The core loop · PLAN.md §1.2</div>
+    <div class="col">
+      <h2>The reason the app exists</h2>
+      <p>Everything else is in service of these five steps. If this loop is flawless, the app is good. If it's flaky, nothing else matters.</p>
+    </div>
+
+    <div class="loop" tabindex="0">
+      <div class="step">
+        <div class="step-n">01 · Open</div>
+        <h4>Grid paints</h4>
+        <p>A 100k-cell workbook is on screen in under 800 ms. The sidebar shows the workspace path and MCP status.</p>
+      </div>
+      <div class="step">
+        <div class="step-n">02 · Delegate</div>
+        <h4>Claude edits the file</h4>
+        <p>You run <code>claude</code> in that folder. It writes through plain file tools — or, better, our MCP tools.</p>
+      </div>
+      <div class="step hi">
+        <div class="step-n">03 · Notice</div>
+        <h4>The pill rises</h4>
+        <p>Watcher fires. A glass capsule appears: <em>Changed on disk · 1 sheet, 42 cells · Refresh ⌘R</em>.</p>
+      </div>
+      <div class="step hi">
+        <div class="step-n">04 · Review</div>
+        <h4>Pill morphs into a diff</h4>
+        <p>Per-sheet counts and a scrollable cell list — <code>D2 120 → 129.6</code>. You accept, inspect, or discard.</p>
+      </div>
+      <div class="step">
+        <div class="step-n">05 · Verify</div>
+        <div class="minigrid" aria-hidden="true">
+          <div class="mg hdr"></div><div class="mg hdr"></div><div class="mg hdr"></div><div class="mg hdr"></div><div class="mg hdr"></div>
+          <div class="mg"></div><div class="mg"></div><div class="mg flash"></div><div class="mg"></div><div class="mg"></div>
+          <div class="mg"></div><div class="mg"></div><div class="mg flash f2"></div><div class="mg"></div><div class="mg"></div>
+          <div class="mg"></div><div class="mg"></div><div class="mg flash f3"></div><div class="mg"></div><div class="mg"></div>
+        </div>
+        <p>Changed cells flash accent, then fade over six seconds. Snapshots let you rewind if the agent got it wrong.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="eyebrow">Architecture · PLAN.md §2</div>
+    <div class="col">
+      <h2>Xcode-thin, SwiftPM-heavy</h2>
+      <p>Eleven agents editing one <code>project.pbxproj</code> produces unmergeable garbage. So ~95% of the code lives in SwiftPM targets, where adding a file requires editing no manifest. The Xcode app target is created once and is effectively read-only until the final wave. This is the single most important structural decision for parallel work.</p>
+    </div>
+
+    <div class="stack">
+      <div class="layer top">
+        <div class="layer-t">OpenSheets.app — the thin shell</div>
+        <div class="layer-s">~12 files · window, menus, scene, assets, entitlements · only Wave 2–3 touches it</div>
+      </div>
+      <div class="layer core">
+        <div class="layer-t">SheetModel — the interface freeze</div>
+        <div class="layer-s">Pure Sendable value types, zero deps · Workbook · Sheet · Cell · CellRef · CellStore · SheetDiff<br>Defined in Wave 0, then frozen. Seven agents compile against it at once.</div>
+      </div>
+    </div>
+
+    <div class="mods">
+      <div class="mod"><b>SheetFormat</b><span>xlsx read + surgical write, csv/tsv, zip, hardening</span><i>A1 · A2</i></div>
+      <div class="mod"><b>SheetFormula</b><span>lexer, parser, dependency graph, ~120 functions</span><i>A3</i></div>
+      <div class="mod"><b>GridKit</b><span>AppKit virtualised renderer, 120 fps at 1M cells</span><i>A4</i></div>
+      <div class="mod"><b>GlassUI</b><span>DS tokens, GlassSurface, every chrome component</span><i>A5</i></div>
+      <div class="mod"><b>SheetStore</b><span>watcher, atomic write, snapshots, grants, SQLite</span><i>A6</i></div>
+      <div class="mod"><b>SheetMCP</b><span>JSON-RPC tool surface for Claude Code</span><i>A9</i></div>
+    </div>
+
+    <div class="col">
+      <h3>Why AppKit for the grid, SwiftUI for everything else</h3>
+      <p>SwiftUI cannot draw a million cells at 120 fps; there is no honest way around that. The grid is a custom <code>NSView</code> in an <code>NSScrollView</code>, drawing with Core Graphics, virtualised to the visible rect. All <em>chrome</em> is SwiftUI so it can use real Liquid Glass. That split is deliberate.</p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="eyebrow">Visual direction · PLAN.md §3</div>
+    <div class="col">
+      <h2>Quiet Glass</h2>
+      <p>The failure mode of a glass UI is that everything floats and nothing is readable. A spreadsheet is 90% dense text, so the discipline has to be severe.</p>
+    </div>
+
+    <div class="rule-note">
+      <b>One opaque plane — the grid.</b>
+      Glass floats above it, never behind data. Grid surfaces are solid tokens, never materials.
+    </div>
+
+    <div class="tscroll">
+      <table>
+        <thead>
+          <tr><th>Tier</th><th>API</th><th>Surfaces</th><th>Rule</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="m">Chrome</td>
+            <td class="m">.glassEffect(.regular)</td>
+            <td>toolbar, formula bar, sheet tabs, sidebar</td>
+            <td>Edge-anchored; grid bleeds under via <code>backgroundExtensionEffect</code></td>
+          </tr>
+          <tr>
+            <td class="m">Floating</td>
+            <td class="m">.regular.interactive()</td>
+            <td>stats pill, refresh pill, ⌘K palette, inspector</td>
+            <td>Detached, shadowed, capsule or 24pt continuous</td>
+          </tr>
+          <tr>
+            <td class="m">Signal</td>
+            <td class="m">.regular.tint(_)</td>
+            <td>conflict banner, error, "Claude changed this"</td>
+            <td>Tint is semantic — amber = conflict, accent = agent, red = error</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col">
+      <h3>The detail that separates real glass from blurry rectangles</h3>
+      <p>Every cluster of two or more glass elements lives inside a <code>GlassEffectContainer</code>, so adjacent controls merge into a single lens instead of stacking independent blurs. Stacked glass is the number-one tell of a fake, and A5 ships a lint test that fails the build when the rule is broken.</p>
+      <p>Beyond that: system accent colour rather than a hardcoded blue, tabular figures in every cell without exception, springs-only motion, and the grid scroll never animated — it has to be 1:1 with the trackpad or it feels broken. Light and dark are both defined explicitly from day one, and <code>reduceTransparency</code> swaps every glass surface for a solid token, live, without relaunch.</p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="eyebrow">Known risks · stated up front</div>
+    <div class="col"><h2>Three hard problems</h2></div>
+    <div class="concerns">
+      <div class="concern">
+        <h4>xlsx writing destroys things</h4>
+        <p>A naive writer silently eats charts, pivots, and conditional formats — the classic failure of every open-source spreadsheet tool.</p>
+        <p class="fix">Surgical ZIP rewriting: re-emit only the XML parts we actually modelled, pass every other entry through byte-identical. Tested per-entry, not by whole-file hash.</p>
+      </div>
+      <div class="concern">
+        <h4>A formula engine is months of work</h4>
+        <p>Implementing Excel's function library and evaluation semantics properly is not a v0.1 task.</p>
+        <p class="fix">xlsx already stores the cached result beside every formula, so v0.1 renders a correct workbook with zero evaluation. We only evaluate what someone edits — and flag what we can't compute rather than guessing.</p>
+      </div>
+      <div class="concern">
+        <h4>"Touch any file" needs a boundary</h4>
+        <p>A spreadsheet is untrusted input. A cell can contain text aimed squarely at an agent, and the MCP server inherits your full file access.</p>
+        <p class="fix">Workspace grants: the server physically cannot read or write outside folders you approved in the app, with a deny-list that overrides every grant. 25+ escape tests; any escape blocks release.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="eyebrow">Work breakdown · PLAN.md §13</div>
+    <div class="col">
+      <h2>Eleven agents, four waves</h2>
+      <p>Wave 1 is seven agents running at once with zero shared files — the whole architecture above exists to make that possible. Each brief states scope, files owned, files forbidden, dependencies, and testable acceptance criteria.</p>
+    </div>
+
+    <div class="tscroll">
+      <table>
+        <thead>
+          <tr><th class="m">ID</th><th>Agent</th><th>Owns</th><th>Blocked by</th><th>Mode</th></tr>
+        </thead>
+        <tbody>
+          <tr class="wave-band"><td colspan="5">Wave 0 — foundation, must land before anything else starts</td></tr>
+          <tr>
+            <td class="rowhead">A0</td><td>Foundation &amp; interface freeze</td>
+            <td class="m">SheetModel · scaffold · CI</td><td class="m">—</td>
+            <td><span class="pill solo">alone</span></td>
+          </tr>
+
+          <tr class="wave-band"><td colspan="5">Wave 1 — seven agents, fully parallel, no shared files</td></tr>
+          <tr><td class="rowhead">A1</td><td>XLSX reader, zip read, hardening</td><td class="m">SheetFormat/Read · MiniZip/Reader</td><td class="m">A0</td><td><span class="pill par">parallel</span></td></tr>
+          <tr><td class="rowhead">A2</td><td>XLSX surgical writer, CSV/TSV</td><td class="m">SheetFormat/Write · CSV</td><td class="m">A0</td><td><span class="pill par">parallel</span></td></tr>
+          <tr><td class="rowhead">A3</td><td>Formula engine</td><td class="m">SheetFormula</td><td class="m">A0</td><td><span class="pill par">parallel</span></td></tr>
+          <tr><td class="rowhead">A4</td><td>Virtualised grid renderer</td><td class="m">GridKit</td><td class="m">A0</td><td><span class="pill par">parallel</span></td></tr>
+          <tr><td class="rowhead">A5</td><td>Glass design system &amp; chrome</td><td class="m">GlassUI · docs/design</td><td class="m">A0</td><td><span class="pill par">parallel</span></td></tr>
+          <tr><td class="rowhead">A6</td><td>File sync, snapshots, grants, DB</td><td class="m">SheetStore</td><td class="m">A0</td><td><span class="pill par">parallel</span></td></tr>
+          <tr><td class="rowhead">A7</td><td>Fixture corpus &amp; perf harness</td><td class="m">Fixtures · TestSupport</td><td class="m">A0</td><td><span class="pill par">parallel</span></td></tr>
+
+          <tr class="wave-band"><td colspan="5">Wave 2 — two agents, parallel</td></tr>
+          <tr><td class="rowhead">A8</td><td>App shell, document model, integration</td><td class="m">App/ · DocumentCore</td><td class="m">A1–A7</td><td><span class="pill par">parallel</span></td></tr>
+          <tr><td class="rowhead">A9</td><td>MCP server &amp; CLI</td><td class="m">SheetMCP · CLI/</td><td class="m">A1 A2 A3 A6</td><td><span class="pill par">parallel</span></td></tr>
+
+          <tr class="wave-band"><td colspan="5">Wave 3 — integration and release</td></tr>
+          <tr><td class="rowhead">A10</td><td>E2E, perf gate, packaging, release</td><td class="m">everything</td><td class="m">A8 A9</td><td><span class="pill solo">alone</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col">
+      <h3>The rules that keep seven agents from colliding</h3>
+      <p>Own your files, touch nothing else. <code>SheetModel</code> is frozen after Wave 0 — needed changes go in a request log, not into the type. Nobody touches <code>project.pbxproj</code>. Wave 1 agents never depend on each other's output; they build against protocols and A7's fakes. Ship green: <code>swift build &amp;&amp; swift test</code> passes, strict-concurrency warnings are errors, and an honest <code>throw notImplemented</code> beats a silent wrong answer.</p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="eyebrow">Gates · PLAN.md §10–11</div>
+    <div class="col">
+      <h2>What "done" means</h2>
+      <p>Every budget below is a CI assertion, not an aspiration. A regression over 10% fails the build; missing one is renegotiated in the plan, never quietly deleted from the test.</p>
+    </div>
+
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>Metric</th><th class="m">Budget</th><th>Owner</th></tr></thead>
+        <tbody>
+          <tr><td>Open 100k-cell xlsx → first paint</td><td class="m">&lt; 800 ms</td><td class="m">A1</td></tr>
+          <tr><td>Open 1M-cell xlsx</td><td class="m">&lt; 4 s · &lt; 600 MB</td><td class="m">A1</td></tr>
+          <tr><td>Scroll frame time, p99 (ProMotion)</td><td class="m">&lt; 8.3 ms</td><td class="m">A4</td></tr>
+          <tr><td>Keystroke → cell repaint</td><td class="m">&lt; 16 ms</td><td class="m">A4 · A8</td></tr>
+          <tr><td>Recalc of 10,000 dependents</td><td class="m">&lt; 200 ms</td><td class="m">A3</td></tr>
+          <tr><td>External change → diff on screen</td><td class="m">&lt; 1 s</td><td class="m">A6</td></tr>
+          <tr><td><code>describe</code> of a 50k-row workbook</td><td class="m">&lt; 800 tokens</td><td class="m">A9</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col">
+      <h3>Rollout</h3>
+      <p><strong>v0.1 Viewer</strong> — open, render, navigate, watch → diff → refresh, snapshots. <strong>v0.2 Editor</strong> — editing, formulas, formats, undo, atomic save, conflict resolution. <strong>v0.3 Claude</strong> — MCP server, workspace grants, activity feed. <strong>v0.4 Polish</strong> — sort, filter, find/replace, inspector, charts view-only.</p>
+      <p>Unfinished work ships dark behind <code>Flags</code> rather than blocking a release. Distribution is a notarised DMG on GitHub Releases plus a Homebrew cask. No telemetry by default — this is an app for people who left the cloud on purpose.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>OpenSheets · architecture &amp; build plan · v0.1</span>
+    <span>PLAN.md · docs/agents/A0–A10</span>
+  </footer>
+
+</div>
