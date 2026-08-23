@@ -256,8 +256,9 @@ public final class GridHostView: NSView {
             bottom: reserved.bottom,
             right: reserved.right
         )
-        // Cancels only the grid's *own* reservation, so the scrollers hug the body: they start
-        // below the shell's chrome rather than running up behind it.
+        // Cancels the grid's *own* reservation and nothing else: the scrollers run the full length
+        // of the grid's edges, as they did before, but the shell's reservation still stands — so
+        // they stop below the chrome and above the floating pills instead of running behind them.
         scrollView.scrollerInsets = NSEdgeInsets(top: -headerHeight, left: -headerWidth, bottom: 0, right: 0)
 
         cornerView.isHidden = !model.options.showsHeaders

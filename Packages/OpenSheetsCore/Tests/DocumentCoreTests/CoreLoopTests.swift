@@ -266,9 +266,14 @@ final class Harness {
         )
     }
 
+    /// `autoRefresh: nil` leaves the flag alone.
+    ///
+    /// It is a `UserDefaults` key, which is **process-wide**: a suite that sets it while another
+    /// suite's document is waiting to go `STALE` turns that test into a flake that reads like a
+    /// watcher bug. Tests that do not care about the watcher pass `nil` and touch nothing.
     init(
         name: String = "budget.xlsx",
-        autoRefresh: Bool = true,
+        autoRefresh: Bool? = true,
         seed: Double = 1,
         store: SheetStore? = nil,
         workbook seeded: Workbook? = nil
@@ -283,7 +288,7 @@ final class Harness {
         if let sheet = workbook.sheets.first { tracker.noteSheetReplaced(sheet) }
         try XLSXWriter.data(for: workbook, edits: tracker).write(to: url)
 
-        UserDefaults.standard.set(autoRefresh, forKey: "OSFlagAutoRefresh")
+        if let autoRefresh { UserDefaults.standard.set(autoRefresh, forKey: "OSFlagAutoRefresh") }
         app = AppModel(store: try store ?? Harness.makeStore())
         model = try await app.openDocument(at: url)
     }

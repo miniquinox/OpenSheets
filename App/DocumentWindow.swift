@@ -23,9 +23,9 @@ import SwiftUI
 /// ┌───────────────────────────────────────────────────────────┐
 /// │ titlebar        name · sync chip            sidebar toggle │  anchored, traffic-light inset
 /// ├───────────────────────────────────────────────────────────┤
-/// │ toolbar                                     ░ grid runs ░ │  anchored, full window width
-/// ├───────────────────────────────────────────── ░ under ░░░ ─┤
-/// │ formula bar                                 ░ both ░░░░░░ │  anchored, full window width
+/// │ toolbar                                                    │  anchored — the grid runs under it
+/// ├───────────────────────────────────────────────────────────┤
+/// │ formula bar                                                │  anchored — and under this too
 /// ├──────────────┬────────────────────────────────────────────┤
 /// │ sidebar      │ grid              ·stats pill  ·sync pill   │  siblings; only the two pills float
 /// ├──────────────┴────────────────────────────────────────────┤

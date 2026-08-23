@@ -36,12 +36,14 @@ import SheetModel
 ///
 /// # The ceiling
 ///
-/// ``formulaCeiling`` formulas. Above it the cache is left exactly as it is, and the session feed
-/// says so, because a background pass that takes ten seconds on a workbook the user is already
-/// scrolling is a worse trade than a stale total they have been told about. The number comes from
-/// the recalc budget in `docs/perf/budgets.json` — 10,000 dependent cells in 0.2 s — so 50,000
-/// formulas is about a second of one background core, which is a fair price for correct totals and
-/// too much to pay silently.
+/// **50,000 formula cells** (``formulaCeiling``). Above it the cache is left exactly as it is and
+/// the session feed says so, because a pass that runs for ten seconds on a workbook the user is
+/// already scrolling is a worse trade than a stale total they have been told about.
+///
+/// The number is measured, not guessed: `FormulaEngine.recalculateAll` over a debug build takes
+/// 15 ms for 1,000 formulas, 130 ms for 10,000 and 716 ms for 50,000 — so the ceiling is about a
+/// second of one background core at its worst, and a release build is faster still. It matches the
+/// recalc budget in `docs/perf/budgets.json` (10,000 dependent cells in 0.2 s).
 public enum OpenRecalculation {
     /// The most formulas we will recalculate on open. See the type's note.
     public static let formulaCeiling = 50_000
@@ -71,7 +73,7 @@ public enum OpenRecalculation {
     /// open regardless, and its dependency graph already knows every formula cell — walking a
     /// million cells a second time to count them would be the most expensive part of this.
     public static func decide(formulaCount: Int, meta: WorkbookMeta) -> Decision {
-        guard formulaCount > 0, let _ = reason(for: meta) else { return .trustCache }
+        guard formulaCount > 0, reason(for: meta) != nil else { return .trustCache }
         guard formulaCount <= formulaCeiling else { return .tooLarge(formulaCount: formulaCount) }
         return .recalculate(formulaCount: formulaCount)
     }

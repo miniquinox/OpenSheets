@@ -960,7 +960,9 @@ public final class DocumentModel {
             let workbook = workbook
             let generation = workbookGeneration
             Task { [weak self] in
-                let pass = await Task.detached(priority: .utility) {
+                // `.userInitiated`, not `.utility`: until this lands the user is looking at the
+                // producer's placeholder numbers, so it is not background maintenance.
+                let pass = await Task.detached(priority: .userInitiated) {
                     OpenRecalculation.run(engine: engine, on: workbook)
                 }.value
                 guard let self, workbookGeneration == generation else { return }
@@ -975,8 +977,17 @@ public final class DocumentModel {
         result.apply(to: &workbook)
         refreshSelectionDerived()
         guard outcome.changedAnything else { return }
+
         // Said in the session feed rather than in a banner: it is a fact about the file worth
         // being able to find later, not a decision the user has to make now.
+        //
+        // When the pass followed a refresh, it is folded into *that* entry instead of adding a
+        // second one. The agent's edit and the recalculation it made necessary are one event in
+        // the file's history, and two lines per agent edit is how a feed stops being read.
+        if let first = feed.first, first.id.hasPrefix("refresh-") {
+            feed[0].summary += " · \(outcome.correctedCount) recalculated"
+            return
+        }
         note(summary: OpenRecalculation.summary(outcome), cellCount: outcome.correctedCount)
     }
 
