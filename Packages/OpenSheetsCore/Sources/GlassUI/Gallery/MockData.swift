@@ -185,16 +185,37 @@ public enum Mock {
         fontSize: 11
     )
 
+    /// A formula cell. The leading `=` is part of ``FormulaBarState/text`` now — the bar shows
+    /// what the caller passes and prepends nothing.
     public static let formulaBar = FormulaBarState(
         nameBoxText: "F16",
         definedNames: definedNames,
-        text: #"IF(SUM(Q4!$D$2:$D$15)>0, ROUND(SUM(Q4!$D$2:$D$15)*GrowthRate, 2), "—")"#
+        text: #"=IF(SUM(Q4!$D$2:$D$15)>0, ROUND(SUM(Q4!$D$2:$D$15)*GrowthRate, 2), "—")"#
+    )
+
+    /// A literal cell, which under the old contract had no way of reaching the bar at all: the
+    /// text was documented as formula source, so a label like this rendered as `=Line item` or,
+    /// in the shell, as nothing.
+    public static let formulaBarLiteral = FormulaBarState(
+        nameBoxText: "A2",
+        definedNames: definedNames,
+        text: "Cloud hosting"
+    )
+
+    /// A cell inside a spill region: readable, not editable, and told why.
+    public static let formulaBarSpilled = FormulaBarState(
+        nameBoxText: "B3",
+        definedNames: definedNames,
+        text: "=SORT(A2:A20)",
+        diagnostic: "B3 is filled in by the formula in B2 and cannot be edited on its own. "
+            + "Edit B2, or clear it first.",
+        isEditable: false
     )
 
     public static let formulaBarWithError = FormulaBarState(
         nameBoxText: "F17",
         definedNames: definedNames,
-        text: #"VLOOKUP(A17, Headcount!$A:$D, 9, FALSE) + #REF!"#,
+        text: #"=VLOOKUP(A17, Headcount!$A:$D, 9, FALSE) + #REF!"#,
         diagnostic: "VLOOKUP: column 9 is outside the range Headcount!$A:$D."
     )
 

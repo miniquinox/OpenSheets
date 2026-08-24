@@ -161,11 +161,17 @@ public enum FunctionCatalog {
     /// How many functions we implement.
     public static var implementedCount: Int { all.count }
 
-    /// Real Excel functions we deliberately do not evaluate (PLAN.md §5.3 excludes dynamic
-    /// arrays, `LAMBDA`, `LET`, the financial suite, and the database functions).
+    /// Real Excel functions we deliberately do not evaluate.
     ///
-    /// A formula using one of these parses, round-trips, keeps its cached value, and is
-    /// flagged ``CellFlags/unsupportedFormula``.
+    /// PLAN.md §5.3 originally excluded dynamic arrays, `LAMBDA`, `LET` and the financial suite;
+    /// **all four are implemented now** and that section carries the correction. What remains
+    /// unimplemented is narrower and each entry says why: `GROUPBY`/`PIVOTBY` need an aggregation
+    /// grammar, the matrix functions need linear algebra with its own accuracy story, and the
+    /// database functions are a shape nobody has asked for.
+    ///
+    /// A formula using one of these parses, round-trips, keeps its cached value, and is flagged
+    /// ``CellFlags/unsupportedFormula``. It renders as `#NAME?` only when the file carried no
+    /// cached value to fall back on — an admission, never a fabricated result.
     public static let knownUnimplemented: Set<String> = [
         // Dynamic arrays we still do not build. `GROUPBY`/`PIVOTBY` need a whole aggregation
         // grammar; the matrix three need linear algebra with its own accuracy story.

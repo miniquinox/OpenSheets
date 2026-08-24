@@ -380,6 +380,31 @@ public struct Sheet: Sendable, Equatable, Codable, Identifiable {
         return owner.anchor != ref
     }
 
+    /// Why an edit at `ref` must be refused, or `nil` when it may go ahead.
+    ///
+    /// **One rule, in one place.** The in-cell editor and the formula bar both ask this before
+    /// they open, so a cell the grid refuses can never be a cell the bar quietly overwrites.
+    /// It lived on `GridKit`'s render model when the grid was the only editor; the formula bar
+    /// is the second, and a second copy of the rule is how the two would come to disagree.
+    ///
+    /// O(1) in the common case: the flag is on the cell, put there by the reader for a legacy
+    /// array formula and by the recalculation for a spill. The sheet-level lookup behind it is
+    /// only reached for a cell that is inside a region but somehow missing its flag, which is
+    /// a file we read rather than a state we produced.
+    public func editRefusal(at ref: CellRef) -> SheetError? {
+        let cell = cells[ref]
+        // An anchor holds the formula and is edited normally, so it is never a refusal — and
+        // checking that first means the O(1) flag decides the answer for every ordinary cell.
+        guard arrayFormulaRanges[ref] == nil else { return nil }
+        let flagged = cell?.flags.contains(.spilledInto) == true
+            || cell?.flags.contains(.arrayFormula) == true
+        guard flagged || cell == nil else { return nil }
+        guard let owner = spillOwner(of: ref), owner.owns(ref) else { return nil }
+        return SheetError.cellNotIndependentlyEditable(
+            ref: ref.a1String, anchor: owner.anchor.a1String
+        )
+    }
+
     private func isDynamicSpillAnchor(_ anchor: CellRef) -> Bool {
         cells[anchor]?.flags.contains(.spillAnchor) ?? false
     }

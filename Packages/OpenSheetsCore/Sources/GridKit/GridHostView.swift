@@ -52,6 +52,14 @@ public final class GridHostView: NSView {
     /// `switch` over `GridEvent` stop compiling for a message it can choose to ignore.
     public var onEditRefused: ((CellRef, SheetError) -> Void)?
 
+    /// Called on every keystroke typed **into the cell**, so a formula bar can show the same
+    /// characters as they are typed.
+    ///
+    /// Separate from ``onEvent`` for the same reason ``onEditRefused`` is: a shell that does not
+    /// have a formula bar has nothing to do with it, and it must not force a new `switch` case on
+    /// everyone who does.
+    public var onEditTextChanged: ((String) -> Void)?
+
     // MARK: - Views
 
     private let scrollView = NSScrollView()
@@ -156,6 +164,9 @@ public final class GridHostView: NSView {
         editor.onCancel = { [weak self] ref in
             self?.onEvent?(.cancelEdit(ref: ref))
             self?.focusDocument()
+        }
+        editor.onTextChanged = { [weak self] text in
+            self?.onEditTextChanged?(text)
         }
 
         for pane in [GridPane.corner, .top, .left] {
@@ -1000,11 +1011,25 @@ public final class GridHostView: NSView {
         }
     }
 
-    private func advance(_ direction: AdvanceDirection) {
+    /// Moves the caret one commit's worth, for a shell that committed the text itself.
+    ///
+    /// The formula bar's Return and Tab land here, so they step over hidden rows, out of merges
+    /// and along a multi-cell selection exactly the way the in-cell editor's do — one navigator,
+    /// not two implementations of "the next cell".
+    ///
+    /// `from` exists because the shell's selection is the authoritative one and the render model's
+    /// copy of it only catches up on the next SwiftUI update. A caller that has just moved the
+    /// caret itself — through the name box, the palette, a diff — and then commits in the same
+    /// turn would otherwise advance from wherever the grid last heard about.
+    public func advanceSelection(_ direction: AdvanceDirection, from selection: GridSelection? = nil) {
+        advance(direction, from: selection)
+    }
+
+    private func advance(_ direction: AdvanceDirection, from selection: GridSelection? = nil) {
         let navigator = GridNavigator(
             geometry: model.geometry, merges: model.merges, blocks: blocks, usedRange: model.sheet.usedRange
         )
-        let updated = navigator.advance(direction, in: model.selection)
+        let updated = navigator.advance(direction, in: selection ?? model.selection)
         setSelection(updated)
         scroll(to: updated.active)
     }
@@ -1012,7 +1037,11 @@ public final class GridHostView: NSView {
     // MARK: - Editing
 
     /// Opens the in-cell editor, unless the cell's value belongs to somebody else.
-    public func beginEdit(at ref: CellRef, seed: String?) {
+    ///
+    /// `takingFocus: false` opens it as a mirror of an edit happening elsewhere — the formula
+    /// bar — so the cell shows the text while the caret stays in the bar. See
+    /// ``CellEditor/begin(at:rect:text:theme:zoom:alignment:maximumSize:takingFocus:)``.
+    public func beginEdit(at ref: CellRef, seed: String?, takingFocus: Bool = true) {
         guard model.options.isEditable else { return }
         let anchor = model.merges.anchor(of: ref)
         // **Refused, not silently ignored.** A cell whose value belongs to a spill anchor would
@@ -1041,7 +1070,8 @@ public final class GridHostView: NSView {
             alignment: style.alignment.horizontal == .general
                 ? (cell?.value.number != nil ? .right : .left)
                 : style.alignment.horizontal,
-            maximumSize: bodyViewportSize
+            maximumSize: bodyViewportSize,
+            takingFocus: takingFocus
         )
         onEvent?(.beginEdit(ref: anchor, seed: seed))
     }

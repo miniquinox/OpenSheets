@@ -7,9 +7,13 @@ The loop: you open a file → Claude Code edits it in your terminal → OpenShee
 *exactly what changed*, and lets you accept it. No Microsoft account, no plugin store, no cloud.
 The file is the API.
 
-**Status: v0.1 in development.** Wave 0 (the data model and scaffold) is done; the reader, writer,
-formula engine, renderer, design system, and sync engine are being built in parallel. Nothing here
-opens a spreadsheet yet.
+**Status: v0.1, pre-release.** The app opens and renders `.xlsx` and `.csv`, watches the file for
+external changes, and edits through an MCP server. The package builds and its tests pass. Several
+release gates are genuinely open — notably that nothing we write has ever been opened in Microsoft
+Excel. See [DOCUMENTATION.md §12](DOCUMENTATION.md#12-known-limitations-and-what-is-not-done) for
+the full, honest list.
+
+**Full documentation: [DOCUMENTATION.md](DOCUMENTATION.md).**
 
 **Requires** macOS 26.0 (Tahoe) · Xcode 26.6 · Swift 6.3
 
@@ -21,7 +25,7 @@ opens a spreadsheet yet.
 | --- | --- |
 | Fast, native rendering of xlsx/csv | Pivot table *authoring* |
 | Editing cells, formulas, formats | Charting engine, drawing tools |
-| ~120 common functions | All 500+ Excel functions |
+| 203 functions, including dynamic arrays | All 500+ Excel functions |
 | File-watch → diff → refresh loop | Real-time multi-user collaboration |
 | MCP server so Claude edits *structurally* | VBA / macro execution (never) |
 | Byte-preserving round-trip of parts we don't model | Reimplementing OOXML in full |
@@ -116,7 +120,7 @@ defaults write com.quino.opensheets OSFlagMCP            -bool YES
 defaults write com.quino.opensheets OSFlagFormulaEngine  -bool YES
 defaults write com.quino.opensheets OSFlagSnapshots      -bool YES
 defaults write com.quino.opensheets OSFlagAutoRefresh    -bool NO   # defaults to YES
-defaults write com.quino.opensheets OSFlagDiagnostics    -bool YES
+defaults write com.quino.opensheets OSFlagSheetStructure -bool YES
 ```
 
 ---

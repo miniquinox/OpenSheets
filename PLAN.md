@@ -25,7 +25,7 @@ So OpenSheets is deliberately **not** trying to out-feature Excel. It is:
 | --- | --- |
 | Fast, gorgeous, native rendering of xlsx/csv | Pivot table *authoring* |
 | Editing cells, formulas, formats | Charting engine, drawing tools |
-| ~120 common functions | All 500+ Excel functions |
+| 203 functions, including dynamic arrays | All 500+ Excel functions |
 | File-watch → diff → refresh loop | Real-time multi-user collaboration |
 | MCP server so Claude edits *structurally* | VBA / macro execution (never) |
 | Byte-preserving round-trip of parts we don't model | Reimplementing OOXML in full |
@@ -100,7 +100,7 @@ external app holding a lock — every one has a designed glass state, not an ale
 │ SheetFormat   SheetFormula      GridKit         GlassUI      SheetStore   SheetMCP     │
 │ xlsx r/w      lexer/parser      AppKit          DS tokens    watcher      tool surface │
 │ csv  r/w      dep graph         virtualised     GlassSurface atomic write JSON-RPC     │
-│ zip+hardening ~120 funcs        renderer        chrome       SQLite       grants       │
+│ zip+hardening 203 funcs         renderer        chrome       SQLite       grants       │
 │ (A1, A2)      (A3)              (A4)            (A5)         (A6)         (A9)         │
 └───────────────────────────────────────────────────────────────────────────────────────┘
                                         │
@@ -305,7 +305,7 @@ recalculate what changes.
 - Cells whose inputs changed but which use a function we don't implement keep their cached value
   and are marked `.staleCache` — rendered with a small dotted underline and an explaining tooltip.
   **Being honest about staleness beats guessing.**
-- Function coverage v0.2 (~120): math/agg (SUM, AVERAGE, COUNT/A, MIN, MAX, ROUND family, ABS,
+- Function coverage (203 implemented, verified by `FunctionCatalog.implementedCount`): math/agg (SUM, AVERAGE, COUNT/A, MIN, MAX, ROUND family, ABS,
   SQRT, POWER, MOD, SUMPRODUCT, SUBTOTAL), logical (IF, IFS, AND, OR, NOT, IFERROR, SWITCH),
   lookup (VLOOKUP, HLOOKUP, XLOOKUP, INDEX, MATCH, OFFSET, INDIRECT, CHOOSE), text (CONCAT,
   TEXTJOIN, LEFT/RIGHT/MID, LEN, TRIM, UPPER/LOWER/PROPER, SUBSTITUTE, REPLACE, TEXT, VALUE,
@@ -484,7 +484,13 @@ edit while a recalc is running · typing during a reload.
    | External change → diff shown | < 1 s @ 100k cells |
 7. **E2E** (Wave 3) — a script drives a real `.xlsx` with an external process (mimicking Claude
    Code), asserting the pill appears, the diff is right, refresh applies, and snapshots restore.
-8. **Concurrency** — all tests run under Thread Sanitizer; strict-concurrency warnings are errors.
+8. **Concurrency** — strict-concurrency warnings are errors, and a Thread Sanitizer lane runs in CI.
+
+   That lane is **not** the whole suite, which this line used to claim: `ci.yml` runs
+   `--sanitize thread --filter 'SheetModelTests|MiniZipTests'`. TSan multiplies runtime by roughly
+   5–15×, and a suite that already takes 80 seconds does not fit a PR lane under it. The two targets
+   chosen are the ones with genuinely shared mutable state reachable from several tasks. Widening it
+   is worth doing on a nightly schedule; claiming it already happens was worth less than saying so.
 
 ---
 
@@ -498,7 +504,13 @@ edit while a recalc is running · typing during a reload.
 | **v0.4 Polish** | sort/filter, find/replace, inspector, charts (view-only), command palette | snapshot tests green |
 
 **Feature flags**: `Flags.swift` reading `UserDefaults` (`OSFlagEditing`, `OSFlagMCP`,
-`OSFlagFormulaEngine`, …), default off. Unfinished work ships dark rather than blocking a release.
+`OSFlagFormulaEngine`, …). Unfinished work ships dark rather than blocking a release.
+
+  **These were specified as defaulting off, and five of the six now default *on*** — `editing`,
+  `mcp`, `formulaEngine`, `snapshots` and `autoRefresh` are all shipped features, and a flag whose
+  default never flips is a flag nobody removes. Only `OSFlagSheetStructure` still defaults off,
+  because add/remove/reorder sheet is genuinely unfinished (§14 of the Wave 2 addendum). The flag
+  exists to ship dark code, not to keep finished code hidden.
 
 **Distribution**: notarised, stapled DMG on GitHub Releases; Homebrew cask `opensheets`; Sparkle
 for in-app updates in v0.4. Crash reporting is opt-in and local-first. No telemetry by default —

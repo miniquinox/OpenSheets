@@ -1,8 +1,8 @@
 # Fixtures — the golden corpus
 
-**85 fixtures** — 82 committed (2.7 MB total, no Git LFS anywhere) plus 3 large ones generated
+**87 fixtures** — 84 committed (2.7 MB total, no Git LFS anywhere) plus 3 large ones generated
 on demand. This is the spec in executable form: if a fixture is wrong, six agents ship the same
-bug confidently. Each of the 62 non-hostile fixtures has a `<filename>.expected.json` sidecar
+bug confidently. Each of the 64 non-hostile fixtures has a `<filename>.expected.json` sidecar
 describing the correct parse; each of the 23 hostile files has an entry in
 [`hostile/expected-errors.json`](hostile/expected-errors.json) naming the `SheetError.code` it
 must produce.
@@ -13,7 +13,7 @@ python3 Scripts/validate-fixtures.py                     # check every sidecar (
 python3 Scripts/validate-fixtures.py --load-test         # + open each one in LibreOffice (~90 s)
 ```
 
-`validate-fixtures.py` runs 1,751 assertions. `--load-test` adds one more that nothing else can
+`validate-fixtures.py` runs 2,004 assertions over 63 fixtures. `--load-test` adds one more that nothing else can
 give you: a hand-authored OOXML part can satisfy every assertion in the script and still be a
 file no spreadsheet will open. All 43 xlsx/xlsm fixtures pass it today, which is how
 `passthrough/pivot-table.xlsx` is known to be a *real* pivot table (LibreOffice imports it as a

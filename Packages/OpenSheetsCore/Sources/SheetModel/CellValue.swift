@@ -19,9 +19,15 @@ public enum CellError: String, Sendable, Hashable, CaseIterable, Codable {
     case nullIntersection = "#NULL!"
     /// A numeric result that is not representable — overflow, or a root of a negative.
     case invalidNumber = "#NUM!"
-    /// A dynamic-array result with nowhere to spill. We never produce one; we can read one.
+    /// A dynamic-array result with nowhere to spill.
+    ///
+    /// **We produce this one.** The comment here used to say we never did — true until spill ranges
+    /// landed. The engine raises it when a spill region is blocked by existing content, crosses a
+    /// merge, runs off the sheet, or exceeds a column.
     case spill = "#SPILL!"
-    /// Excel 365's catch-all for a calculation engine refusal. Read-only for us.
+    /// Excel 365's catch-all for a calculation-engine refusal. Read-only for us: we parse and
+    /// round-trip it, and never raise it ourselves — a refusal we can name is always better than a
+    /// catch-all.
     case calculation = "#CALC!"
 
     /// A dependency cycle, reported per participating cell.

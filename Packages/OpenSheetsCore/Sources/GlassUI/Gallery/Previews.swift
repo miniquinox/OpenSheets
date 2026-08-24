@@ -44,6 +44,7 @@ struct PreviewStage<Content: View>: View {
         GlassCluster {
             VStack(spacing: DS.Space.l) {
                 FormulaBar(state: Mock.formulaBar, context: context) { _ in }
+                FormulaBar(state: Mock.formulaBarLiteral, context: context) { _ in }
                 FormulaBar(state: Mock.formulaBarWithError, context: context) { _ in }
             }
         }
@@ -55,6 +56,7 @@ struct PreviewStage<Content: View>: View {
         GlassCluster {
             VStack(spacing: DS.Space.l) {
                 FormulaBar(state: Mock.formulaBar, context: context) { _ in }
+                FormulaBar(state: Mock.formulaBarLiteral, context: context) { _ in }
                 FormulaBar(state: Mock.formulaBarWithError, context: context) { _ in }
             }
         }

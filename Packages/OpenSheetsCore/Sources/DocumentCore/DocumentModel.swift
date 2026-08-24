@@ -55,7 +55,11 @@ public final class DocumentModel {
     }
 
     public var selection = GridSelection() {
-        didSet { if selection != oldValue { refreshSelectionDerived() } }
+        didSet {
+            guard selection != oldValue else { return }
+            commitEditInFlight(typedAt: oldValue)
+            refreshSelectionDerived()
+        }
     }
 
     public private(set) var syncState: DocumentSyncState = .synced
@@ -80,6 +84,18 @@ public final class DocumentModel {
 
     public private(set) var selectionStats: SelectionStats
     public private(set) var formulaBar = FormulaBarState()
+    /// The cell an editor currently owns — the in-cell editor, the formula bar, or both at once
+    /// while they mirror each other. `nil` when nothing is being edited.
+    ///
+    /// One ref for both, because there is only ever one edit: the bar edits the active cell and
+    /// the cell editor shows the same characters over the same cell. A second identity here would
+    /// be a second place for them to disagree.
+    public private(set) var editingRef: CellRef?
+    /// The last edit this document refused, typed rather than as a sentence.
+    ///
+    /// The sentence goes on ``formulaBar`` as its diagnostic; this is the same fact in the form a
+    /// caller can branch on. Cleared whenever the selection moves.
+    public private(set) var lastEditRefusal: SheetError?
     public private(set) var toolbar = ToolbarState()
     /// The undo stack's public face, so the menu can be built without reaching into it.
     public private(set) var canUndo = false
@@ -136,6 +152,16 @@ public final class DocumentModel {
         formatter.dateFormat = "HH:mm"
         timestampFormatter = formatter
         selectionStats = SelectionStats(rangeLabel: "A1", values: [:])
+        // The two things the grid tells the shell that are not `GridEvent`s: what is being typed
+        // into a cell, so the formula bar can show the same characters, and an edit it had to
+        // refuse, so the bar can say why rather than leaving a dead keystroke.
+        grid.onEditorTextChanged = { [weak self] text in
+            guard let self, formulaBar.text != text else { return }
+            formulaBar.text = text
+        }
+        grid.onEditRefused = { [weak self] _, refusal in
+            self?.noteEditRefusal(refusal)
+        }
         refreshSelectionDerived()
         startPump()
         scheduleOpenRecalculation()
@@ -188,8 +214,14 @@ public final class DocumentModel {
     private func handle(_ event: DocumentSessionEvent) async {
         switch event {
         case let .stateChanged(_, to):
+            let wasEditable = isEditable
             syncState = to
             if to == .synced { clearPendingChanges() }
+            // The state decides ``isEditable``, and the formula bar and the toolbar both render
+            // from it. Without this, a file that goes read-only under the app leaves a bar that
+            // still takes the caret and a toolbar that still offers Bold — controls that look
+            // live and refuse on use, which is the worst of both.
+            if isEditable != wasEditable { refreshSelectionDerived() }
         case let .refreshed(diff):
             await applyRefresh(diff)
         case .saved:
@@ -368,11 +400,20 @@ public final class DocumentModel {
         case let .selectionChanged(updated):
             selection = updated
         case let .beginEdit(ref, seed):
-            _ = (ref, seed)
+            // The cell editor opened — by double-click, F2, or a typed character. The bar joins
+            // that edit rather than watching it: same ref, same text, live from here on.
+            editingRef = ref
+            formulaBar.isEditing = true
+            formulaBar.diagnostic = nil
+            formulaBar.text = seed ?? editText(at: ref)
         case let .commitEdit(ref, text, advance):
+            // The editor has already closed itself, so this clears the flags only — dismissing it
+            // again here would be harmless and dismissing it *before* it committed would not be.
+            clearEditState()
             _ = commitEdit(at: ref, text: text, advance: advance)
         case .cancelEdit:
-            formulaBar.diagnostic = nil
+            clearEditState()
+            refreshSelectionDerived()
         case let .clearContents(ranges):
             clearContents(in: ranges)
         case let .fillHandleDragged(source, target):
@@ -529,10 +570,21 @@ public final class DocumentModel {
     ///
     /// The whole editing path in one place, in PLAN.md §8's order: parse → refuse a formula that
     /// does not compile → write → recalculate dependents → apply → mark the parts dirty.
+    ///
+    /// `selectionBefore` is for the one caller that cannot let the selection speak for itself: a
+    /// commit triggered *by* the selection moving has already lost the cell it was typed in, and
+    /// undo has to put the caret back where the typing happened rather than where it ended up.
     @discardableResult
-    public func commitEdit(at ref: CellRef, text: String, advance: AdvanceDirection? = nil) -> Bool {
+    public func commitEdit(
+        at ref: CellRef,
+        text: String,
+        advance: AdvanceDirection? = nil,
+        selectionBefore: GridSelection? = nil
+    ) -> Bool {
         guard isEditable else { return false }
         guard let sheet = workbook[activeSheetID] else { return false }
+        isCommitting = true
+        defer { isCommitting = false }
 
         let styleID = sheet.cells[ref]?.styleID ?? sheet.effectiveStyleID(at: ref)
         let format = workbook.styles.numberFormat(for: styleID)
@@ -569,7 +621,7 @@ public final class DocumentModel {
             cell.styleID = styles.derive(cell.styleID) { $0.numberFormatID = formatID }
         }
 
-        let selectionBefore = selection
+        let selectionBefore = selectionBefore ?? selection
         var selectionAfter = selection
         if let advance, let advanced = selection.advancingActive(advance) {
             selectionAfter = advanced
@@ -1055,29 +1107,36 @@ public final class DocumentModel {
 
     /// The formula bar's state for the active cell.
     ///
-    /// **Formulas only, and that is a Wave 1 limitation rather than a choice.** A5's `FormulaBar`
-    /// renders its field as `"=" + state.text` — the property is documented as *"the formula
-    /// source, without the leading `=`"* — so there is no way to put a literal in it: a text cell
-    /// would read `=Line item`, which is not what the cell contains and is not even a valid
-    /// formula. Passing only formula source uses the component as designed; the price is that a
-    /// literal cell's bar is blank, and the literal is edited in the cell instead. The fix is a
-    /// one-line change in `GlassUI` — let the caller supply the prefix — and it is A5's file.
+    /// **The bar shows what the cell holds, whatever kind of thing that is.** It used to show
+    /// `cell.formula` and nothing else, because `FormulaBarState.text` was documented as formula
+    /// source and the component put the `=` back itself — so every text cell and every typed
+    /// number arrived at the bar as an empty string. That contract is gone: the text now carries
+    /// its own prefix, and it comes from ``editText(at:)``, which is *the same call that seeds
+    /// the in-cell editor*. One source of truth, so the two fields cannot disagree about what is
+    /// in the cell.
+    ///
+    /// `isEditable` is the document's own writability **and** the cell's: a cell a spill wrote
+    /// into is readable here and refused on click, exactly as the grid refuses it.
     private func refreshFormulaBar(_ sheet: Sheet) {
-        let cell = sheet.cells[selection.active]
         let names = definedNameItems
+        lastEditRefusal = nil
         formulaBar = FormulaBarState(
             nameBoxText: NameBoxLabel.text(for: selection.activeRange, definedNames: names),
             definedNames: names,
-            text: cell?.formula ?? "",
+            text: formulaBarText(at: selection.active),
             isEditing: formulaBar.isEditing,
             isExpanded: formulaBar.isExpanded,
             diagnostic: nil,
-            isEditable: isEditable
+            isEditable: isEditable && sheet.editRefusal(at: selection.active) == nil
         )
     }
 
     /// What the in-cell editor seeds with: the formula for a formula cell, the round-trippable
     /// literal for everything else.
+    ///
+    /// Round-trippable rather than formatted, and that distinction is the whole point: a cell
+    /// showing `£1,234.50` edits as `1234.5`, because putting the formatted string back through
+    /// the parser is how a currency column turns into a column of text.
     public func editText(at ref: CellRef) -> String {
         guard let sheet = workbook[activeSheetID], let cell = sheet.cells[ref] else { return "" }
         if let formula = cell.formula { return "=" + formula }
@@ -1085,6 +1144,153 @@ public final class DocumentModel {
             styles: workbook.styles, dateSystem: workbook.meta.dateSystem, theme: .light
         )
         return formatter.editText(of: cell)
+    }
+
+    /// What the formula bar shows for `ref`.
+    ///
+    /// ``editText(at:)``, except for a cell a spill wrote into: that shows the **anchor's**
+    /// formula, because the anchor is what produced the number sitting there. Showing the number
+    /// would invite the user to retype it, and retyping it is precisely the edit that has to be
+    /// refused.
+    public func formulaBarText(at ref: CellRef) -> String {
+        guard let sheet = workbook[activeSheetID] else { return "" }
+        if let owner = sheet.spillOwner(of: ref), owner.owns(ref) { return editText(at: owner.anchor) }
+        return editText(at: ref)
+    }
+
+    // MARK: - The formula bar's edit
+
+    /// The formula bar took the caret — or was clicked while it could not take it.
+    ///
+    /// Returns `false` when the edit cannot start, having already put the reason on the bar. The
+    /// two reasons are a workbook that is not writable and a cell whose value belongs to a spill
+    /// anchor; the second is the same refusal ``GridKit/GridHostView/beginEdit(at:seed:takingFocus:)``
+    /// makes, from the same rule, so the bar and the cell cannot answer differently.
+    @discardableResult
+    public func beginFormulaBarEdit() -> Bool {
+        guard isEditable else {
+            formulaBar.diagnostic = notEditableReason
+            return false
+        }
+        let ref = selection.active
+        if let refusal = workbook[activeSheetID]?.editRefusal(at: ref) {
+            noteEditRefusal(refusal)
+            #if canImport(AppKit)
+            NSSound.beep()
+            #endif
+            return false
+        }
+        editingRef = ref
+        formulaBar.isEditing = true
+        formulaBar.diagnostic = nil
+        // The in-cell editor comes up as a **mirror**, not as the editor: it shows the same
+        // characters over the cell they belong to and leaves the keyboard alone, so the caret
+        // stays on the character the user clicked in the bar.
+        if !grid.isEditing {
+            grid.beginEdit(at: ref, seed: formulaBar.text, takingFocus: false)
+        }
+        return true
+    }
+
+    /// Why the bar cannot take the caret, in one sentence.
+    ///
+    /// Deliberately short of naming *which* read-only reason applies when the workbook itself
+    /// does not carry one: a file another app has locked and a format with no writer both reach
+    /// the model as `.readOnly`, and the session keeps the distinction rather than this. The sync
+    /// chip already shows the specific reason; a sentence here that guessed would be wrong often
+    /// enough to be worse than a general one.
+    private var notEditableReason: String {
+        if let reason = workbook.meta.readOnlyReason {
+            return SheetError.writeRefused(reason: reason).message
+        }
+        switch syncState {
+        case .readOnly, .locked: return "This workbook is open read-only, so its cells cannot be edited."
+        case .missing: return "This file is no longer on disk. Save a copy of it before editing."
+        case .reloading: return "This workbook is reloading from disk."
+        default: return "This workbook cannot be edited right now."
+        }
+    }
+
+    /// A keystroke in the formula bar. Mirrors it into the cell.
+    public func formulaBarTextChanged(_ text: String) {
+        guard formulaBar.text != text else { return }
+        formulaBar.text = text
+        if grid.isEditing { grid.editorText = text }
+    }
+
+    /// Return, Tab, or the tick.
+    ///
+    /// Goes through ``commitEdit(at:text:advance:)`` — the same call the in-cell editor's commit
+    /// arrives on — so parsing, formula validation, recalculation, the dirty-part set and undo
+    /// all behave identically whichever field the text was typed in. There is one write path.
+    @discardableResult
+    public func commitFormulaBarEdit(_ text: String, advance: AdvanceDirection? = .down) -> Bool {
+        guard isEditable else { return false }
+        let ref = editingRef ?? selection.active
+        guard commitEdit(at: ref, text: text, advance: advance) else {
+            // Refused — a formula that does not parse, or text over the cell limit. The reason is
+            // on the bar already; the edit stays **open**, because the alternative is throwing
+            // away what the user typed at the moment they most need to see it.
+            return false
+        }
+        endEdit()
+        // `commitEdit` walks a multi-cell selection itself; a single cell needs the grid's
+        // navigator, which is what makes Return skip a hidden row and step out of a merge. That
+        // is the same split `GridNavigator.advance` makes, and the same one the in-cell editor
+        // gets for free through `GridHostView.finishEdit`.
+        if let advance, selection.isSingleCell { grid.advance(advance, from: selection) }
+        return true
+    }
+
+    /// Escape, or the cross: the cell keeps what it had.
+    public func cancelFormulaBarEdit() {
+        endEdit()
+        refreshSelectionDerived()
+    }
+
+    /// Excel's rule, and already the grid's: **moving the selection commits the edit in flight.**
+    ///
+    /// `GridHostView.paneMouseDown` and `beginHeaderInteraction` commit the editor before they
+    /// move the caret, so the selections that reach here with an edit still open are the ones
+    /// that did not come from the grid — the name box, a defined name, the ⌘K palette, a jump
+    /// from the diff panel. Committing those the same way is what makes "type in the bar, jump
+    /// to a named range" keep the typing.
+    ///
+    /// Cancelling instead is defensible — Numbers discards — but it would make one keystroke mean
+    /// two different things depending on which control happened to move the selection, and the
+    /// half that discards is the half that loses work.
+    private func commitEditInFlight(typedAt previous: GridSelection) {
+        // A commit moves the selection itself, to advance the caret. That is not navigation and
+        // must not re-enter the commit it came from.
+        guard !isCommitting, let ref = editingRef, isEditable else { return }
+        let text = formulaBar.text
+        endEdit()
+        _ = commitEdit(at: ref, text: text, advance: nil, selectionBefore: previous)
+    }
+
+    /// Forgets the edit in progress and takes the mirror off the screen, saying nothing.
+    ///
+    /// Not ``GridKit/GridController/cancelEdit()``, which would emit a cancel for an edit that is
+    /// about to land, and not `commitEdit`, which would write it a second time.
+    private func endEdit() {
+        clearEditState()
+        grid.dismissEdit()
+    }
+
+    private func clearEditState() {
+        editingRef = nil
+        formulaBar.isEditing = false
+    }
+
+    /// True for the duration of ``commitEdit(at:text:advance:selectionBefore:)``. See
+    /// ``commitEditInFlight(typedAt:)``.
+    @ObservationIgnored private var isCommitting = false
+
+    /// Puts a refusal where the user is already looking. The grid has beeped and scrolled to the
+    /// anchor; without this the keystroke is indistinguishable from a broken control.
+    private func noteEditRefusal(_ refusal: SheetError) {
+        lastEditRefusal = refusal
+        formulaBar.diagnostic = refusal.message
     }
 
     private func refreshToolbar() {

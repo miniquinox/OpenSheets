@@ -117,9 +117,15 @@ struct FunctionTableTests {
         #expect(missing.isEmpty, "functions with no corpus row: \(names)")
     }
 
-    @Test func catalogueSizeIsInTheRightRange() {
-        // PLAN.md §5.3 asks for "~120". Pinning the number stops a function quietly
-        // disappearing during a refactor.
-        #expect(FunctionCatalog.implementedCount >= 120)
+    @Test func catalogueSizeIsPinned() {
+        // The exact number, not a floor. This was `>= 120` — which stayed green while the
+        // catalogue grew to 203, so the docs went on claiming "~120 functions" with a passing
+        // test behind them. A floor cannot catch a function quietly disappearing either, as long
+        // as enough remain. If you add or remove one, update this and say so in the commit.
+        #expect(FunctionCatalog.implementedCount == 203)
+        // Nothing may be in both lists: a function we implement is not "known unimplemented".
+        let overlap = Set(FunctionCatalog.implementedFunctions)
+            .intersection(FunctionCatalog.knownUnimplemented)
+        #expect(overlap.isEmpty, "in both catalogues: \(overlap.sorted().joined(separator: ", "))")
     }
 }

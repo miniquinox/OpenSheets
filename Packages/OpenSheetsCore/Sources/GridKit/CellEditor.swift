@@ -25,10 +25,18 @@ public final class CellEditor: NSView {
     public var onCommit: ((CellRef, String, AdvanceDirection?) -> Void)?
     /// Called on Escape.
     public var onCancel: ((CellRef) -> Void)?
+    /// Called on every keystroke, so a formula bar can show what is being typed into the cell.
+    ///
+    /// Only user typing fires it — assigning ``EditorTextField/stringValue`` does not post
+    /// `NSControlTextDidChange`, which is what keeps a two-way mirror from feeding itself.
+    public var onTextChanged: ((String) -> Void)?
 
     private var theme: GridTheme = .light
     private var anchorRect: CGRect = .zero
     private var maximumSize: CGSize = .zero
+    /// Remembered from ``begin(at:rect:text:theme:zoom:alignment:maximumSize:takingFocus:)`` so
+    /// the font can be re-picked on every keystroke at the zoom the grid is actually drawn at.
+    private var zoom: Double = 1
 
     override public var isFlipped: Bool { true }
 
@@ -58,6 +66,11 @@ public final class CellEditor: NSView {
     ///
     /// `isFormula` picks SF Mono, which is not decoration: a formula is code, and proportional
     /// digits in a nested `INDEX(MATCH(...))` make the parentheses genuinely hard to count.
+    ///
+    /// `takingFocus: false` opens it as a **mirror**: the cell shows what is being typed, but the
+    /// keyboard stays wherever it is. That is the mode the formula bar opens it in — the caret
+    /// belongs to the bar the user just clicked, and grabbing it here would both move the caret
+    /// off the character they aimed at and end the field editor session they had just started.
     public func begin(
         at ref: CellRef,
         rect: CGRect,
@@ -65,12 +78,14 @@ public final class CellEditor: NSView {
         theme: GridTheme,
         zoom: Double,
         alignment: CellAlignment.Horizontal,
-        maximumSize: CGSize
+        maximumSize: CGSize,
+        takingFocus: Bool = true
     ) {
         editingRef = ref
         self.theme = theme
         anchorRect = rect
         self.maximumSize = maximumSize
+        self.zoom = zoom
 
         field.stringValue = text
         field.alignment = switch alignment {
@@ -84,10 +99,23 @@ public final class CellEditor: NSView {
 
         isHidden = false
         resize()
+        guard takingFocus else { return }
         window?.makeFirstResponder(field)
         if let editor = field.currentEditor() {
             editor.selectedRange = NSRange(location: text.count, length: 0)
         }
+    }
+
+    /// Replaces the text without disturbing the editor's identity, for the mirror.
+    ///
+    /// Not `field.stringValue = …` at the call site: the font follows the leading `=` and the
+    /// frame follows the width, so a mirror that only set the string would show a formula in the
+    /// body font and clip it at the cell's edge.
+    public func mirror(_ text: String) {
+        guard editingRef != nil, field.stringValue != text else { return }
+        field.stringValue = text
+        applyFont(for: text, zoom: zoom)
+        resize()
     }
 
     /// Closes the editor without emitting anything.
@@ -119,6 +147,13 @@ public final class CellEditor: NSView {
         commit(advance: .down)
     }
 
+    /// The user typed. Re-picks the font, regrows the frame, and tells whoever is mirroring.
+    fileprivate func textWasEdited() {
+        applyFont(for: field.stringValue, zoom: zoom)
+        resize()
+        onTextChanged?(field.stringValue)
+    }
+
     private func applyFont(for text: String, zoom: Double) {
         let size = theme.defaultFontSize * zoom
         if text.hasPrefix("=") {
@@ -147,8 +182,7 @@ public final class CellEditor: NSView {
 
         override public func textDidChange(_ notification: Notification) {
             super.textDidChange(notification)
-            editorDelegate?.applyFont(for: stringValue, zoom: 1)
-            editorDelegate?.resize()
+            editorDelegate?.textWasEdited()
         }
 
         override public func keyDown(with event: NSEvent) {

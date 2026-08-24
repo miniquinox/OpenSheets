@@ -477,14 +477,28 @@ struct DocumentWindow: View {
         }
     }
 
+    /// The formula bar's actions, all of which are the document's business rather than the view's.
+    ///
+    /// `.beginEditing` used to call `model.grid.beginEdit()`, which starts editing **in the cell**
+    /// — so clicking the bar opened an editor somewhere else and left the bar looking inert, which
+    /// is what the bug was reported as. `.textChanged` used to be `break`, so anything typed there
+    /// went nowhere. Both now go to the document, and the commit goes through
+    /// ``DocumentCore/DocumentModel/commitEdit(at:text:advance:selectionBefore:)`` — the same call
+    /// an in-cell commit arrives on, so there is exactly one write path.
     private func perform(_ action: FormulaBarAction) {
         switch action {
         case .beginEditing:
-            model.grid.beginEdit()
-        case let .commit(text):
-            _ = model.commitEdit(at: model.selection.active, text: text, advance: .down)
+            model.beginFormulaBarEdit()
+        case let .textChanged(text):
+            model.formulaBarTextChanged(text)
+        case let .commit(text, advance):
+            model.commitFormulaBarEdit(text, advance: direction(advance))
+            // The caret goes back to the grid, so the arrow keys that follow a commit move the
+            // selection instead of moving through a formula that is no longer being edited.
+            model.grid.focus()
         case .cancel:
-            model.grid.cancelEdit()
+            model.cancelFormulaBarEdit()
+            model.grid.focus()
         case let .navigate(text), let .selectDefinedName(text):
             if let ref = CellRef(a1: text.uppercased()) {
                 model.selection.select(ref)
@@ -492,8 +506,18 @@ struct DocumentWindow: View {
             } else {
                 selectDefinedName(text)
             }
-        case .textChanged, .insertFunction, .toggleExpanded:
+        case .insertFunction, .toggleExpanded:
             break
+        }
+    }
+
+    private func direction(_ advance: FormulaBarAdvance) -> AdvanceDirection? {
+        switch advance {
+        case .down: .down
+        case .up: .up
+        case .forward: .forward
+        case .backward: .backward
+        case .stay: nil
         }
     }
 

@@ -25,16 +25,34 @@ public struct FormulaBarState: Sendable, Hashable {
     public var nameBoxText: String
     /// The workbook's defined names, for the picker.
     public var definedNames: [DefinedNameItem]
-    /// The formula source, without the leading `=`. Empty for an empty cell.
+    /// **The active cell's whole content, exactly as it is edited.** A formula arrives with its
+    /// leading `=` already on it; a literal arrives as the round-trippable text — `1234.5`, not
+    /// `£1,234.50`. Empty for an empty cell.
+    ///
+    /// This used to be *"the formula source, without the leading `=`"*, and the bar put the `=`
+    /// back itself. That contract could only ever describe a formula: every text cell and every
+    /// typed number reached it as an empty string, because the alternative was rendering
+    /// `=Line item`. The prefix now comes from the caller, which is the only place that knows
+    /// whether there is one — and the caller passes the same string it seeds the in-cell editor
+    /// with, so the bar and the cell cannot disagree about what is in the cell.
     public var text: String
-    /// True while the user is typing. Changes the field's ink from "showing" to "editing" and
-    /// swaps the trailing controls for commit/cancel.
+    /// True while the user is typing — in this field **or** in the cell, which mirror each other.
+    /// Changes the field's ink from "showing" to "editing" and swaps the trailing controls for
+    /// commit/cancel.
     public var isEditing: Bool
     /// True when the user has pulled the bar open to see a long formula.
     public var isExpanded: Bool
-    /// A problem A3 found, once A3 exists. Shown as a line under the field, never as an alert.
+    /// A problem A3 found, or a refusal the shell had to explain. Shown as a line under the
+    /// field, never as an alert.
     public var diagnostic: String?
-    /// False for a read-only workbook.
+    /// Whether the field takes the caret.
+    ///
+    /// False for a read-only workbook, and false for a cell whose value is written by a formula
+    /// anchored somewhere else — a spill or an array region, which Excel refuses to edit in
+    /// pieces. The field still shows its content and still reports the click as
+    /// ``FormulaBarAction/beginEditing`` in that state, so the shell can answer with a
+    /// ``diagnostic`` saying which cell owns it. A click that does nothing at all is the bug this
+    /// bar was reported for.
     public var isEditable: Bool
 
     public init(
@@ -56,16 +74,34 @@ public struct FormulaBarState: Sendable, Hashable {
     }
 }
 
+/// Where the caret goes after the formula bar commits.
+///
+/// A mirror of `GridKit.AdvanceDirection`, spelled again here because the chrome does not depend
+/// on the grid and is not going to start. The shell maps one onto the other in one line.
+public enum FormulaBarAdvance: Sendable, Hashable {
+    /// Return.
+    case down
+    /// Shift-Return.
+    case up
+    /// Tab.
+    case forward
+    /// Shift-Tab.
+    case backward
+    /// The tick button: commit, and leave the selection where it is.
+    case stay
+}
+
 /// Everything the formula bar can ask for.
 public enum FormulaBarAction: Sendable, Hashable {
     /// The user typed. Sent on every keystroke so A8 can live-highlight the referenced ranges in
     /// the grid, which is the feature that makes a formula bar worth having.
     case textChanged(String)
-    /// Return, or clicking the tick.
-    case commit(String)
+    /// Return, Tab, or clicking the tick. `advance` says where the caret goes afterwards.
+    case commit(String, advance: FormulaBarAdvance)
     /// Escape, or clicking the cross.
     case cancel
-    /// The field took focus.
+    /// The field took the caret, or was clicked while it could not take it. The shell answers by
+    /// starting the edit, or by refusing it with a reason in ``FormulaBarState/diagnostic``.
     case beginEditing
     /// A name or an address was entered in the name box.
     case navigate(String)
@@ -82,11 +118,24 @@ public enum FormulaBarAction: Sendable, Hashable {
 /// One chrome lens, three regions, in the order Excel put them thirty years ago — because every
 /// person who will use this app already knows where the name box is, and moving it buys nothing.
 ///
-/// The field is `Text` when idle and `TextField` when editing, rather than a `TextField` that is
-/// always live. That is not an optimisation: an idle `TextField` cannot render an
-/// `AttributedString`, so the syntax colouring would only ever appear on a cell you are *not*
-/// editing, which is precisely backwards. Swapping on focus gives coloured tokens while reading
-/// and plain, fast, selectable text while typing.
+/// # The field is one live `TextField` under a coloured `Text`
+///
+/// A `TextField` cannot render an `AttributedString`, so the syntax colouring has to come from a
+/// `Text`. The first version of this file drew that `Text` inside a `Button` and swapped in a
+/// `TextField` on click — and that is the arrangement the bug report was about, because a
+/// `Button` cannot take a caret: the click fired an action, the field never focused, and there
+/// was nowhere for the next keystroke to go.
+///
+/// So the `TextField` is now **always there**, always holding the real text, and the coloured
+/// `Text` sits on top of it with `allowsHitTesting(false)` until the field takes focus. The click
+/// lands in the field, through the transparent overlay, and AppKit puts the insertion point at
+/// the character the pointer was over — which is what "click into a formula to edit it" means
+/// and what no amount of `beginEditing` plumbing can reproduce after the fact. Both layers use
+/// `DS.Text.formula` so the glyphs the user aimed at are exactly the glyphs the field measures.
+///
+/// The one case that keeps the old shape is ``FormulaBarState/isEditable`` being `false`: there
+/// the `Button` is right, because the click has to reach the shell to be *refused out loud*
+/// rather than silently swallowed by a disabled control.
 public struct FormulaBar: View {
     private let state: FormulaBarState
     private let context: AppearanceContext
@@ -192,38 +241,76 @@ public struct FormulaBar: View {
 
     @ViewBuilder
     private var field: some View {
-        if state.isEditing || isFieldFocused {
+        if state.isEditable {
+            editableField
+        } else {
+            refusableField
+        }
+    }
+
+    /// Whether the field is showing raw, editable source rather than the coloured reading copy.
+    private var isEditingSource: Bool { state.isEditing || isFieldFocused }
+
+    private var editableField: some View {
+        ZStack(alignment: .leading) {
             TextField("", text: $draft, axis: state.isExpanded ? .vertical : .horizontal)
                 .textFieldStyle(.plain)
                 .font(DS.Text.formula)
                 .foregroundStyle(DS.Chrome.primary)
                 .lineLimit(state.isExpanded ? 5 : 1)
                 .focused($isFieldFocused)
+                // Zero opacity, not `.hidden()` and not a conditional branch: the field has to
+                // stay hit-testable so the click that reveals it is the same click that places
+                // the caret, and it has to keep its identity so the caret survives the reveal.
+                .opacity(isEditingSource ? 1 : 0)
+                .onChange(of: isFieldFocused) { _, focused in if focused { perform(.beginEditing) } }
                 .onChange(of: draft) { _, newValue in perform(.textChanged(newValue)) }
-                .onSubmit { perform(.commit(draft)) }
-                .onExitCommand { perform(.cancel) }
+                .onSubmit { end(.commit(draft, advance: .down)) }
+                .onExitCommand { end(.cancel) }
+                // Tab never reaches `onSubmit` — AppKit's key view loop takes it first — so it is
+                // claimed here, before the loop, and spends it the way a spreadsheet does.
+                .onKeyPress(keys: [.tab]) { press in
+                    end(.commit(draft, advance: press.modifiers.contains(.shift) ? .backward : .forward))
+                    return .handled
+                }
                 .accessibilityLabel("Formula")
-        } else {
-            Button {
-                perform(.beginEditing)
-                isFieldFocused = true
-            } label: {
-                Text(FormulaSyntax.highlight(displayText, context: context))
-                    .font(DS.Text.formula)
-                    .lineLimit(state.isExpanded ? 5 : 1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!state.isEditable)
-            .accessibilityLabel(state.text.isEmpty ? "Formula, empty" : "Formula, \(state.text)")
+
+            highlighted
+                .opacity(isEditingSource ? 0 : 1)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
     }
 
-    /// The leading `=` is stored out of the model (matching `Cell.formula`) and put back for
-    /// display, because a formula bar that does not show the `=` is showing you a string.
-    private var displayText: String {
-        state.text.isEmpty ? "" : "=" + state.text
+    /// The read-only presentation: still legible, still clickable, and the click is answered.
+    private var refusableField: some View {
+        Button { perform(.beginEditing) } label: {
+            highlighted.contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var highlighted: some View {
+        Text(FormulaSyntax.highlight(state.text, context: context))
+            .font(DS.Text.formula)
+            .lineLimit(state.isExpanded ? 5 : 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var accessibilityText: String {
+        state.text.isEmpty ? "Formula, empty" : "Formula, \(state.text)"
+    }
+
+    /// Ends the edit: hands the action to the shell, then gives the caret back.
+    ///
+    /// Releasing focus is half the action, not tidying up. `isFieldFocused` is what keeps the raw
+    /// source on screen in place of the coloured reading copy, and it is what stops `draft` being
+    /// resynced from the model — so a commit or a cancel that left it set would show the abandoned
+    /// text for as long as the window stayed open.
+    private func end(_ action: FormulaBarAction) {
+        perform(action)
+        isFieldFocused = false
     }
 
     // MARK: Trailing
@@ -231,8 +318,8 @@ public struct FormulaBar: View {
     @ViewBuilder
     private var trailingControls: some View {
         HStack(spacing: DS.Space.xs) {
-            if state.isEditing || isFieldFocused {
-                Button { perform(.cancel) } label: {
+            if isEditingSource {
+                Button { end(.cancel) } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(DS.Chrome.secondary)
@@ -240,7 +327,7 @@ public struct FormulaBar: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Cancel edit")
 
-                Button { perform(.commit(draft)) } label: {
+                Button { end(.commit(draft, advance: .stay)) } label: {
                     Image(systemName: "checkmark")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(DS.Chrome.accent)

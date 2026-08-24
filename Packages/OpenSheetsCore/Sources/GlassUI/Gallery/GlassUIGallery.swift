@@ -318,6 +318,10 @@ public struct GlassUIGallery: View {
             GlassCluster {
                 VStack(spacing: DS.Space.l) {
                     FormulaBar(state: Mock.formulaBar, context: context) { _ in }
+                    // A literal cell, which is what the bar showed nothing for until `text`
+                    // stopped meaning "formula source".
+                    FormulaBar(state: Mock.formulaBarLiteral, context: context) { _ in }
+                    FormulaBar(state: Mock.formulaBarSpilled, context: context) { _ in }
                     FormulaBar(state: Mock.formulaBarWithError, context: context) { _ in }
                 }
             }

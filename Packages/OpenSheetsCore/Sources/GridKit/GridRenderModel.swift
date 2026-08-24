@@ -60,22 +60,11 @@ public struct GridRenderModel: Sendable {
 
     /// Why an edit at `ref` must be refused, or `nil` when it may go ahead.
     ///
-    /// O(1) in the common case: the flag is on the cell, put there by the reader for a legacy
-    /// array formula and by the recalculation for a spill. The sheet-level lookup behind it is
-    /// only reached for a cell that is inside a region but somehow missing its flag, which is
-    /// a file we read rather than a state we produced.
+    /// Delegates to ``SheetModel/Sheet/editRefusal(at:)``, which is where the rule lives now that
+    /// the formula bar asks it too. Kept here because every call site inside the grid already has
+    /// a render model and nothing else.
     public func editRefusal(at ref: CellRef) -> SheetError? {
-        let cell = sheet.cells[ref]
-        // An anchor holds the formula and is edited normally, so it is never a refusal — and
-        // checking that first means the O(1) flag decides the answer for every ordinary cell.
-        guard sheet.arrayFormulaRanges[ref] == nil else { return nil }
-        let flagged = cell?.flags.contains(.spilledInto) == true
-            || cell?.flags.contains(.arrayFormula) == true
-        guard flagged || cell == nil else { return nil }
-        guard let owner = sheet.spillOwner(of: ref), owner.owns(ref) else { return nil }
-        return SheetError.cellNotIndependentlyEditable(
-            ref: ref.a1String, anchor: owner.anchor.a1String
-        )
+        sheet.editRefusal(at: ref)
     }
 
     /// The spill or array region `ref` takes part in, for the outline the renderer draws.

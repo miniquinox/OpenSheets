@@ -13,9 +13,30 @@ import SwiftUI
 /// is not attached to a view — every call is a no-op until it is.
 @MainActor
 public final class GridController {
-    weak var host: GridHostView?
+    weak var host: GridHostView? {
+        didSet { attachCallbacks() }
+    }
+
+    /// Called on every keystroke typed **into a cell**, so the shell's formula bar can show the
+    /// same characters. Assigning ``editorText`` does not fire it, which is what stops the two
+    /// fields feeding each other.
+    public var onEditorTextChanged: ((String) -> Void)? {
+        didSet { attachCallbacks() }
+    }
+
+    /// Called when an edit is refused because the cell's value is written by a formula anchored
+    /// somewhere else. The grid has already beeped and scrolled to the anchor; this is the shell's
+    /// chance to say *why*, which is the difference between a refusal and a dead keystroke.
+    public var onEditRefused: ((CellRef, SheetError) -> Void)? {
+        didSet { attachCallbacks() }
+    }
 
     public init() {}
+
+    private func attachCallbacks() {
+        host?.onEditTextChanged = onEditorTextChanged
+        host?.onEditRefused = onEditRefused
+    }
 
     /// Whether a grid is currently attached.
     public var isAttached: Bool { host != nil }
@@ -40,9 +61,12 @@ public final class GridController {
     }
 
     /// Opens the in-cell editor. `nil` edits the active cell.
-    public func beginEdit(at ref: CellRef? = nil, seed: String? = nil) {
+    ///
+    /// `takingFocus: false` opens it as a mirror of an edit that is happening in the formula bar:
+    /// the cell shows the text, the caret stays in the bar.
+    public func beginEdit(at ref: CellRef? = nil, seed: String? = nil, takingFocus: Bool = true) {
         guard let host else { return }
-        host.beginEdit(at: ref ?? host.model.selection.active, seed: seed)
+        host.beginEdit(at: ref ?? host.model.selection.active, seed: seed, takingFocus: takingFocus)
     }
 
     /// Commits whatever is in the editor.
@@ -55,13 +79,33 @@ public final class GridController {
         host?.editor.cancel()
     }
 
+    /// Moves the caret the way a commit does — the shell's own commit, from the formula bar.
+    ///
+    /// Goes through ``GridNavigator``, which is what makes Return from the bar skip a hidden row
+    /// and step out of a merged cell instead of landing inside one.
+    public func advance(_ direction: AdvanceDirection, from selection: GridSelection? = nil) {
+        host?.advanceSelection(direction, from: selection)
+    }
+
+    /// Closes the editor and says nothing.
+    ///
+    /// For the shell that has already committed the text itself — through the formula bar — and
+    /// only needs the editor off the screen. Calling ``cancelEdit()`` there would emit a cancel
+    /// for an edit that did land, and calling ``commitEdit(advance:)`` would write it twice.
+    public func dismissEdit() {
+        host?.editor.dismiss()
+    }
+
     /// Whether the in-cell editor is open.
     public var isEditing: Bool { host?.editor.isEditing ?? false }
 
     /// The text in the editor, for keeping a formula bar in step.
+    ///
+    /// Setting it does **not** fire ``onEditorTextChanged`` — that is what makes the two-way
+    /// mirror terminate instead of echoing.
     public var editorText: String {
         get { host?.editor.text ?? "" }
-        set { host?.editor.field.stringValue = newValue }
+        set { host?.editor.mirror(newValue) }
     }
 
     /// The cells currently on screen.
