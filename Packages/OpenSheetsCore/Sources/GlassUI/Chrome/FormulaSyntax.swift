@@ -228,6 +228,20 @@ public enum FormulaSyntax {
         return digits >= 1 && index == text.endIndex
     }
 
+    /// Whether this is source worth colouring — that is, a formula.
+    ///
+    /// The bar shows whatever the cell holds, and most cells hold prose. Running the lexer over
+    /// `Cloud hosting` produces two `name` tokens and underlines both of them, which is a label
+    /// that looks like two broken hyperlinks. Excel makes the same distinction: the colours are
+    /// for formulas, and a literal is a literal.
+    public static func isFormula(_ text: String) -> Bool { text.hasPrefix("=") }
+
+    /// What the bar renders: colour for a formula, plain ink for anything else. See
+    /// ``isFormula(_:)``.
+    public static func display(_ text: String, context: AppearanceContext) -> AttributedString {
+        isFormula(text) ? highlight(text, context: context) : AttributedString(text)
+    }
+
     /// The tokens as an `AttributedString`, ready for a `Text`.
     ///
     /// **Three colours, not seven.** The brief lists six token kinds and the lexer produces all

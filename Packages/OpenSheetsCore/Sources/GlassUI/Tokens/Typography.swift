@@ -57,10 +57,15 @@ public extension DS {
 
         // MARK: Formulas
 
+        /// The point size behind ``formula``, spelled separately because the formula bar edits in
+        /// an `NSTextView` and Core Text needs a number rather than a `Font`. One constant, so the
+        /// coloured reading copy and the editable source cannot drift a point apart.
+        public static let formulaSize: CGFloat = 12
+
         /// PLAN.md §3.4: SF Mono 12, token-coloured. The formula bar and the in-cell editor are
         /// the same face at the same size on purpose — the text does not reflow when editing
         /// moves between them.
-        public static let formula = Font.system(size: 12, design: .monospaced)
+        public static let formula = Font.system(size: formulaSize, design: .monospaced)
 
         /// Before/after values in the diff, and cell references in the change feed. One point
         /// smaller than the formula face so a dense list of them stays quiet.

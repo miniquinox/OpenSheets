@@ -485,20 +485,13 @@ struct DocumentWindow: View {
     /// went nowhere. Both now go to the document, and the commit goes through
     /// ``DocumentCore/DocumentModel/commitEdit(at:text:advance:selectionBefore:)`` — the same call
     /// an in-cell commit arrives on, so there is exactly one write path.
+    /// The four editing actions belong to
+    /// ``DocumentCore/DocumentModel/perform(_:)``, which is where they can be tested against a
+    /// real workbook. What is left here is what genuinely needs the window: navigation, which
+    /// wants the palette's list of defined names.
     private func perform(_ action: FormulaBarAction) {
+        guard !model.perform(action) else { return }
         switch action {
-        case .beginEditing:
-            model.beginFormulaBarEdit()
-        case let .textChanged(text):
-            model.formulaBarTextChanged(text)
-        case let .commit(text, advance):
-            model.commitFormulaBarEdit(text, advance: direction(advance))
-            // The caret goes back to the grid, so the arrow keys that follow a commit move the
-            // selection instead of moving through a formula that is no longer being edited.
-            model.grid.focus()
-        case .cancel:
-            model.cancelFormulaBarEdit()
-            model.grid.focus()
         case let .navigate(text), let .selectDefinedName(text):
             if let ref = CellRef(a1: text.uppercased()) {
                 model.selection.select(ref)
@@ -508,16 +501,8 @@ struct DocumentWindow: View {
             }
         case .insertFunction, .toggleExpanded:
             break
-        }
-    }
-
-    private func direction(_ advance: FormulaBarAdvance) -> AdvanceDirection? {
-        switch advance {
-        case .down: .down
-        case .up: .up
-        case .forward: .forward
-        case .backward: .backward
-        case .stay: nil
+        case .beginEditing, .textChanged, .commit, .cancel:
+            break
         }
     }
 

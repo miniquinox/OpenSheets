@@ -118,20 +118,22 @@ public enum FormulaBarAction: Sendable, Hashable {
 /// One chrome lens, three regions, in the order Excel put them thirty years ago — because every
 /// person who will use this app already knows where the name box is, and moving it buys nothing.
 ///
-/// # The field is one live `TextField` under a coloured `Text`
+/// # The field is the text — there is no second copy of it
 ///
-/// A `TextField` cannot render an `AttributedString`, so the syntax colouring has to come from a
-/// `Text`. The first version of this file drew that `Text` inside a `Button` and swapped in a
-/// `TextField` on click — and that is the arrangement the bug report was about, because a
-/// `Button` cannot take a caret: the click fired an action, the field never focused, and there
-/// was nowhere for the next keystroke to go.
+/// Two earlier arrangements are worth naming, because both of them lost formulas and both looked
+/// reasonable on the way in.
 ///
-/// So the `TextField` is now **always there**, always holding the real text, and the coloured
-/// `Text` sits on top of it with `allowsHitTesting(false)` until the field takes focus. The click
-/// lands in the field, through the transparent overlay, and AppKit puts the insertion point at
-/// the character the pointer was over — which is what "click into a formula to edit it" means
-/// and what no amount of `beginEditing` plumbing can reproduce after the fact. Both layers use
-/// `DS.Text.formula` so the glyphs the user aimed at are exactly the glyphs the field measures.
+/// The first drew the coloured `Text` inside a `Button` and swapped in a `TextField` on click. A
+/// `Button` cannot take a caret, so the click fired an action and the keyboard stayed where it
+/// was. The second kept a live `TextField` at `opacity(0)` *underneath* the coloured `Text`, so
+/// the click would fall through to it. That one focused — but it was invisible, which meant the
+/// select-all every `NSTextField` performs on focus was invisible too, so the first character
+/// typed replaced the whole cell with no caret, no selection and no warning.
+///
+/// So the field is now ``FormulaSourceField``: one visible `NSTextView` that holds the real
+/// characters, colours them, and shows the caret AppKit is actually using. Nothing is layered
+/// over it, nothing is mirrored into it, and there is no state in which the thing you are looking
+/// at is not the thing you are editing. The failure modes it closes are written up on that type.
 ///
 /// The one case that keeps the old shape is ``FormulaBarState/isEditable`` being `false`: there
 /// the `Button` is right, because the click has to reach the shell to be *refused out loud*
@@ -141,8 +143,14 @@ public struct FormulaBar: View {
     private let context: AppearanceContext
     private let perform: (FormulaBarAction) -> Void
 
+    /// What the field is showing. Tracks the document while the caret is elsewhere, and the
+    /// field's own storage while it is being typed in.
     @State private var draft: String = ""
-    @FocusState private var isFieldFocused: Bool
+    /// AppKit's answer, not SwiftUI's. `@FocusState` is what the previous version asked, and it
+    /// is a *transition*: a field that already held the caret reported nothing when it was
+    /// clicked again, so the second click and every click after it told the document nothing.
+    @State private var isFieldFocused: Bool = false
+    @State private var handle = FormulaFieldHandle()
 
     public init(
         state: FormulaBarState,
@@ -248,38 +256,33 @@ public struct FormulaBar: View {
         }
     }
 
-    /// Whether the field is showing raw, editable source rather than the coloured reading copy.
+    /// Whether the trailing controls are the commit/cancel pair rather than the disclosure alone.
     private var isEditingSource: Bool { state.isEditing || isFieldFocused }
 
     private var editableField: some View {
-        ZStack(alignment: .leading) {
-            TextField("", text: $draft, axis: state.isExpanded ? .vertical : .horizontal)
-                .textFieldStyle(.plain)
-                .font(DS.Text.formula)
-                .foregroundStyle(DS.Chrome.primary)
-                .lineLimit(state.isExpanded ? 5 : 1)
-                .focused($isFieldFocused)
-                // Zero opacity, not `.hidden()` and not a conditional branch: the field has to
-                // stay hit-testable so the click that reveals it is the same click that places
-                // the caret, and it has to keep its identity so the caret survives the reveal.
-                .opacity(isEditingSource ? 1 : 0)
-                .onChange(of: isFieldFocused) { _, focused in if focused { perform(.beginEditing) } }
-                .onChange(of: draft) { _, newValue in perform(.textChanged(newValue)) }
-                .onSubmit { end(.commit(draft, advance: .down)) }
-                .onExitCommand { end(.cancel) }
-                // Tab never reaches `onSubmit` — AppKit's key view loop takes it first — so it is
-                // claimed here, before the loop, and spends it the way a spreadsheet does.
-                .onKeyPress(keys: [.tab]) { press in
-                    end(.commit(draft, advance: press.modifiers.contains(.shift) ? .backward : .forward))
-                    return .handled
-                }
-                .accessibilityLabel("Formula")
-
-            highlighted
-                .opacity(isEditingSource ? 0 : 1)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
+        FormulaSourceField(
+            text: draft,
+            isExpanded: state.isExpanded,
+            appearance: context,
+            onBeginEditing: { perform(.beginEditing) },
+            onTextChanged: { typed in
+                draft = typed
+                perform(.textChanged(typed))
+            },
+            onCommit: { typed, advance in
+                draft = typed
+                perform(.commit(typed, advance: advance))
+            },
+            // The field has already put the original characters back by the time this arrives, so
+            // the bar shows the cell's content again whether or not the document answers.
+            onCancel: { restored in
+                draft = restored
+                perform(.cancel)
+            },
+            onFocusChange: { isFieldFocused = $0 },
+            handle: handle
+        )
+        .frame(maxWidth: .infinity)
     }
 
     /// The read-only presentation: still legible, still clickable, and the click is answered.
@@ -292,7 +295,7 @@ public struct FormulaBar: View {
     }
 
     private var highlighted: some View {
-        Text(FormulaSyntax.highlight(state.text, context: context))
+        Text(FormulaSyntax.display(state.text, context: context))
             .font(DS.Text.formula)
             .lineLimit(state.isExpanded ? 5 : 1)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -302,15 +305,19 @@ public struct FormulaBar: View {
         state.text.isEmpty ? "Formula, empty" : "Formula, \(state.text)"
     }
 
-    /// Ends the edit: hands the action to the shell, then gives the caret back.
-    ///
-    /// Releasing focus is half the action, not tidying up. `isFieldFocused` is what keeps the raw
-    /// source on screen in place of the coloured reading copy, and it is what stops `draft` being
-    /// resynced from the model — so a commit or a cancel that left it set would show the abandoned
-    /// text for as long as the window stayed open.
-    private func end(_ action: FormulaBarAction) {
-        perform(action)
-        isFieldFocused = false
+    /// The tick. Goes through the field so the caret is released before the shell moves it, which
+    /// is the same order Return takes.
+    private func commitFromButton() {
+        handle.releaseFocus()
+        perform(.commit(draft, advance: .stay))
+    }
+
+    /// The cross. **Restores through the field**, not by waiting for the document to push the old
+    /// text back: a click on a button is not a focus change, so nothing else would resync the
+    /// characters on screen, and the bar would go on showing the abandoned edit.
+    private func cancelFromButton() {
+        if let restored = handle.restore() { draft = restored }
+        perform(.cancel)
     }
 
     // MARK: Trailing
@@ -319,7 +326,7 @@ public struct FormulaBar: View {
     private var trailingControls: some View {
         HStack(spacing: DS.Space.xs) {
             if isEditingSource {
-                Button { end(.cancel) } label: {
+                Button { cancelFromButton() } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(DS.Chrome.secondary)
@@ -327,7 +334,7 @@ public struct FormulaBar: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Cancel edit")
 
-                Button { end(.commit(draft, advance: .stay)) } label: {
+                Button { commitFromButton() } label: {
                     Image(systemName: "checkmark")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(DS.Chrome.accent)

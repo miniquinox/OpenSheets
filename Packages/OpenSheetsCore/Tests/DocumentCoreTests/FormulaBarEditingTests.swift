@@ -1,11 +1,12 @@
 import AppKit
 import DocumentCore
 import Foundation
-import GlassUI
+@testable import GlassUI
 import GridKit
 import SheetFormat
-import SheetStore
 import SheetModel
+import SheetStore
+import SwiftUI
 import TestSupport
 import Testing
 
@@ -174,6 +175,29 @@ struct FormulaBarEditingTests {
         #expect(!model.formulaBar.isEditing)
         #expect(model.editText(at: CellRef(a1: "A1")!) == "Line item", "and the cell never changed")
         #expect(!model.canUndo, "a cancelled edit is not an edit")
+        harness.close()
+    }
+
+    /// The same claim on a **formula** cell, which is the one that loses the most.
+    ///
+    /// The reported reproduction, step for step: click `D1`, type a single character over
+    /// `=SUM(B1:B3)`, press Escape. The formula comes back and the cell was never touched — no
+    /// write, nothing on the undo stack, and the cached value still there for the next recalc.
+    @Test func escapeOnAFormulaCellRestoresTheFormulaAndWritesNothing() async throws {
+        let harness = try await Harness(name: "kinds.xlsx", workbook: Self.mixedWorkbook())
+        let model = harness.model
+        let ref = CellRef(a1: "D1")!
+        model.selection.select(ref)
+        #expect(model.formulaBar.text == "=SUM(B1:B3)")
+
+        model.beginFormulaBarEdit()
+        model.formulaBarTextChanged("9")
+
+        model.cancelFormulaBarEdit()
+        #expect(model.formulaBar.text == "=SUM(B1:B3)", "the formula is back, character for character")
+        #expect(model.editText(at: ref) == "=SUM(B1:B3)")
+        #expect(harness.model.workbook[model.activeSheetID]?.cells[ref]?.formula == "SUM(B1:B3)")
+        #expect(!model.canUndo, "and nothing was written to undo")
         harness.close()
     }
 
@@ -348,6 +372,146 @@ struct FormulaBarEditingTests {
 
     /// One of every kind the bar has to render: text, a formatted number, a date, a formula, and
     /// the empty cells around them.
+    /// **Putting the caret in the bar and clicking away is not an edit.**
+    ///
+    /// Moving the selection commits the edit in flight, which is Excel's rule and the grid's. But
+    /// a formula cell used to come back *different from itself* on that commit — the value was
+    /// blanked for the recalculation to refill — so now that one click reliably opens an edit
+    /// session, every stray click on the bar would have left an undo step named "Typing" that
+    /// undid nothing, and marked a clean document dirty.
+    @Test func clickingTheBarAndClickingAwayLeavesNothingToUndo() async throws {
+        let harness = try await Harness(name: "kinds.xlsx", workbook: Self.mixedWorkbook())
+        let model = harness.model
+        let ref = CellRef(a1: "D1")!
+        let before = try #require(model.workbook[model.activeSheetID]?.cells[ref])
+
+        model.selection.select(ref)
+        model.beginFormulaBarEdit()
+        model.selection.select(CellRef(a1: "A1")!)
+
+        #expect(!model.canUndo, "nothing was typed, so there is nothing to undo")
+        #expect(model.workbook[model.activeSheetID]?.cells[ref] == before, "and the cell is untouched")
+        harness.close()
+    }
+
+    // MARK: - The bar as the user actually meets it
+
+    /// **The reported reproduction, end to end, with nothing simulated.**
+    ///
+    /// A real ``GlassUI/FormulaBar`` in a real `NSWindow`, wired to a real ``DocumentModel``
+    /// through the same ``DocumentCore/DocumentModel/perform(_:)`` the app window uses, driven by
+    /// putting the caret in the field and typing one character.
+    ///
+    /// Every layer of this was already tested in isolation while the bug was live. The model knew
+    /// how to cancel an edit; the view knew how to emit `.cancel`. What nobody had written down
+    /// was *click the bar, type one character, press Escape, and look at the cell* — so that is
+    /// what this does.
+    @Test func clickingTheBarAndTypingOneCharacterDoesNotEatTheFormula() async throws {
+        let harness = try await Harness(name: "kinds.xlsx", workbook: Self.mixedWorkbook())
+        let model = harness.model
+        let ref = CellRef(a1: "D1")!
+        model.selection.select(ref)
+
+        let bar = HostedBar(model: model)
+        let field = try #require(bar.field)
+        #expect(field.string == "=SUM(B1:B3)", "the bar shows the formula")
+
+        bar.putCaretInField()
+        #expect(model.formulaBar.isEditing, "one click opens the edit session")
+        #expect(field.selectedRange().length == 0, "and does not select the formula")
+
+        field.insertText("9", replacementRange: field.selectedRange())
+        #expect(field.string == "=SUM(B1:B3)9", "the character lands next to the formula, not over it")
+        #expect(model.formulaBar.text == "=SUM(B1:B3)9", "and the document is following along")
+
+        bar.pressEscape()
+        #expect(field.string == "=SUM(B1:B3)", "Escape puts the formula back on screen")
+        #expect(model.editText(at: ref) == "=SUM(B1:B3)", "and the cell was never written")
+        #expect(!model.canUndo, "nothing to undo, because nothing happened")
+        harness.close()
+    }
+
+    /// The other half: an edit made in the bar really does reach the cell, through the one write
+    /// path, and the caret advances.
+    @Test func editingInTheBarAndPressingReturnWritesTheCell() async throws {
+        let harness = try await Harness(name: "kinds.xlsx", workbook: Self.mixedWorkbook())
+        let model = harness.model
+        let ref = CellRef(a1: "D1")!
+        model.selection.select(ref)
+
+        let bar = HostedBar(model: model)
+        let field = try #require(bar.field)
+        bar.putCaretInField()
+        field.insertText("*2", replacementRange: field.selectedRange())
+
+        bar.pressReturn()
+        #expect(model.editText(at: ref) == "=SUM(B1:B3)*2")
+        #expect(!model.formulaBar.isEditing, "and the edit is over")
+        #expect(model.canUndo, "one undoable edit, from the one write path")
+        harness.close()
+    }
+
+    /// A ``GlassUI/FormulaBar`` in a window, reading and writing a live ``DocumentModel``.
+    @MainActor
+    private final class HostedBar {
+        let window: NSWindow
+        private let hosting: NSHostingView<AnyView>
+        nonisolated(unsafe) static var retained: [NSWindow] = []
+
+        /// Reads the state inside `body`, so SwiftUI's observation re-renders the bar when the
+        /// document changes it — which is how the real window is wired.
+        private struct Content: View {
+            let model: DocumentModel
+            var body: some View {
+                FormulaBar(state: model.formulaBar, context: .light) { model.perform($0) }
+            }
+        }
+
+        init(model: DocumentModel) {
+            hosting = NSHostingView(rootView: AnyView(Content(model: model).frame(width: 600)))
+            window = NSWindow(
+                contentRect: CGRect(x: 0, y: 0, width: 700, height: 120),
+                styleMask: [.titled], backing: .buffered, defer: false
+            )
+            window.contentView = hosting
+            hosting.frame = CGRect(x: 0, y: 0, width: 700, height: 120)
+            hosting.layoutSubtreeIfNeeded()
+            window.orderBack(nil)
+            window.displayIfNeeded()
+            Self.retained.append(window)
+        }
+
+        var field: FormulaTextView? {
+            Self.descendants(of: hosting).compactMap { $0 as? FormulaTextView }.first
+        }
+
+        /// What a click does: the field takes the caret.
+        func putCaretInField() {
+            window.makeFirstResponder(nil)
+            guard let field else { return }
+            window.makeFirstResponder(field)
+            window.displayIfNeeded()
+        }
+
+        func pressEscape() { press(53, "\u{1b}") }
+        func pressReturn() { press(36, "\r") }
+
+        private func press(_ code: UInt16, _ characters: String) {
+            guard let event = NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil,
+                characters: characters, charactersIgnoringModifiers: characters,
+                isARepeat: false, keyCode: code
+            ) else { return }
+            window.sendEvent(event)
+            window.displayIfNeeded()
+        }
+
+        static func descendants(of view: NSView) -> [NSView] {
+            [view] + view.subviews.flatMap { descendants(of: $0) }
+        }
+    }
+
     static func mixedWorkbook() throws -> Workbook {
         var currency = CellStyle()
         currency.numberFormatID = 44 // `_("$"* #,##0.00_)…`

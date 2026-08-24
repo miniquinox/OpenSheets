@@ -604,8 +604,15 @@ public final class DocumentModel {
                 formulaBar.diagnostic = "That formula does not parse."
                 return false
             }
+            let isUnchanged = sheet.cells[ref]?.formula == source
             cell.formula = source
-            cell.value = .empty
+            // **The same formula, committed back, is not an edit.** Blanking the value to let the
+            // recalculation refill it is right for a formula that changed and wrong for one that
+            // did not: it makes the cell differ from itself, which turns every *"click the bar,
+            // then click a cell"* into an undo step named "Typing" that undoes nothing. Literals
+            // already avoid this — `WorkbookEditor.setCells` drops a write that changes nothing —
+            // and this is the same rule reaching the case that could not see it.
+            if !isUnchanged { cell.value = .empty }
         } else {
             if cell.isFormula { engine.setFormula(nil, at: target, in: workbook) }
             cell.formula = nil
@@ -1246,6 +1253,48 @@ public final class DocumentModel {
     public func cancelFormulaBarEdit() {
         endEdit()
         refreshSelectionDerived()
+    }
+
+    /// Answers the formula bar's **editing** actions — the four that are the document's business.
+    ///
+    /// Returns `false` for the three that are the shell's: navigation, the `fx` picker and the
+    /// disclosure all need the window's palette and its layout state, and none of them is an
+    /// edit.
+    ///
+    /// One switch rather than two. This mapping used to live in `DocumentWindow`, where no test
+    /// in this package could reach it — so the model was tested by calling its methods directly,
+    /// the view was tested by watching which actions it emitted, and *the join between them* was
+    /// the one part of the path nothing covered. That is exactly where the formula-eating bug
+    /// lived.
+    @discardableResult
+    public func perform(_ action: FormulaBarAction) -> Bool {
+        switch action {
+        case .beginEditing:
+            beginFormulaBarEdit()
+        case let .textChanged(text):
+            formulaBarTextChanged(text)
+        case let .commit(text, advance):
+            commitFormulaBarEdit(text, advance: advanceDirection(advance))
+            // The caret goes back to the grid, so the arrow keys that follow a commit move the
+            // selection instead of moving through a formula that is no longer being edited.
+            grid.focus()
+        case .cancel:
+            cancelFormulaBarEdit()
+            grid.focus()
+        case .navigate, .selectDefinedName, .insertFunction, .toggleExpanded:
+            return false
+        }
+        return true
+    }
+
+    private func advanceDirection(_ advance: FormulaBarAdvance) -> AdvanceDirection? {
+        switch advance {
+        case .down: .down
+        case .up: .up
+        case .forward: .forward
+        case .backward: .backward
+        case .stay: nil
+        }
     }
 
     /// Excel's rule, and already the grid's: **moving the selection commits the edit in flight.**

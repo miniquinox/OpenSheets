@@ -101,6 +101,18 @@ public extension DS {
         /// the last row can always be scrolled clear of the stats pill.
         public static let pillHeight: CGFloat = 32
 
+        /// One line of the formula bar's field, and the height of the collapsed bar.
+        ///
+        /// A measurement rather than a token: the field is an `NSTextView` inside a scroller, so
+        /// it reports the size of its *content* — nothing at all for an empty cell, the whole
+        /// formula for a long one — and neither of those is a row height. This is the line height
+        /// of ``DS/Text/formula`` with the leading it is set with.
+        public static let formulaLineHeight: CGFloat = 16
+
+        /// The field's height when the bar is pulled open: five lines, which is the limit the
+        /// collapsed bar's reading copy was already written to.
+        public static let formulaExpandedHeight: CGFloat = formulaLineHeight * 5
+
         /// The smallest a document window may get. Below this the toolbar starts dropping
         /// controls and the sidebar plus the inspector leave under three columns of grid, which
         /// is a window nobody can work in.
