@@ -171,6 +171,7 @@ public final class GridHostView: NSView {
         addSubview(rowHeaderView)
         addSubview(cornerView)
         addSubview(editor)
+        clipEveryPaneToItself()
 
         NotificationCenter.default.addObserver(
             self,
@@ -189,6 +190,32 @@ public final class GridHostView: NSView {
             syncFlashIntoModel()
             invalidate(range)
         }
+    }
+
+    /// Says out loud the thing ``GridPane`` already claims: **each pane is clipped to its own
+    /// rectangle**.
+    ///
+    /// `NSView.clipsToBounds` defaults to `false` on macOS 14 and later, so a view may draw
+    /// wherever its `dirtyRect` reaches — and a subview's `dirtyRect` is the *host's* damaged
+    /// region expressed in the subview's coordinates, which for a 15pt-tall frozen strip at
+    /// `(184, 22)` is a thousand points wide and six hundred tall. ``GridRenderer/draw(_:into:
+    /// viewRect:sheetOrigin:model:)`` starts by filling `viewRect` with the canvas, because a pane
+    /// owns every pixel of itself. Unclipped, that fill owns every pixel of the *window*.
+    ///
+    /// The result was not subtle and it is worth naming, because it looks like a data bug rather
+    /// than a drawing one: the panes draw in subview order, so `.corner` painted the whole window
+    /// and drew A1, `.top` painted over that and drew row 1, `.left` painted over *that* and drew
+    /// column A — and the frame ended with a sheet that appeared to contain nothing but its first
+    /// column. Column B survived only because ``GridRenderer`` probes one cell past a pane's edge
+    /// for spilling text. Row 1 and every column from C rightwards were drawn, correctly, and then
+    /// erased by the next pane a few microseconds later.
+    private func clipEveryPaneToItself() {
+        documentView.clipsToBounds = true
+        for view in frozenPaneViews.values { view.clipsToBounds = true }
+        frozenOverlay.clipsToBounds = true
+        columnHeaderView.clipsToBounds = true
+        rowHeaderView.clipsToBounds = true
+        cornerView.clipsToBounds = true
     }
 
     /// Copies the live flash state and the moment to evaluate it at into the render model.

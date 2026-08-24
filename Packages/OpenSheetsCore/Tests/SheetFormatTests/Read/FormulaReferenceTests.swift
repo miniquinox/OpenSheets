@@ -87,10 +87,17 @@ struct FormulaReferenceTests {
 
 @Suite("column width conversion")
 struct ColumnMetricsTests {
-    @Test("Excel's default column is 64 pixels, which is 48 points")
+    @Test("Excel's default column holds its 8.43 characters after the grid takes its padding back")
     func defaultWidth() {
-        // 8.43 characters × 7 px + 5 px padding = 64 px = 48 pt, which is what Excel shows.
-        #expect(abs(XLSXColumnMetrics.points(fromCharacters: 8.43) - 48) < 0.01)
+        // 8.43 characters × 7 pt, plus the padding `GridRenderer` will subtract again.
+        let points = XLSXColumnMetrics.points(fromCharacters: 8.43)
+        #expect(abs(points - (8.43 * 7 + Limits.cellPadding)) < 0.01)
+        // The property that actually matters, and the one whose absence was a column of `####`:
+        // what is left after the renderer's padding is exactly the characters the file promised.
+        #expect(abs((points - Limits.cellPadding) / 7 - 8.43) < 0.01)
+        // There is no dots-per-inch scaling: one Excel pixel is one point here, because the app
+        // draws an 11pt font at eleven points and Excel's 7px digit measures 6.99pt on that face.
+        #expect(points > 60, "a default column that comes out at 48pt is the ####' bug")
     }
 
     /// **The reader and the writer share one conversion**, and this is the reason.
@@ -110,6 +117,38 @@ struct ColumnMetricsTests {
         #expect(
             abs(XLSXColumnMetrics.characters(fromPoints: points) - characters) < 1e-9,
             "\(characters) → \(points) pt → \(XLSXColumnMetrics.characters(fromPoints: points))"
+        )
+    }
+
+    /// `baseColWidth` and `defaultColWidth` are different measurements of the same thing, and the
+    /// older one is what nearly every producer writes.
+    ///
+    /// `baseColWidth` excludes the column's padding; `defaultColWidth` includes it. Believing an
+    /// `8` in the first as though it were the second loses most of a character from every column,
+    /// which shows up as a `####` in the one cell of a default-width sheet that needs every point
+    /// it can get — the bold grand total.
+    @Test("baseColWidth is converted, not believed")
+    func baseColumnWidthIsNotADefaultColumnWidth() {
+        // Excel's own arithmetic, and the number `Fixtures/structure/col-widths-row-heights.xlsx`
+        // shows it writing for an untouched column in a file with no `<sheetFormatPr>` at all.
+        #expect(XLSXColumnMetrics.characters(fromBaseColWidth: 8) == 8.7109375)
+        #expect(
+            XLSXColumnMetrics.characters(fromBaseColWidth: 8) > 8,
+            "the conversion adds padding; it can never take it away"
+        )
+    }
+
+    /// And the reader applies it, on a file that really says `baseColWidth="8"`.
+    @Test("A file that only sets baseColWidth still gets Excel's default column", .enabled(if: FixtureLibrary.isAvailable))
+    func theReaderConvertsBaseColumnWidth() async throws {
+        let workbook = try await XLSXReader.read(contentsOf: try FixtureLibrary.url("basic/minimal.xlsx"))
+        let sheet = try #require(workbook.sheets.first)
+        #expect(
+            abs(sheet.defaultColumnWidth - XLSXColumnMetrics.points(fromCharacters: 8.7109375)) < 0.01,
+            """
+            minimal.xlsx says baseColWidth="8" and nothing else, so its columns are Excel's \
+            default — \(sheet.defaultColumnWidth)pt is not that.
+            """
         )
     }
 

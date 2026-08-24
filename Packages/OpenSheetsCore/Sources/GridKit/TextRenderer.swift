@@ -155,9 +155,16 @@ public enum FontResolver {
 /// node array never grows past ``capacity``, and eviction reuses the tail's slot rather than
 /// allocating. No frame pays for another frame's insertions.
 ///
-/// The colour is deliberately **not** part of the key. Lines carry no foreground-colour
-/// attribute, so `CTLineDraw` paints them in the context's current fill colour — which means one
-/// shaped line serves the same string in body text, in error red, and under a selection.
+/// The colour is deliberately **not** part of the key: one shaped line serves the same string in
+/// body text, in error red, and under a selection, and the caller sets the colour on the context
+/// before it draws.
+///
+/// That only works because every line is shaped with ``kCTForegroundColorFromContextAttributeName``
+/// — see ``shape(_:font:)``. *Omitting* a foreground colour is not the same as asking for the
+/// context's: Core Text's default when the attribute is absent is opaque black, whatever the
+/// context's fill colour says. That is not a subtle difference on a dark canvas, and it is why
+/// every cell and every header label used to draw black in dark mode while every value in the
+/// pipeline — palette, theme, `CellDisplay.color` — was correct.
 @MainActor
 public final class TextLayoutCache {
     /// Text plus font. Not colour — see the class note.
@@ -210,13 +217,25 @@ public final class TextLayoutCache {
     }
 
     static func shape(_ text: String, font: CTFont) -> ShapedLine {
-        let attributed = NSAttributedString(string: text, attributes: [.font: font])
+        let attributed = NSAttributedString(string: text, attributes: Self.attributes(font: font))
         let line = CTLineCreateWithAttributedString(attributed)
         var ascent: CGFloat = 0
         var descent: CGFloat = 0
         var leading: CGFloat = 0
         let width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
         return ShapedLine(line: line, width: width, ascent: ascent, descent: descent, leading: leading)
+    }
+
+    /// The font, plus the one attribute that makes a cached line colour-agnostic.
+    ///
+    /// `kCTForegroundColorFromContextAttributeName` is what makes `CTLineDraw` read
+    /// `CGContext.fillColor`. Without it Core Text substitutes its own default — opaque black —
+    /// and the context's fill colour is ignored entirely.
+    static func attributes(font: CTFont) -> [NSAttributedString.Key: Any] {
+        [
+            .font: font,
+            NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true,
+        ]
     }
 }
 
@@ -280,7 +299,7 @@ public final class WrappedTextCache {
 
     private static func wrap(_ text: String, font: CTFont, width: Double) -> [ShapedLine] {
         guard width > 1, !text.isEmpty else { return [] }
-        let attributed = NSAttributedString(string: text, attributes: [.font: font])
+        let attributed = NSAttributedString(string: text, attributes: TextLayoutCache.attributes(font: font))
         let typesetter = CTTypesetterCreateWithAttributedString(attributed)
         var result: [ShapedLine] = []
         var start = 0

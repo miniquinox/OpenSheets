@@ -91,13 +91,17 @@ struct TestingHelpersTests {
 
     @Test("expectWork passes under its ceiling and fails over it")
     func expectWorkBehaviour() {
-        Benchmark.reset()
+        // Deliberately asserts only on the return values. This test used to also check
+        // `Benchmark.recorded.count == 2` around a pair of `Benchmark.reset()` calls — but that
+        // store is process-wide, `PerfHarnessTests` resets it in eight places, and swift-testing
+        // runs suites in parallel. So the count was racing, and worse, the resets here were
+        // discarding measurements that suite was mid-way through taking. Whether a recording
+        // lands in the store is `PerfHarnessTests`' business; whether the guard returns the right
+        // answer is this one's.
         #expect(PerfGuard.expectWork("test.helpers.under", value: 5, atMost: 10, unit: .count))
         withKnownIssue {
             #expect(!PerfGuard.expectWork("test.helpers.over", value: 50, atMost: 10, unit: .count))
         }
-        #expect(Benchmark.recorded.count == 2, "both attempts are recorded, pass or fail")
-        Benchmark.reset()
     }
 
     /// Only meaningful when the machine is quiet enough for the gate to be live: on a loaded

@@ -22,8 +22,14 @@ struct PaletteContrastTests {
     /// WCAG AA for large or bold text, and for meaningful graphics.
     static let largeTextMinimum = 3.0
     /// Below this a one-point line is not findable on a Retina display. Not a WCAG number — there
-    /// isn't one for a gridline — but it is where the gridlines stopped disappearing in the gallery.
-    static let hairlineMinimum = 1.2
+    /// isn't one for a gridline — it is measured against the reference every user already has:
+    /// Excel's own gridline is ≈1.44:1 on white, and a spreadsheet whose lines are fainter than
+    /// Excel's is one people ask whether it has lines at all. This palette sits just above that,
+    /// and the floor is set just below it so the margin is real rather than exact.
+    ///
+    /// It was 1.2, and 1.2 is a floor the palette cleared while the grid still looked blank:
+    /// 1.27:1 in light and 1.33:1 in dark both passed. A floor that passes the bug is not a floor.
+    static let hairlineMinimum = 1.4
 
     @Test("Cell text clears 4.5:1 on the canvas, in every appearance", arguments: AppearanceContext.snapshotMatrix)
     func cellTextIsReadable(_ context: AppearanceContext) {
@@ -99,6 +105,9 @@ struct PaletteContrastTests {
             )
             // The other half of "quiet": a gridline that reads as a border is worse than one that
             // reads as nothing, because it turns a spreadsheet into a table of boxes.
+            //
+            // The band between this and `hairlineMinimum` is narrow on purpose. There is one
+            // right answer for a gridline and it is close to Excel's.
             if !context.increaseContrast {
                 #expect(
                     ratio <= 2.4,
@@ -112,6 +121,20 @@ struct PaletteContrastTests {
         }
     }
 
+    /// The structural lines have to stay clearly heavier than the cell boundaries, or the frozen
+    /// divider stops saying "the sheet is pinned here" and starts saying "here is another cell".
+    /// Measured as the excess over 1:1, which is the part that is visible.
+    @Test("A major line is about twice the minor one", arguments: [GlassColorScheme.light, .dark])
+    func majorGridlinesReadAsStructure(_ scheme: GlassColorScheme) {
+        let theme = GridTheme.resolved(AppearanceContext(colorScheme: scheme))
+        let minor = theme.gridline.contrastRatio(against: theme.canvas) - 1
+        let major = theme.gridlineMajor.contrastRatio(against: theme.canvas) - 1
+        #expect(
+            major >= minor * 1.6,
+            "\(scheme): the frozen divider is \(String(format: "%.2f", major / minor))× the cell line"
+        )
+    }
+
     @Test("Increase-contrast actually increases contrast", arguments: [GlassColorScheme.light, .dark])
     func increaseContrastIsNotCosmetic(_ scheme: GlassColorScheme) {
         let plain = GridTheme.resolved(AppearanceContext(colorScheme: scheme))
@@ -121,6 +144,13 @@ struct PaletteContrastTests {
             bold.gridline.contrastRatio(against: bold.canvas)
                 > plain.gridline.contrastRatio(against: plain.canvas),
             "\(scheme): gridlines did not get heavier under increase-contrast"
+        )
+        // Both lines, not just the cell boundary — PLAN.md §3.5 is about the whole grid, and a
+        // frozen divider that stayed put while the gridlines rose would end up quieter than them.
+        #expect(
+            bold.gridlineMajor.contrastRatio(against: bold.canvas)
+                > plain.gridlineMajor.contrastRatio(against: plain.canvas),
+            "\(scheme): frozen dividers did not get heavier under increase-contrast"
         )
         #expect(
             bold.cellInkSecondary.contrastRatio(against: bold.canvas)

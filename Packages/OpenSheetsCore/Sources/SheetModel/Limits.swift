@@ -129,6 +129,20 @@ public enum Limits {
     /// normal font", which is producer-dependent; we normalise to points at parse time.
     public static let defaultColumnWidth: Double = 76
 
+    /// Horizontal padding inside a cell, **both sides together**, in points at 100% zoom.
+    ///
+    /// It lives here, in the layer both sides can see, because two of them have to agree on it and
+    /// they are in different targets. `SheetFormat` turns a `<col width>` of "8.43 characters" into
+    /// a column width by *adding* this; `GridKit` takes it back off before deciding whether a
+    /// number fits. Reserve one number and subtract a different one and every column in the file
+    /// holds fewer characters than the file promised — which is a whole column of `####` in a
+    /// workbook Excel renders perfectly well.
+    ///
+    /// Excel's own figure is five pixels: two either side plus one for the gridline. Ours is
+    /// wider because the grid's rows are 24pt rather than Excel's 15 and 2pt of side padding looks
+    /// wrong beside them — but the number that matters is that it is *one* number.
+    public static let cellPadding: Double = 12
+
     // MARK: - Predicates
 
     /// Whether `row` is an addressable 0-based row index.

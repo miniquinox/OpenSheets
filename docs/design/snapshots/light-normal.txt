@@ -29,13 +29,13 @@
 GridTheme
   canvas                   #FFFFFF
   canvasAlternate          #FFFFFF
-  gridline                 #E4E4E7
-  gridlineMajor            #C7C7CC
+  gridline                 #D4D4D8
+  gridlineMajor            #B8B8BD
   headerBackground         #F2F2F5
   headerInk                #3C3C43
   headerActiveBackground   #D5E4F6
   headerActiveInk          #1A1A1F
-  headerSeparator          #C7C7CC
+  headerSeparator          #B8B8BD
   cellInk                  #1A1A1F
   cellInkSecondary         #5C5C66
   cellInkFormula           #3A5BB8

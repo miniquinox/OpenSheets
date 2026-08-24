@@ -171,7 +171,15 @@ private struct SheetBuilder {
     var pendingShared: [(ref: CellRef, si: Int)] = []
 
     /// Excel's default column width, in "characters of the normal font".
-    static let excelDefaultCharacters: Double = 8.43
+    ///
+    /// 8.43 is the number Excel's own *dialog* shows and it is not the number Excel *writes*: the
+    /// stored width includes the padding the dialog subtracts. `Fixtures/structure/`
+    /// `col-widths-row-heights.xlsx` settles it — that file has no `<sheetFormatPr>` at all, and
+    /// Excel wrote its untouched trailing columns as `<col min="12" max="16384" width="8.7109375"/>`.
+    /// Defaulting to 8.43 made every file that omits the element a fifth of a character narrower
+    /// than the same file with the element present.
+    static let excelDefaultCharacters: Double = 8.7109375
+
 
     init(entry: WorkbookSheetEntry, part: String, context: Context) {
         self.entry = entry
@@ -273,16 +281,23 @@ private struct SheetBuilder {
 
     /// `<sheetFormatPr defaultRowHeight="15" defaultColWidth="8.43" baseColWidth="8"/>`.
     ///
-    /// The row height is already in points. The two column attributes are in characters —
-    /// `defaultColWidth` is the modern one, `baseColWidth` the older — and a file that says
-    /// neither means Excel's own 8.43.
+    /// The row height is already in points. Both column attributes are in characters, but they are
+    /// not in the *same* characters — `defaultColWidth` includes the column's padding and
+    /// `baseColWidth` does not — so the older one is converted rather than believed. See
+    /// ``XLSXColumnMetrics/characters(fromBaseColWidth:)``. A file that says neither means
+    /// Excel's own default, which is the same 8.7109375 `baseColWidth="8"` converts to.
     mutating func readSheetFormatProperties(_ parser: inout XMLPullParser) {
         if let height = parser.attribute("defaultRowHeight")?.double, height > 0 {
             defaultRowHeight = height
         }
-        let characters = [parser.attribute("defaultColWidth")?.double, parser.attribute("baseColWidth")?.double]
-            .compactMap { $0 }
-            .first { $0 > 0 } ?? SheetBuilder.excelDefaultCharacters
+        let characters: Double
+        if let modern = parser.attribute("defaultColWidth")?.double, modern > 0 {
+            characters = modern
+        } else if let base = parser.attribute("baseColWidth")?.double, base > 0 {
+            characters = XLSXColumnMetrics.characters(fromBaseColWidth: base)
+        } else {
+            characters = SheetBuilder.excelDefaultCharacters
+        }
         defaultColumnWidth = XLSXColumnMetrics.points(fromCharacters: characters)
     }
 

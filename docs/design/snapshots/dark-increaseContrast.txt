@@ -29,13 +29,13 @@
 GridTheme
   canvas                   #1C1C1E
   canvasAlternate          #1C1C1E
-  gridline                 #A3A3A5
-  gridlineMajor            #ADADAE
+  gridline                 #A6A6A8
+  gridlineMajor            #AFAFB1
   headerBackground         #252528
   headerInk                #DBDBDE
   headerActiveBackground   #1E3653
   headerActiveInk          #F5F5F7
-  headerSeparator          #ADADAE
+  headerSeparator          #AFAFB1
   cellInk                  #F9F9FA
   cellInkSecondary         #C0C0C6
   cellInkFormula           #B6CEFF

@@ -17,22 +17,61 @@ import SheetModel
 /// **The reader must use the inverse of this.** Two different approximations on the two sides
 /// means every save nudges every column width, and after twenty saves the sheet looks wrong. The
 /// conversion is public so `XLSX/Read` can call it rather than re-deriving one.
+///
+/// # Why there is no dots-per-inch conversion here
+///
+/// Excel measures a column in *pixels at 96 dpi*, and this conversion used to finish by scaling
+/// by `72/96` to turn those into typographic points. That is arithmetically defensible and
+/// visually wrong, because it converts the box without converting what goes in it: a cell whose
+/// font is 11pt is drawn by `GridKit` at eleven **points**, not at eleven points scaled to a
+/// 96 dpi pixel grid. Shrinking every column by a quarter while the glyphs kept their size is
+/// what turned every numeric cell in a default-width column into `####`.
+///
+/// The unit that actually matters is the one both sides of the comparison are in: the width of
+/// the digit `0` in the normal font. Excel calls that 7 px; measured on the face `FontResolver`
+/// substitutes for Calibri at the same nominal 11pt it is 6.99 pt. So one Excel pixel is one
+/// point *here*, and no scaling belongs between them.
+///
+/// # And why the padding is the renderer's, not Excel's
+///
+/// A `<col width>` is characters **plus padding**: Excel's five pixels, two either side and one
+/// for the gridline. The width this returns is the whole column, and `GridRenderer` then takes
+/// its own ``SheetModel/Limits/cellPadding`` back off before asking whether a number fits. So the
+/// padding added here has to be the padding taken off there — reserve five and subtract twelve
+/// and every column holds a character less than the file said it would, which is `####` in a
+/// column Excel shows a number in. ``SheetModel/Limits/cellPadding`` is the one number.
 public enum XLSXColumnMetrics {
-    /// Pixel width of the digit `0` in Calibri 11, the default Excel assumes.
+    /// Width of the digit `0` in the normal font — Excel's "maximum digit width".
+    ///
+    /// Excel derives 7 from Calibri 11 at 96 dpi; `FontResolver` measures 6.99 pt for the face it
+    /// substitutes at the same nominal size. They are the same number, so no scaling separates
+    /// the file's unit from the renderer's.
     public static let maximumDigitWidth: Double = 7
-    /// Excel's per-column padding, in pixels.
-    public static let cellPadding: Double = 5
-    /// Points per pixel at Excel's assumed 96 dpi.
-    public static let pointsPerPixel: Double = 72.0 / 96.0
+    /// Padding a column carries beyond its characters. See the type's note for why this is the
+    /// grid's figure rather than Excel's five pixels.
+    public static var cellPadding: Double { Limits.cellPadding }
+
+    /// A `baseColWidth` in the units `defaultColWidth` and `<col width>` use.
+    ///
+    /// They are **not** the same measurement, which is the trap: `baseColWidth` is "the number of
+    /// characters required to fit the digits" and explicitly excludes the margin padding, while
+    /// `defaultColWidth` includes it. Excel's own conversion adds the padding back and truncates
+    /// to a 256th, which turns the near-universal `baseColWidth="8"` into exactly 8.7109375 — the
+    /// width `Fixtures/structure/col-widths-row-heights.xlsx` shows Excel writing for an untouched
+    /// column. Reading the 8 as if it were a `defaultColWidth` loses most of a character from every
+    /// column of every file that writes the older attribute.
+    public static func characters(fromBaseColWidth base: Double) -> Double {
+        ((base * maximumDigitWidth + 5) / maximumDigitWidth * 256).rounded(.down) / 256
+    }
 
     /// Points for a `<col width>` value.
     public static func points(fromCharacters characters: Double) -> Double {
-        (characters * maximumDigitWidth + cellPadding) * pointsPerPixel
+        characters * maximumDigitWidth + cellPadding
     }
 
     /// A `<col width>` value for a width in points.
     public static func characters(fromPoints points: Double) -> Double {
-        max(0, (points / pointsPerPixel - cellPadding) / maximumDigitWidth)
+        max(0, (points - cellPadding) / maximumDigitWidth)
     }
 }
 

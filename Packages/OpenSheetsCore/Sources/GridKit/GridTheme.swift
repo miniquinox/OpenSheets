@@ -126,6 +126,12 @@ public struct GridTheme: Sendable, Equatable {
     /// Default column width at 100% zoom, in points.
     public var defaultColumnWidth: Double
     /// Horizontal breathing room inside a cell, each side.
+    ///
+    /// Half of ``SheetModel/Limits/cellPadding``, and that is not a coincidence: the XLSX reader
+    /// *adds* that figure when it turns a `<col width>` in characters into a width in points, and
+    /// this is what the draw loop subtracts again before asking whether a number fits. A theme
+    /// that pads more than the reader reserved shows fewer characters per column than the file
+    /// promised, which reads as a column of `####`.
     public var cellPaddingX: Double
     /// Width of one indent step. Excel's is about three characters.
     public var indentWidth: Double
@@ -173,7 +179,7 @@ public struct GridTheme: Sendable, Equatable {
         defaultFontSize: Double = 12,
         defaultRowHeight: Double = 24,
         defaultColumnWidth: Double = 76,
-        cellPaddingX: Double = 4,
+        cellPaddingX: Double = Limits.cellPadding / 2,
         indentWidth: Double = 9,
         resizeHitSlop: Double = 3,
         increaseContrast: Bool = false

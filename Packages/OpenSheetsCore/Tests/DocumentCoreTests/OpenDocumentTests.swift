@@ -170,6 +170,112 @@ struct OpenDocumentTests {
         scratch.remove()
     }
 
+    // MARK: - Cold launch
+
+    /// Every shape a cold launch arrives in, and what each one owes the user.
+    ///
+    /// There are two ways to hand macOS a file and they do not meet. `open -a OpenSheets f.xlsx`
+    /// sends an Apple Event and leaves `argv` empty; `open OpenSheets --args f.xlsx` fills `argv`
+    /// and sends no event. Both have to end with exactly one window on that file.
+    ///
+    /// The second produced **zero** windows, and the cause was not this app's window bookkeeping —
+    /// the tidy pass never ran, because no scene was ever created. A bare `argv` token is enough on
+    /// its own to make SwiftUI skip the `WindowGroup`'s default window, and nothing read `argv` to
+    /// make up the difference, so the app came up with an empty Window menu. Both halves are in
+    /// this table: which files a launch names, and whether it leaves macOS owing us a window.
+    struct LaunchScenario: Sendable, CustomStringConvertible {
+        var description: String
+        /// `argv`, executable path included, exactly as the process would see it.
+        var argv: [String]
+        /// Which of those are files to open, as indices into the launch's own bare arguments.
+        var opens: [String]
+        /// Whether SwiftUI will refuse the default window, so the app has to ask for one.
+        var owesAWindow: Bool
+    }
+
+    nonisolated static let launchScenarios: [LaunchScenario] = [
+        LaunchScenario(
+            description: "open -a OpenSheets budget.xlsx — the file comes by Apple Event",
+            argv: ["/A/OpenSheets"], opens: [], owesAWindow: false
+        ),
+        LaunchScenario(
+            description: "open OpenSheets --args budget.xlsx — the file comes by argv",
+            argv: ["/A/OpenSheets", "/files/budget.xlsx"],
+            opens: ["/files/budget.xlsx"], owesAWindow: true
+        ),
+        LaunchScenario(
+            description: "two files in argv open two windows, in order",
+            argv: ["/A/OpenSheets", "/files/budget.xlsx", "/files/plan.xlsx"],
+            opens: ["/files/budget.xlsx", "/files/plan.xlsx"], owesAWindow: true
+        ),
+        LaunchScenario(
+            description: "a plain launch with no arguments at all",
+            argv: ["/A/OpenSheets"], opens: [], owesAWindow: false
+        ),
+        // Measured: this shape comes up with one window, so `YES` was eaten and nothing is bare.
+        LaunchScenario(
+            description: "a defaults flag and its value are AppKit's, and neither is a file",
+            argv: ["/A/OpenSheets", "-NSDocumentRevisionsDebugMode", "YES"],
+            opens: [], owesAWindow: false
+        ),
+        // Measured: no window, so `/files/budget.xlsx` survived `-AppleLanguages (en)`.
+        LaunchScenario(
+            description: "a flag pair before a file leaves the file",
+            argv: ["/A/OpenSheets", "-AppleLanguages", "(en)", "/files/budget.xlsx"],
+            opens: ["/files/budget.xlsx"], owesAWindow: true
+        ),
+        // Measured: no window. A flag eats the token after it even when that token is a flag, so
+        // `-one` ate `-two` and the file is still there to open. Reading it the other way would
+        // have this launch come up empty.
+        LaunchScenario(
+            description: "two flags in a row: the first eats the second, and the file survives",
+            argv: ["/A/OpenSheets", "-one", "-two", "/files/budget.xlsx"],
+            opens: ["/files/budget.xlsx"], owesAWindow: true
+        ),
+        LaunchScenario(
+            description: "an argument naming nothing opens nothing — but still owes a window",
+            argv: ["/A/OpenSheets", "/files/missing.xlsx"], opens: [], owesAWindow: true
+        ),
+        // Measured: `open OpenSheets --args ""` comes up with no window too.
+        LaunchScenario(
+            description: "an empty argument opens nothing and still suppresses the window",
+            argv: ["/A/OpenSheets", ""], opens: [], owesAWindow: true
+        ),
+    ]
+
+    @Test(arguments: launchScenarios)
+    func aColdLaunchOpensWhatItWasGivenAndAsksForAWindowWhenItHasTo(scenario: LaunchScenario) {
+        let onDisk: Set<String> = ["/files/budget.xlsx", "/files/plan.xlsx"]
+        let launch = LaunchArguments(scenario.argv)
+
+        #expect(
+            launch.files(existingAt: { onDisk.contains($0) }).map(\.path) == scenario.opens,
+            "\(scenario.description): opened \(launch.files(existingAt: { onDisk.contains($0) }).map(\.path))"
+        )
+        // The half that was actually broken. `false` here on an argv launch is the zero-window
+        // bug: SwiftUI makes no default window, so nobody ever installs `openWindow`, so the
+        // queued file never opens either.
+        #expect(
+            launch.suppressesTheDefaultWindow == scenario.owesAWindow,
+            "\(scenario.description): owesAWindow should be \(scenario.owesAWindow)"
+        )
+    }
+
+    /// The argument-domain rule, stated on its own because it is the reason `argv` cannot simply
+    /// be filtered on a leading `-`: `-NSDocumentRevisionsDebugMode YES` would open a file called
+    /// `YES`, and `--args` launches from Xcode carry exactly that pair.
+    @Test func aFlagsValueIsNeverMistakenForAFile() {
+        let launch = LaunchArguments(["/A/OpenSheets", "-Flag", "value", "real"])
+        #expect(launch.bareArguments == ["real"])
+    }
+
+    /// Everything a launch was handed is offered to the opener in the order it was given, so two
+    /// files on one command line become two windows rather than one and a shrug.
+    @Test func argumentOrderIsTheOrderWindowsOpenIn() {
+        let launch = LaunchArguments(["/A/OpenSheets", "/b.xlsx", "/a.xlsx"])
+        #expect(launch.files(existingAt: { _ in true }).map(\.path) == ["/b.xlsx", "/a.xlsx"])
+    }
+
     // MARK: - Scaffolding
 
     /// A temporary folder holding real `.xlsx` bytes, so the grant under test is a grant on a

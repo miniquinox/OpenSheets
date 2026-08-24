@@ -114,6 +114,25 @@ public final class Database: Sendable {
                 table.column("value", .text).notNull()
             }
         }
+
+        migrator.registerMigration("v2-recent-file-sequence") { db in
+            // `last_opened` is a wall-clock timestamp and GRDB stores it to the millisecond, so
+            // two files opened in the same millisecond — a session restore, or a folder full of
+            // sheets — tie, and `ORDER BY last_opened DESC` then returns them in whatever order
+            // SQLite feels like. Recents order is a *sequence*, not a time; the timestamp is only
+            // ever displayed. So order by an integer that always increases.
+            try db.alter(table: "recent_file") { table in
+                table.add(column: "open_sequence", .integer).notNull().defaults(to: 0)
+            }
+            try db.execute(sql: """
+                UPDATE recent_file
+                SET open_sequence = (
+                    SELECT COUNT(*) FROM recent_file AS earlier
+                    WHERE earlier.last_opened <= recent_file.last_opened
+                )
+                """)
+            try db.create(index: "recent_file_open_sequence", on: "recent_file", columns: ["open_sequence"])
+        }
         return migrator
     }
 
@@ -148,11 +167,14 @@ public final class Database: Sendable {
         try write("write recent_file") { db in
             try db.execute(
                 sql: """
-                INSERT INTO recent_file (path, bookmark, last_opened, cursor_sheet_id, cursor_row, cursor_column)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO recent_file (
+                    path, bookmark, last_opened, cursor_sheet_id, cursor_row, cursor_column, open_sequence
+                )
+                VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(open_sequence), 0) + 1 FROM recent_file))
                 ON CONFLICT(path) DO UPDATE SET
                     bookmark = COALESCE(excluded.bookmark, recent_file.bookmark),
                     last_opened = excluded.last_opened,
+                    open_sequence = excluded.open_sequence,
                     cursor_sheet_id = excluded.cursor_sheet_id,
                     cursor_row = excluded.cursor_row,
                     cursor_column = excluded.cursor_column
@@ -170,7 +192,7 @@ public final class Database: Sendable {
         try run("read recent_file") { db in
             try RecentFile.fetchAll(
                 db,
-                sql: "SELECT * FROM recent_file ORDER BY last_opened DESC LIMIT ?",
+                sql: "SELECT * FROM recent_file ORDER BY open_sequence DESC, last_opened DESC LIMIT ?",
                 arguments: [limit]
             )
         }

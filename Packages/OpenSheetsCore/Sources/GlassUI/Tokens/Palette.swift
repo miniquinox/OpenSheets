@@ -43,16 +43,27 @@ public enum Palette {
     /// PLAN.md §3.3 says `separatorColor` at 50%. Measured, `separatorColor` is black at 9.8% in
     /// light and white at 9.8% in dark; halved and flattened onto the canvas that gives #F3F3F3
     /// light — invisible at one point on a Retina display — and, in dark, a colour *darker* than
-    /// the canvas, so the gridlines would vanish entirely. These are explicit values instead,
-    /// each sitting a little over 1.25:1 against its canvas. A gridline you have to look for is
-    /// the right amount of gridline; a gridline you cannot find is a bug.
-    public static let gridlineLight = RGBA(hex: "#E4E4E7")
-    public static let gridlineDark = RGBA(hex: "#323236")
+    /// the canvas, so the gridlines would vanish entirely. These are explicit values instead.
+    ///
+    /// The explicit values were right to introduce and landed too low: 1.27:1 in light and 1.33:1
+    /// in dark, against Excel's own ≈1.44:1 on white. Below Excel in both schemes and furthest
+    /// below in the one with more light to lose is not "quiet", it is absent — the first thing
+    /// anyone asked on seeing the grid was whether it had cell lines at all. These sit a little
+    /// *above* Excel, at ≈1.48:1 light and ≈1.50:1 dark: enough to follow a row across a wide
+    /// sheet, not enough to compete with the numbers on it. `PaletteContrastTests` holds the
+    /// floor, so a future palette edit cannot quietly take the grid away again.
+    public static let gridlineLight = RGBA(hex: "#D4D4D8")
+    public static let gridlineDark = RGBA(hex: "#3A3A3E")
 
     /// Frozen-pane dividers and the edge of the header band. Twice the weight of a gridline,
     /// because it means something structural rather than "here is a cell boundary".
-    public static let gridlineMajorLight = RGBA(hex: "#C7C7CC")
-    public static let gridlineMajorDark = RGBA(hex: "#48484C")
+    ///
+    /// "Twice" is measured as twice the *excess over 1:1*, which is the part a viewer can see:
+    /// ≈2.05:1 against ≈1.50:1 in dark, ≈1.98:1 against ≈1.48:1 in light. Raising the minor line
+    /// without raising this one would have left the structural lines reading as ordinary cell
+    /// boundaries, which is the distinction they exist to make.
+    public static let gridlineMajorLight = RGBA(hex: "#B8B8BD")
+    public static let gridlineMajorDark = RGBA(hex: "#4E4E52")
 
     // MARK: - Grid ink
     //

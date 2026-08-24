@@ -159,6 +159,27 @@ import Testing
         #expect(try database.recentFiles().first?.bookmark == Data([1, 2, 3]))
     }
 
+    @Test func recentsOrderSurvivesATimestampTie() throws {
+        // The regression this pins: `last_opened` is a wall clock stored to the millisecond, so
+        // several files opened in the same millisecond — a session restore, or a folder of sheets
+        // — tie, and an ORDER BY on it alone returns them in whatever order SQLite likes. Recents
+        // order is a sequence, not a time.
+        let scratch = TemporaryDirectory("recents-tie")
+        let database = try Database(url: scratch.url.appendingPathComponent("db.sqlite"))
+
+        let paths = (1 ... 8).map { "/a/book\($0).xlsx" }
+        for path in paths {
+            try database.noteOpened(path: path, bookmark: nil, cursor: nil)
+        }
+
+        // Written as fast as the machine allows, so most or all of these share a millisecond.
+        #expect(try database.recentFiles().map(\.path) == paths.reversed())
+
+        // Reopening moves a file to the front even when its timestamp ties with the others.
+        try database.noteOpened(path: "/a/book3.xlsx", bookmark: nil, cursor: nil)
+        #expect(try database.recentFiles().first?.path == "/a/book3.xlsx")
+    }
+
     @Test func viewStateRoundTrips() throws {
         let scratch = TemporaryDirectory("view-state")
         let database = try Database(url: scratch.url.appendingPathComponent("db.sqlite"))

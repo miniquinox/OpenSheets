@@ -42,6 +42,12 @@ import UniformTypeIdentifiers
 ///    against a running copy. ``OpenActions`` reads the live window list after every change and
 ///    closes the ones nobody asked for.
 ///
+/// The opposite failure is worse and had its own cause. `open OpenSheets --args budget.xlsx` put
+/// the file in `argv` rather than in an Apple Event; nothing read `argv`, and a bare `argv` token
+/// is enough on its own to stop SwiftUI creating the group's default window — so that launch ended
+/// with a menu bar, an empty Window menu, and nothing on screen. ``DocumentCore/LaunchArguments``
+/// is the reading, ``OpenActions/handleLaunch(_:)`` is the window.
+///
 /// Each of those is asserted somewhere that runs: the model-level ones in
 /// `DocumentCoreTests.OpenDocumentTests`, the window-level ones by launching the app cold.
 @main
@@ -87,6 +93,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
             default: break
             }
+
+            // The other half of "a file was named on the command line" — see ``LaunchArguments``.
+            // `application(_:open:)` below covers the Apple Event half and never sees this one.
+            OpenActions.handleLaunch(LaunchArguments(CommandLine.arguments))
         }
     }
 
@@ -275,6 +285,37 @@ enum OpenActions {
         let pending = queued
         queued = []
         for (url, consent) in pending { open(url, consent: consent) }
+    }
+
+    /// Opens whatever the command line named, and makes sure a window exists to open it into.
+    ///
+    /// See ``DocumentCore/LaunchArguments`` for the measurement behind this: a bare `argv` token
+    /// stops SwiftUI from creating the `WindowGroup`'s default window, so this launch has no
+    /// scene, no `openWindow` action, and no way to drain ``queued`` — the file would sit in the
+    /// queue forever behind an empty Window menu.
+    ///
+    /// Asking macOS to open this app *again* is what breaks the deadlock, and it is not a trick:
+    /// the second request reaches the running process as an ordinary reopen, which is the event
+    /// ``applicationShouldHandleReopen(_:hasVisibleWindows:)`` already exists to answer. AppKit
+    /// makes the default window, the first `RootView` installs `openWindow`, the queue drains into
+    /// a document window, and ``tidyWindows()`` closes the launcher behind it — one window, the
+    /// one the user asked for.
+    static func handleLaunch(_ launch: LaunchArguments) {
+        guard launch.suppressesTheDefaultWindow else { return }
+        for url in launch.files() { open(url, consent: .fromOutsideTheApp) }
+        provokeDefaultWindow()
+    }
+
+    /// Guards ``provokeDefaultWindow()`` against ever asking twice. A reopen loop would be a
+    /// launch that never settles.
+    private static var provokedDefaultWindow = false
+
+    private static func provokeDefaultWindow() {
+        guard openWindow == nil, !provokedDefaultWindow else { return }
+        provokedDefaultWindow = true
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration)
     }
 
     /// Brings the launcher back, or reports that it could not so the caller can let AppKit try.
@@ -489,3 +530,4 @@ enum OpenActions {
         return response == .alertFirstButtonReturn
     }
 }
+

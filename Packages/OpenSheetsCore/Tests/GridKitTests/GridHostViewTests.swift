@@ -187,18 +187,86 @@ struct GridHostViewTests {
         #expect(abs(label.y - cell.y) < 0.5)
     }
 
+    /// **Every pane draws, and no pane draws over another one.**
+    ///
+    /// `GridPane` says each quadrant "is clipped to its own rectangle". It was not: `clipsToBounds`
+    /// defaults to `false` from macOS 14, and a subview's `dirtyRect` is the *host's* damaged
+    /// region in the subview's coordinates — a thousand points wide for a 15pt-tall frozen strip.
+    /// ``GridRenderer/draw(_:into:viewRect:sheetOrigin:model:)`` opens by filling `viewRect` with
+    /// the canvas, so each frozen pane repainted the entire window and then drew only its own band.
+    /// Subview order decided the winner: `.corner`, then `.top`, then `.left`, so the frame ended
+    /// as column A and nothing else, and the sheet looked empty from column C rightwards with a
+    /// blank header row on top.
+    ///
+    /// The assertion is deliberately about the *pixels of a real window*, because every part of
+    /// this was individually correct: the visible range covered every column, `collectRows` found
+    /// every cell, and `drawCell` ran for each one with the right box and the right colour. The
+    /// paint happened. It was erased a few microseconds later.
+    @Test("Every pane paints, and none of them paints over the others")
+    func everyPanePaintsItsOwnBandAndNoOneElsesInARealWindow() throws {
+        let view = try Self.hostInWindow(frozen: FrozenPanes(frozenRows: 1, frozenColumns: 1))
+        let rep = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let scale = Double(rep.pixelsWide) / Double(view.bounds.width)
+        let insets = view.contentScrollView.contentInsets
+        let geometry = view.model.geometry
+        let canvas = view.model.theme.canvasBackground
+
+        func ink(inCellAt ref: CellRef) -> Int {
+            let sheetRect = geometry.sheetRect(row: ref.row, column: ref.column)
+            let frozenColumn = ref.column < geometry.frozenColumns
+            let frozenRow = ref.row < geometry.frozenRows
+            let originX = frozenColumn
+                ? insets.left - geometry.frozenWidth + sheetRect.minX
+                : insets.left + sheetRect.minX - geometry.frozenWidth
+            let originY = frozenRow
+                ? insets.top - geometry.frozenHeight + sheetRect.minY
+                : insets.top + sheetRect.minY - geometry.frozenHeight
+            var count = 0
+            var y = originY
+            while y < originY + sheetRect.height {
+                var x = originX
+                while x < originX + sheetRect.width {
+                    if let sample = rep.colorAt(x: Int(x * scale), y: Int(y * scale))?
+                        .usingColorSpace(.deviceRGB),
+                        abs(Int(sample.redComponent * 255) - Int(canvas.red)) > 40 {
+                        count += 1
+                    }
+                    x += 1 / scale
+                }
+                y += 1 / scale
+            }
+            return count
+        }
+
+        // One cell from each pane. `hostInWindow` fills a 12 × 6 block of numbers, so every one of
+        // these holds text and every one of them must survive to the end of the frame.
+        let corner = CellRef(row: 0, column: 0)
+        let top = CellRef(row: 0, column: 3)
+        let left = CellRef(row: 4, column: 0)
+        let body = CellRef(row: 4, column: 3)
+        for (name, ref) in [("corner", corner), ("top", top), ("left", left), ("body", body)] {
+            #expect(ink(inCellAt: ref) > 0, "the \(name) pane drew nothing at \(ref.a1String)")
+        }
+        // …and the far end of the body pane, which is the one the wipe reached first.
+        #expect(ink(inCellAt: CellRef(row: 8, column: 5)) > 0, "the body pane stops painting after its first column")
+    }
+
     /// Keeps the window alive for the length of the test: an `NSWindow` that goes out of scope
     /// takes its content view's layout with it.
     nonisolated(unsafe) private static var retained: [NSWindow] = []
 
-    private static func hostInWindow(insets: GridInsets = .zero) throws -> GridHostView {
+    private static func hostInWindow(
+        insets: GridInsets = .zero,
+        frozen: FrozenPanes = .none
+    ) throws -> GridHostView {
         var store = CellStore()
         for row in 0 ..< 12 {
             for column in 0 ..< 6 {
                 try store.setCell(.number(Double(row * 6 + column)), at: CellRef(row: row, column: column))
             }
         }
-        let sheet = Sheet(id: 1, name: "Report", cells: store)
+        let sheet = Sheet(id: 1, name: "Report", cells: store, frozen: frozen)
         var options = GridOptions.default
         options.contentInsets = insets
         let view = GridHostView(
