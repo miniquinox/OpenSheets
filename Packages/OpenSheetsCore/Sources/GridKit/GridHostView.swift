@@ -70,6 +70,8 @@ public final class GridHostView: NSView {
         case none
         case selecting
         case fillHandle(source: CellRange)
+        /// A drag across the column letters or the row numbers, selecting whole columns or rows.
+        case headerSelecting(axis: HeaderAxis)
     }
 
     private var dragMode: DragMode = .none
@@ -542,7 +544,9 @@ public final class GridHostView: NSView {
         let ref = model.geometry.cellRef(atSheetPoint: sheet)
 
         switch dragMode {
-        case .none:
+        // A header drag is tracked by the header view that received the press — AppKit keeps
+        // sending it there for the length of the drag — so it never reaches a pane.
+        case .none, .headerSelecting:
             return
         case .selecting:
             var selection = model.selection
@@ -561,7 +565,9 @@ public final class GridHostView: NSView {
         switch dragMode {
         case .none:
             break
-        case .selecting:
+        // `.selecting` and `.headerSelecting` both end the same way: one change for the whole
+        // drag, after a run of silent `emit: false` updates.
+        case .selecting, .headerSelecting:
             onEvent?(.selectionChanged(model.selection))
         case let .fillHandle(source):
             if let target = fillTarget, target != source {
@@ -629,7 +635,15 @@ public final class GridHostView: NSView {
         autoscrollTimer = timer
     }
 
-    private func autoscrollStep() {
+    /// Whether a drag is currently holding the autoscroll timer open.
+    ///
+    /// Internal for the tests that assert the timer is always given back on mouse-up: a repeating
+    /// timer that outlives its drag is the battery bug this whole mechanism was written to avoid.
+    var isAutoscrolling: Bool { autoscrollTimer != nil }
+
+    /// One tick. Internal so a test can pump it deterministically rather than waiting on a real
+    /// 30Hz timer — the drag state it reads is the same state the timer would find.
+    func autoscrollStep() {
         if case .none = dragMode {
             stopAutoscroll()
             return
@@ -643,6 +657,13 @@ public final class GridHostView: NSView {
         if local.x > body.maxX - edge { delta.x = local.x - (body.maxX - edge) }
         if local.y < body.minY + edge { delta.y = local.y - (body.minY + edge) }
         if local.y > body.maxY - edge { delta.y = local.y - (body.maxY - edge) }
+        // A header drag runs along one axis only. The pointer spends the whole drag *outside* the
+        // body on the other one — above it in the column strip, left of it in the row strip — so
+        // leaving the cross-axis delta in would scroll the sheet away under a drag that never
+        // moved that way.
+        if case let .headerSelecting(axis) = dragMode {
+            if axis == .column { delta.y = 0 } else { delta.x = 0 }
+        }
         guard delta.x != 0 || delta.y != 0 else { return }
 
         let origin = scrollOrigin
@@ -666,6 +687,18 @@ public final class GridHostView: NSView {
         case let .fillHandle(source):
             fillTarget = Self.fillTarget(from: source, to: ref)
             invalidateEverything()
+        case let .headerSelecting(axis):
+            // Read back off the header view *after* the scroll landed, so a stationary pointer
+            // keeps taking in new columns — the whole point of holding a drag at the edge.
+            setSelection(
+                Self.headerSelection(
+                    from: model.selection,
+                    axis: axis,
+                    index: headerIndex(axis: axis, atWindowPoint: lastDragWindowPoint),
+                    mode: .extend
+                ),
+                emit: false
+            )
         case .none:
             break
         }
@@ -722,36 +755,121 @@ public final class GridHostView: NSView {
         }
     }
 
-    func selectEntireColumn(_ column: Int, extending: Bool, adding: Bool) {
-        let range = CellRange.entireColumn(column)
-        var selection = model.selection
-        if extending {
-            selection.extend(to: CellRef(row: Limits.maxRow, column: column))
-        } else if adding {
-            selection.addRange(range, active: CellRef(row: 0, column: column))
-        } else {
-            selection.select(range, active: CellRef(row: 0, column: column))
+    /// The column or row under a point in **window** coordinates.
+    ///
+    /// Read back through the header view's own coordinate space rather than off `bodyRect`,
+    /// because that is the mapping ``sheetX(fromColumnHeader:)`` was written against — frozen
+    /// band and all. The drag and the autoscroll that chases it therefore cannot disagree about
+    /// which column the pointer is over, which is the class of bug that makes a selection
+    /// "jump a column" the moment it starts scrolling.
+    func headerIndex(axis: HeaderAxis, atWindowPoint point: CGPoint) -> Int {
+        switch axis {
+        case .column:
+            let x = columnHeaderView.convert(point, from: nil).x
+            return model.geometry.columns.index(atOffset: sheetX(fromColumnHeader: x))
+        case .row:
+            let y = rowHeaderView.convert(point, from: nil).y
+            return model.geometry.rows.index(atOffset: sheetY(fromRowHeader: y))
         }
-        setSelection(selection)
+    }
+
+    /// Excel's header-selection rules, as a pure function of the selection they start from.
+    ///
+    /// Every way of selecting a header goes through here — plain click, shift-click, `⌘`-click
+    /// and each step of a drag — so the click path and the drag path cannot drift apart. It is
+    /// `static` so the rules can be asserted without a window.
+    static func headerSelection(
+        from current: GridSelection,
+        axis: HeaderAxis,
+        index: Int,
+        mode: HeaderSelectMode
+    ) -> GridSelection {
+        let target = axis.clamped(index)
+        var selection = current
+        switch mode {
+        case .replace:
+            selection.select(axis.entireRange(target), active: axis.head(target))
+        case .add:
+            selection.addRange(axis.entireRange(target), active: axis.head(target))
+        case .extend:
+            // Deliberately *not* `GridSelection.extend(to:)`. That pivots on the anchor cell, so
+            // after clicking body cell B5 a shift-click on column D's header would take
+            // `B5:D1048576` — a block starting at row 5 — instead of the whole of B:D that Excel
+            // takes. The band is the axis's own business, and the cross axis is always the full
+            // sheet.
+            let range = axis.band(from: axis.index(of: current.anchor), to: target)
+            var ranges = current.ranges
+            ranges[current.activeRangeIndex] = range
+            // The caret stays where it was while the band grows around it — drag C→F and the
+            // active cell is still C1 — and only moves if the band left it behind.
+            selection = GridSelection(
+                ranges: ranges,
+                active: range.contains(current.active) ? current.active : range.start,
+                anchor: current.anchor,
+                activeRangeIndex: current.activeRangeIndex
+            )
+        }
+        return selection
+    }
+
+    func selectEntireColumn(_ column: Int, extending: Bool, adding: Bool) {
+        setSelection(Self.headerSelection(
+            from: model.selection, axis: .column, index: column,
+            mode: HeaderSelectMode(extending: extending, adding: adding)
+        ))
     }
 
     func selectEntireRow(_ row: Int, extending: Bool, adding: Bool) {
-        let range = CellRange.entireRow(row)
-        var selection = model.selection
-        if extending {
-            selection.extend(to: CellRef(row: row, column: Limits.maxColumn))
-        } else if adding {
-            selection.addRange(range, active: CellRef(row: row, column: 0))
-        } else {
-            selection.select(range, active: CellRef(row: row, column: 0))
-        }
-        setSelection(selection)
+        setSelection(Self.headerSelection(
+            from: model.selection, axis: .row, index: row,
+            mode: HeaderSelectMode(extending: extending, adding: adding)
+        ))
     }
 
     func selectAll() {
+        beginHeaderInteraction()
         var selection = model.selection
         selection.select(CellRange.entireSheet, active: .origin)
         setSelection(selection)
+    }
+
+    /// A header click moves the focus as well as the caret, exactly as a body click does: the
+    /// grid has to be first responder for the arrow keys that follow, and an edit in progress has
+    /// to land somewhere rather than be abandoned in an editor that is no longer over its cell.
+    private func beginHeaderInteraction() {
+        window?.makeFirstResponder(documentView)
+        if editor.isEditing { editor.commit(advance: nil) }
+    }
+
+    /// Mouse-down on a header body. Selects immediately; a drag then extends what it selected.
+    func beginHeaderSelection(axis: HeaderAxis, index: Int, extending: Bool, adding: Bool) {
+        beginHeaderInteraction()
+        setSelection(Self.headerSelection(
+            from: model.selection, axis: axis, index: index,
+            mode: HeaderSelectMode(extending: extending, adding: adding)
+        ))
+        // `select` and `addRange` both leave the anchor on the header just clicked, and `extend`
+        // leaves it alone, so in all three cases the drag that follows pivots on the right one.
+        dragMode = .headerSelecting(axis: axis)
+    }
+
+    /// One step of a header drag: the band from the anchor to wherever the pointer is now,
+    /// including when it has come back past the anchor and reversed the band.
+    func extendHeaderSelection(_ event: NSEvent, axis: HeaderAxis) {
+        guard case .headerSelecting = dragMode else { return }
+        let index = headerIndex(axis: axis, atWindowPoint: event.locationInWindow)
+        setSelection(
+            Self.headerSelection(from: model.selection, axis: axis, index: index, mode: .extend),
+            emit: false
+        )
+        startAutoscrollIfNeeded(event)
+    }
+
+    /// Mouse-up on a header. Emits the one selection change the whole drag amounts to.
+    func endHeaderSelection() {
+        stopAutoscroll()
+        if case .headerSelecting = dragMode { onEvent?(.selectionChanged(model.selection)) }
+        dragMode = .none
     }
 
     func previewColumnResize(_ column: Int, width: Double) {

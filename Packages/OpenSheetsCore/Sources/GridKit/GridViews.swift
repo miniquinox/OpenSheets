@@ -139,7 +139,9 @@ final class GridFrozenOverlayView: NSView {
 @MainActor
 final class GridColumnHeaderView: NSView {
     weak var host: GridHostView?
-    private var dragState: HeaderDrag?
+    /// Non-nil only while a *divider* is being dragged. A drag that began anywhere else on the
+    /// strip is a selection, and lives in the host so it can share the body's autoscroll.
+    private var resizeDrag: HeaderDrag?
 
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { true }
@@ -152,6 +154,9 @@ final class GridColumnHeaderView: NSView {
         _ = dirtyRect
     }
 
+    /// Which it is — a resize or a selection — is decided once, here, by where the press landed
+    /// relative to the nearest divider. `GridTheme.resizeHitSlop` is the few points either side
+    /// that count as "on" it; everything else is the header body, and drags a selection.
     override func mouseDown(with event: NSEvent) {
         guard let host else { return }
         let point = convert(event.locationInWindow, from: nil)
@@ -161,30 +166,38 @@ final class GridColumnHeaderView: NSView {
                 host.autoFitColumn(divider)
                 return
             }
-            dragState = HeaderDrag(
+            resizeDrag = HeaderDrag(
                 index: divider,
                 startLocation: point.x,
                 startSize: host.model.geometry.columns.size(ofIndex: divider)
             )
             return
         }
-        host.selectEntireColumn(
-            host.model.geometry.columns.index(atOffset: sheetX),
+        host.beginHeaderSelection(
+            axis: .column,
+            index: host.headerIndex(axis: .column, atWindowPoint: event.locationInWindow),
             extending: event.modifierFlags.contains(.shift),
             adding: event.modifierFlags.contains(.command)
         )
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let host, let state = dragState else { return }
-        let point = convert(event.locationInWindow, from: nil)
-        let delta = point.x - state.startLocation
-        host.previewColumnResize(state.index, width: max(0, state.startSize + delta))
+        guard let host else { return }
+        if let state = resizeDrag {
+            let delta = convert(event.locationInWindow, from: nil).x - state.startLocation
+            host.previewColumnResize(state.index, width: max(0, state.startSize + delta))
+            return
+        }
+        host.extendHeaderSelection(event, axis: .column)
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard let host, let state = dragState else { return }
-        dragState = nil
+        guard let host else { return }
+        guard let state = resizeDrag else {
+            host.endHeaderSelection()
+            return
+        }
+        resizeDrag = nil
         let point = convert(event.locationInWindow, from: nil)
         host.commitColumnResize(state.index, width: max(0, state.startSize + point.x - state.startLocation))
     }
@@ -202,7 +215,8 @@ final class GridColumnHeaderView: NSView {
 @MainActor
 final class GridRowHeaderView: NSView {
     weak var host: GridHostView?
-    private var dragState: HeaderDrag?
+    /// See ``GridColumnHeaderView/resizeDrag``.
+    private var resizeDrag: HeaderDrag?
 
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { true }
@@ -224,29 +238,38 @@ final class GridRowHeaderView: NSView {
                 host.autoFitRow(divider)
                 return
             }
-            dragState = HeaderDrag(
+            resizeDrag = HeaderDrag(
                 index: divider,
                 startLocation: point.y,
                 startSize: host.model.geometry.rows.size(ofIndex: divider)
             )
             return
         }
-        host.selectEntireRow(
-            host.model.geometry.rows.index(atOffset: sheetY),
+        host.beginHeaderSelection(
+            axis: .row,
+            index: host.headerIndex(axis: .row, atWindowPoint: event.locationInWindow),
             extending: event.modifierFlags.contains(.shift),
             adding: event.modifierFlags.contains(.command)
         )
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let host, let state = dragState else { return }
-        let point = convert(event.locationInWindow, from: nil)
-        host.previewRowResize(state.index, height: max(0, state.startSize + point.y - state.startLocation))
+        guard let host else { return }
+        if let state = resizeDrag {
+            let delta = convert(event.locationInWindow, from: nil).y - state.startLocation
+            host.previewRowResize(state.index, height: max(0, state.startSize + delta))
+            return
+        }
+        host.extendHeaderSelection(event, axis: .row)
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard let host, let state = dragState else { return }
-        dragState = nil
+        guard let host else { return }
+        guard let state = resizeDrag else {
+            host.endHeaderSelection()
+            return
+        }
+        resizeDrag = nil
         let point = convert(event.locationInWindow, from: nil)
         host.commitRowResize(state.index, height: max(0, state.startSize + point.y - state.startLocation))
     }
@@ -285,4 +308,64 @@ struct HeaderDrag {
     var index: Int
     var startLocation: Double
     var startSize: Double
+}
+
+/// Which header a click or a drag is on.
+///
+/// The column strip and the row strip are mirror images of each other, so every selection rule is
+/// written once and asked which way round it runs. Writing them twice is how the two ended up
+/// with different behaviour in every spreadsheet that has ever had this bug.
+enum HeaderAxis: Sendable, Hashable {
+    case column
+    case row
+
+    /// The whole column, or the whole row.
+    func entireRange(_ index: Int) -> CellRange {
+        self == .column ? .entireColumn(index) : .entireRow(index)
+    }
+
+    /// Where the caret lands: the top of a column, the start of a row.
+    func head(_ index: Int) -> CellRef {
+        self == .column ? CellRef(row: 0, column: index) : CellRef(row: index, column: 0)
+    }
+
+    /// This axis's component of a reference — a column index, or a row index.
+    func index(of ref: CellRef) -> Int {
+        self == .column ? ref.column : ref.row
+    }
+
+    /// Every column between two indices at full height, or every row at full width. Inclusive of
+    /// both ends and indifferent to their order, which is what makes a drag that reverses back
+    /// past its anchor simply produce the band the other way round.
+    func band(from first: Int, to second: Int) -> CellRange {
+        let span = Swift.min(first, second) ... Swift.max(first, second)
+        return self == .column
+            ? CellRange(rows: 0 ... Limits.maxRow, columns: span)
+            : CellRange(rows: span, columns: 0 ... Limits.maxColumn)
+    }
+
+    /// An index pulled back onto the sheet.
+    func clamped(_ index: Int) -> Int {
+        Swift.min(Swift.max(0, index), self == .column ? Limits.maxColumn : Limits.maxRow)
+    }
+}
+
+/// What a header click does to the selection already there — the modifier keys, named.
+enum HeaderSelectMode: Sendable, Hashable {
+    /// Plain click: this column or row, and nothing else.
+    case replace
+    /// Shift: the band from the anchor to here.
+    case extend
+    /// `⌘`: this column or row *as well*, disjoint from what was already selected.
+    case add
+
+    init(extending: Bool, adding: Bool) {
+        if extending {
+            self = .extend
+        } else if adding {
+            self = .add
+        } else {
+            self = .replace
+        }
+    }
 }
