@@ -212,7 +212,7 @@ public enum DescribeTool {
             _ = try call.isPreview()
             let path = try call.arguments.string("path")
             let sheetName = call.arguments.optionalString("sheet")
-            let maximumColumns = try call.arguments.integer("maxColumns", default: 40)
+            let maximumColumns = try call.arguments.integer("maxColumns", default: 40, atLeast: 1)
             guard maximumColumns > 0, maximumColumns <= 1000 else {
                 throw SheetError.invalidToolArguments(tool: "describe", detail: "`maxColumns` must be 1…1000")
             }

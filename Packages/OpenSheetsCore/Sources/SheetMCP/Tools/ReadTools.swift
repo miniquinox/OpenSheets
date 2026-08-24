@@ -57,7 +57,7 @@ public enum ReadRangeTool {
             let path = try call.arguments.string("path")
             let format = try call.arguments.choice("format", allowed: ["compact", "detailed"], default: "compact")
             let showFormulas = try call.arguments.boolean("formulas", default: false)
-            let maximumRows = try call.arguments.integer("maxRows", default: 200)
+            let maximumRows = try call.arguments.integer("maxRows", default: 200, atLeast: 1)
             guard maximumRows > 0 else {
                 throw SheetError.invalidToolArguments(tool: "read_range", detail: "`maxRows` must be positive")
             }
@@ -239,7 +239,7 @@ public enum FindTool {
             let scope = try call.arguments.choice("in", allowed: ["values", "formulas", "both"], default: "values")
             let mode = try call.arguments.choice("match", allowed: ["contains", "exact", "regex"], default: "contains")
             let caseSensitive = try call.arguments.boolean("caseSensitive", default: false)
-            let limit = try call.arguments.integer("limit", default: 200)
+            let limit = try call.arguments.integer("limit", default: 200, atLeast: 1)
             let showValues = try call.arguments.boolean("showValues", default: false)
             guard limit > 0, limit <= 5000 else {
                 throw SheetError.invalidToolArguments(tool: "find", detail: "`limit` must be 1…5000")

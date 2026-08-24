@@ -114,7 +114,7 @@ public enum StructureTools {
     ) async throws -> ToolOutput {
         let path = try call.arguments.string("path")
         let preview = try call.isPreview()
-        let count = try call.arguments.integer("count", default: 1)
+        let count = try call.arguments.integer("count", default: 1, atLeast: 1, atMost: Limits.rowCount)
         guard count > 0, count <= (isRowAxis ? Limits.rowCount : Limits.columnCount) else {
             throw SheetError.invalidToolArguments(tool: name, detail: "`count` must be 1 or more")
         }

@@ -1,5 +1,19 @@
 # OpenSheets for Claude Code
 
+> **Superseded by [`DOCUMENTATION.md`](../DOCUMENTATION.md).**
+>
+> The MCP server, the CLI, the safety model and the worked examples are all covered there — §5 for
+> the server and all twenty tools, §6 for the CLI, §9 for the security model — against numbers and
+> command output that were re-verified against the code rather than carried forward.
+>
+> This file is kept for now because it is linked from elsewhere, and because §5–§9 below go into
+> more narrative depth on a few points than the reference tables do. Where the two disagree,
+> `DOCUMENTATION.md` is correct. Two things here are known to be stale: the tool table below
+> describes `describe` as costing "a few hundred tokens" without saying how that is enforced (it is
+> asserted at under 800 estimated tokens, with line-count invariance between a 50-row and a
+> 50,000-row sheet), and the `filter` command's `limit` is documented as if it were validated —
+> it is not, and a negative value crashes the process. See `DOCUMENTATION.md` §12.2.
+
 `opensheets-mcp` gives Claude Code a **structural** way to work on spreadsheets: read a column,
 insert a row, rewrite a formula — instead of decoding a binary file, guessing at it, and writing
 a new one. Everything it does goes through the same engine the OpenSheets app uses, so an edit

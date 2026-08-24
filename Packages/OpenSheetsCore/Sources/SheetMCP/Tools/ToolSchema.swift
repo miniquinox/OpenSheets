@@ -199,6 +199,34 @@ public struct ToolArguments: Sendable {
         return number
     }
 
+    /// An integer argument that must fall inside a range, rejected with a typed error when it does
+    /// not.
+    ///
+    /// **Use this for every paging or count argument.** The unbounded ``integer(_:default:)`` reads
+    /// whatever the caller sent, and Swift's collection operations *trap* on a negative count
+    /// rather than throwing — `Collection.prefix(-1)` is a precondition failure, not an error. A
+    /// trap cannot be caught, so a single bad argument took the whole MCP server down mid-session
+    /// instead of returning `tool.invalidArguments`. The caller here is a language model choosing
+    /// arguments, so out-of-range values are an ordinary occurrence rather than an attack.
+    public func integer(
+        _ name: String,
+        default fallback: Int,
+        atLeast minimum: Int,
+        atMost maximum: Int = .max
+    ) throws(SheetError) -> Int {
+        let number = try integer(name, default: fallback)
+        guard number >= minimum, number <= maximum else {
+            let bound = maximum == .max
+                ? "at least \(minimum)"
+                : "between \(minimum) and \(maximum)"
+            throw SheetError.invalidToolArguments(
+                tool: tool,
+                detail: "`\(name)` must be \(bound) — got \(number)"
+            )
+        }
+        return number
+    }
+
     public func boolean(_ name: String, default fallback: Bool) throws(SheetError) -> Bool {
         guard let value = values[name], !value.isNull else { return fallback }
         guard let flag = value.boolValue else { throw wrongType(name, "true or false") }

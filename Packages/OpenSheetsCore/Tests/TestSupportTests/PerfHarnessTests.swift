@@ -15,32 +15,63 @@ struct PerfHarnessTests {
     }
 
     @Test("allocation counting separates an allocating body from a non-allocating one")
-    func allocationCounting() {
-        // `mstats()` is process-wide, and Swift Testing runs other suites in this process at the
-        // same time — a suite that frees a few hundred blocks mid-measurement makes the delta
-        // negative. Measured once at 500 allocations this test flaked exactly that way. So:
-        // a signal two orders of magnitude above the observed noise, and best-of-three.
-        // `Scripts/bench.sh` sidesteps the problem entirely by running `--no-parallel`.
-        var allocating = WorkCounters.AllocationReport(netAllocations: 0, netBytes: 0, residentDelta: 0)
-        var quiet = allocating
+    func allocationCounting() throws {
+        // `mstats()` is process-wide and Swift Testing runs other suites in this process at the
+        // same time, so any single measurement window can be polluted by a neighbouring suite
+        // allocating or freeing. Best-of-three over a large signal was the previous defence and it
+        // still flaked in a full run.
+        //
+        // The fix is to *prove the window was clean* rather than to out-shout the noise. A body
+        // that sums a range allocates nothing, so a non-trivial reading from the quiet body means
+        // a neighbour was active during that window and the paired reading cannot be trusted.
+        // Retry until a clean pair is observed; if the machine never goes quiet, say so and assert
+        // only the relative claim, which is what this test is actually about — that the harness
+        // can tell an allocating body from a non-allocating one.
+        //
+        // `Scripts/bench.sh` sidesteps all of this by running `--no-parallel`.
+        let quietTolerance = 64
+        var allocating: WorkCounters.AllocationReport?
+        var quiet: WorkCounters.AllocationReport?
         var kept = 0
-        for _ in 0 ..< 3 {
+
+        for _ in 0 ..< 12 {
+            let (sum, idle) = WorkCounters.measuringAllocations { (0 ..< 1000).reduce(0, +) }
+            #expect(sum == 499_500)
+
             let (arrays, report) = WorkCounters.measuringAllocations { () -> [[Int]] in
                 (0 ..< 20_000).map { Array(repeating: $0, count: 8) }
             }
             kept = arrays.count
-            if report.netAllocations > allocating.netAllocations { allocating = report }
 
-            let (sum, idle) = WorkCounters.measuringAllocations { (0 ..< 1000).reduce(0, +) }
-            #expect(sum == 499_500)
-            if idle.netAllocations > quiet.netAllocations { quiet = idle }
+            // Keep the best pair seen, so a loaded run still has something to compare.
+            if report.netAllocations > (allocating?.netAllocations ?? .min) {
+                allocating = report
+                quiet = idle
+            }
+            if abs(idle.netAllocations) <= quietTolerance, report.netAllocations > 10_000 { break }
         }
 
+        let allocated = try #require(allocating)
+        let idle = try #require(quiet)
+
         #expect(kept == 20_000)
-        #expect(allocating.netAllocations > 10_000, "20,000 arrays cannot be free")
-        #expect(allocating.netBytes > 0)
-        #expect(allocating.description.contains("blocks"))
-        #expect(quiet.netAllocations < allocating.netAllocations, "summing a range must not allocate per element")
+        #expect(allocated.description.contains("blocks"))
+        // The claim of this test, and the only one that holds under any load.
+        #expect(
+            idle.netAllocations < allocated.netAllocations,
+            "summing a range must not allocate per element"
+        )
+
+        if abs(idle.netAllocations) <= quietTolerance {
+            #expect(allocated.netAllocations > 10_000, "20,000 arrays cannot be free")
+            #expect(allocated.netBytes > 0)
+        } else {
+            // Not a pass disguised as a skip: the relative assertion above still ran.
+            print("""
+              [perf] allocation counting: no quiet window in 12 attempts \
+            (quiet body read \(idle.netAllocations) blocks); absolute thresholds not asserted
+            """)
+        }
     }
 
     @Test("byte counts read the way a human reads them")

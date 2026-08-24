@@ -166,7 +166,7 @@ public enum FilterTool {
         let path = try call.arguments.string("path")
         let preview = try call.isPreview()
         let action = try call.arguments.choice("action", allowed: ["list", "delete_rows"], default: "list")
-        let limit = try call.arguments.integer("limit", default: 100)
+        let limit = try call.arguments.integer("limit", default: 100, atLeast: 1)
 
         let document = try await call.broker.document(at: path)
         let target = try RangeSelector.target(

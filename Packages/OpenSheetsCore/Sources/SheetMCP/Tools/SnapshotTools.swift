@@ -72,7 +72,7 @@ public enum SnapshotTools {
         handler: { call in
             _ = try call.isPreview()
             let path = try call.arguments.string("path")
-            let limit = try call.arguments.integer("limit", default: 20)
+            let limit = try call.arguments.integer("limit", default: 20, atLeast: 1)
             let records = try await call.broker.snapshots(path: path)
             guard !records.isEmpty else { return ToolOutput("no snapshots for this file yet") }
             let formatter = ISO8601DateFormatter()
