@@ -74,8 +74,29 @@ public extension View {
     ///
     /// Under reduce-transparency there is no material at all, only an opaque ``DS/Surface`` token.
     /// Same discipline as ``GlassSurface``: not a heavier blur, not a darker tint — opaque.
-    func vibrantChrome(_ role: ChromeVibrancy, context: AppearanceContext) -> some View {
-        modifier(VibrantChrome(role: role, context: context))
+    ///
+    /// # `separator`
+    ///
+    /// The hairline where this band meets what is next to it. Pass the band's **own** edge —
+    /// `.trailing` for a leading column, `.leading` for a trailing one.
+    ///
+    /// It belongs here, and nowhere else, because **a separator is an edge of a surface, not a
+    /// surface of its own**. The version of this that shipped was a bare `Rectangle` living as its
+    /// own column in the window's `HStack`, filled with `DS.Chrome.separator` — a *semi-transparent*
+    /// system colour, which is right when it sits on something and is a window straight through to
+    /// the desktop when it does not. It had nothing behind it, so the wallpaper came through as a
+    /// bright stripe down the full height of the window.
+    ///
+    /// Making that colour opaque would have hidden it and left the hole: a free-standing column is
+    /// still a region with no material, and a sub-pixel width on a non-integral scale factor puts
+    /// the gap straight back. Drawn as an overlay on the band's own edge, the line is composited
+    /// over the band's material by construction and there is no region left to leak.
+    func vibrantChrome(
+        _ role: ChromeVibrancy,
+        context: AppearanceContext,
+        separator edge: HorizontalEdge? = nil
+    ) -> some View {
+        modifier(VibrantChrome(role: role, context: context, separator: edge))
     }
 }
 
@@ -139,8 +160,20 @@ public struct VibrancyResolution: Sendable, Hashable, CustomStringConvertible {
 public struct VibrantChrome: ViewModifier {
     let role: ChromeVibrancy
     let context: AppearanceContext
+    var separator: HorizontalEdge?
 
     public func body(content: Content) -> some View {
+        surfaced(content).overlay(alignment: separator == .leading ? .leading : .trailing) {
+            if separator != nil {
+                Rectangle()
+                    .fill(DS.Chrome.separator(context))
+                    .frame(width: DS.Stroke.hairline(context))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func surfaced(_ content: Content) -> some View {
         if VibrancyResolution.resolve(role: role, context: context).usesMaterial {
             #if canImport(AppKit)
             // `.ignoresSafeArea()` on the *backdrop only*, never on the content. A window with a
@@ -178,6 +211,20 @@ public struct VibrantChrome: ViewModifier {
 ///
 /// `state` follows the window: an inactive window's chrome desaturates, the way every other Mac
 /// app's does. It is a small thing and its absence is one of the tells of a non-native app.
+///
+/// # This view is also what makes the titlebar draggable
+///
+/// The title row draws over the window's titlebar, so the usual AppKit machinery that drags a
+/// window by its titlebar no longer gets the click — our content is in front of it. What replaces
+/// it is this view: `NSVisualEffectView.mouseDownCanMoveWindow` is `true`, and AppKit drags the
+/// window when the hit view says so.
+///
+/// That is why the backdrop must stay a plain, non-interactive `NSVisualEffectView`. Giving it a
+/// gesture, a click target, or an overlay that swallows hits would take the drag away — and a
+/// titlebar you cannot drag is a worse regression than the row of wasted space this replaced.
+/// SwiftUI hit-tests per point, so the controls in front of it still receive their own clicks:
+/// a hit on the file name or the sidebar toggle resolves to the hosting view, and a hit on the
+/// empty stretch between them resolves to this one.
 private struct VibrancyBackdrop: NSViewRepresentable {
     let role: ChromeVibrancy
 

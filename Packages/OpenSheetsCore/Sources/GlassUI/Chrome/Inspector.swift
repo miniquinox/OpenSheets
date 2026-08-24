@@ -168,7 +168,7 @@ public struct Inspector: View {
         }
         .safeAreaPadding(.top, topInset)
         .frame(width: DS.Metrics.inspectorWidth)
-        .vibrantChrome(.sidebar, context: context)
+        .vibrantChrome(.sidebar, context: context, separator: .leading)
         .disabled(!state.isEditable)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Inspector for \(state.selectionLabel)")

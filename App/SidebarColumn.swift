@@ -239,7 +239,11 @@ struct SheetTabPlate: View {
         .padding(.vertical, DS.Space.s)
         .frame(maxWidth: .infinity)
         .gridPlane(context)
-        .background(alignment: .top) {
+        // `.overlay`, not `.background`. Backgrounds stack backwards, so a hairline added after
+        // `gridPlane` lands *behind* the opaque canvas and is never seen — which is what happened
+        // when this strip gained its own plane. The same rule as the column dividers: a separator
+        // is drawn on top of the surface it belongs to.
+        .overlay(alignment: .top) {
             Rectangle()
                 .fill(DS.Chrome.separator(context))
                 .frame(height: DS.Stroke.hairline(context))

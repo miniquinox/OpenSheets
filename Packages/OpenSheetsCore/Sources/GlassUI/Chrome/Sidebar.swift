@@ -250,7 +250,7 @@ public struct Sidebar: View {
             ClaudePanel(state: state.claude, context: context, perform: perform)
         }
         .frame(width: DS.Metrics.sidebarWidth)
-        .vibrantChrome(.sidebar, context: context)
+        .vibrantChrome(.sidebar, context: context, separator: .trailing)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sidebar")
     }

@@ -377,6 +377,54 @@ struct RenderedGridTests {
         )
     }
 
+    // MARK: - Holes
+
+    /// **No part of a chrome band composites to the desktop.**
+    ///
+    /// # Why this is one test and not a third fix
+    ///
+    /// This exact shape of bug has now appeared three times, in three different places, and each
+    /// time it looked like an unrelated cosmetic problem:
+    ///
+    /// 1. the sidebar and the title band, when the window stopped painting an opaque rectangle and
+    ///    Liquid Glass turned out to be a lens over nothing;
+    /// 2. the strip above the sidebar, where the band stopped at the safe area and left the
+    ///    titlebar uncovered;
+    /// 3. the column dividers — a bare `Rectangle` filled with a *semi-transparent* separator
+    ///    colour, living as its own column with no material behind it, so the wallpaper came
+    ///    through as a bright stripe down the full height of the window.
+    ///
+    /// One class: **a region of chrome with nothing behind it.** Every instance was invisible to
+    /// every existing test, because every value involved was correct — the separator really is
+    /// meant to be semi-transparent, and the palette entry it comes from is right.
+    ///
+    /// So this asserts the property rather than any one of the three: render a band over a colour
+    /// no palette contains, scan **every pixel**, and fail if the backdrop survives anywhere. A
+    /// separator that is a hole, an edge the material does not reach, a band that is a lens instead
+    /// of a material — all of them put magenta on screen, and none of them can put it there and
+    /// pass.
+    @Test(
+        "No pixel of a chrome band is the desktop",
+        arguments: [ChromeVibrancy.sidebar, .band], [GlassColorScheme.light, .dark]
+    )
+    func chromeNeverTransmitsTheDesktop(role: ChromeVibrancy, scheme: GlassColorScheme) throws {
+        // With a separator on the trailing edge, because that edge is where the third instance
+        // lived and it is the pixel column most likely to be missed.
+        let shot = try HoleShot(role: role, scheme: scheme, separator: .trailing)
+        let leak = shot.backdropPixel()
+
+        #expect(
+            leak == nil,
+            """
+            \(scheme) \(role.rawValue): the backdrop reaches the screen at \
+            \(leak.map { "(\($0.x), \($0.y))" } ?? "—") — the band is transmitting what is \
+            behind the window instead of standing on a material. Something in this region has no \
+            surface under it; the usual culprit is a separator or an edge drawn as its own view \
+            rather than on the band it belongs to.
+            """
+        )
+    }
+
     // MARK: - Scaffolding
 
     /// A temporary folder holding a real `.xlsx`, written by the real writer.
@@ -788,6 +836,72 @@ extension RenderedGridTests {
                 y += 1 / scale
             }
             return best
+        }
+    }
+}
+
+extension RenderedGridTests {
+    /// A chrome band rendered over a colour that exists nowhere in the palette, so any pixel of it
+    /// that survives is proof of a hole rather than a coincidence.
+    @MainActor
+    struct HoleShot {
+        let bitmap: NSBitmapImageRep
+        let scale: Double
+
+        private static let side = 160.0
+        /// Pure magenta. Chosen because nothing in `Palette` is within a mile of it, and because a
+        /// blurred material tints toward its backdrop — so a *near* miss still reads as a leak.
+        private static let backdrop = NSColor(srgbRed: 1, green: 0, blue: 1, alpha: 1)
+
+        init(role: ChromeVibrancy, scheme: GlassColorScheme, separator: HorizontalEdge?) throws {
+            let frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side)
+            let window = NSWindow(
+                contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false
+            )
+            window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+
+            let root = NSView(frame: frame)
+            root.wantsLayer = true
+            root.layer?.backgroundColor = Self.backdrop.cgColor
+
+            // The real modifier, with a real separator edge — not a reproduction of it.
+            let host = NSHostingView(
+                rootView: Color.clear
+                    .frame(width: Self.side, height: Self.side)
+                    .vibrantChrome(role, context: AppearanceContext(colorScheme: scheme), separator: separator)
+            )
+            host.frame = frame
+            root.addSubview(host)
+
+            window.contentView = root
+            root.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            RenderedGridTests.retained.append(window)
+
+            guard let rep = root.bitmapImageRepForCachingDisplay(in: root.bounds) else {
+                throw Shot.ShotFailure.noBitmap
+            }
+            root.cacheDisplay(in: root.bounds, to: rep)
+            bitmap = rep
+            scale = Double(rep.pixelsWide) / Double(root.bounds.width)
+        }
+
+        /// The first pixel that is still recognisably the backdrop, or `nil` when the band covers
+        /// everything. Every pixel is checked — a hole one hairline wide is the whole point.
+        func backdropPixel() -> (x: Int, y: Int)? {
+            for y in 0 ..< bitmap.pixelsHigh {
+                for x in 0 ..< bitmap.pixelsWide {
+                    guard let sample = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                    // Magenta is red and blue with no green. A material over it keeps some of the
+                    // hue, so the test is "is this still obviously magenta" rather than equality.
+                    if sample.redComponent > 0.6,
+                       sample.blueComponent > 0.6,
+                       sample.greenComponent < 0.35 {
+                        return (x, y)
+                    }
+                }
+            }
+            return nil
         }
     }
 }

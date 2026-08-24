@@ -85,6 +85,8 @@ struct DocumentWindow: View {
     /// The measured height of the anchored chrome, handed to the grid as a scroll inset so the
     /// two can never disagree about where row 1 begins.
     @State private var chromeHeight: CGFloat = 0
+    /// Where the traffic lights are, measured. See ``TitleBarMetrics``.
+    @State private var titleBarMetrics: TitleBarMetrics = .unmeasured
 
     private var context: AppearanceContext { appearance.context(for: colorScheme) }
 
@@ -92,7 +94,7 @@ struct DocumentWindow: View {
         Group {
             if let empty = emptyState {
                 VStack(spacing: 0) {
-                    TitleBarRow(model: model, context: context)
+                    TitleBarRow(model: model, context: context, metrics: titleBarMetrics)
                     EmptyStateView(model: empty, context: context) { action in
                         handle(empty, action)
                     }
@@ -107,6 +109,11 @@ struct DocumentWindow: View {
                     split
                     chrome
                 }
+                // The band starts at the window's **top edge**, not below the titlebar's safe
+                // area. That is what puts the title row on the traffic-light line instead of
+                // under it, and it keeps one coordinate space for the whole window: `chromeHeight`
+                // is measured from the top edge, and the columns and the grid inset by it.
+                .ignoresSafeArea(.container, edges: .top)
             }
         }
         .frame(minWidth: DS.Metrics.minimumWindowWidth, minHeight: DS.Metrics.minimumWindowHeight)
@@ -171,7 +178,8 @@ struct DocumentWindow: View {
     /// and `132` offsets elsewhere in this file become `chromeHeight` plus a token.
     private var chrome: some View {
         VStack(spacing: 0) {
-            TitleBarRow(model: model, context: context)
+            TitleBarRow(model: model, context: context, metrics: titleBarMetrics)
+                .background(TitleBarMetricsReader { titleBarMetrics = $0 })
 
             ToolbarSurface(state: model.toolbar, context: context) { action in
                 perform(action)
@@ -216,12 +224,18 @@ struct DocumentWindow: View {
     /// Now the *surfaces* run edge to edge and each column insets its own *content* instead. The
     /// sidebar's material therefore reaches the top of the window and the band's material sits on
     /// top of it, so there is no seam and no gap — the arrangement Finder, Mail and Xcode all use.
+    ///
+    /// **There is no divider column here.** Each chrome column draws the hairline on its own edge,
+    /// through ``GlassUI/SwiftUI/View/vibrantChrome(_:context:separator:)``. A `Rectangle` between
+    /// two columns is a third region with no material behind it, and `DS.Chrome.separator` is
+    /// semi-transparent — so it was a bright stripe of wallpaper running the full height of the
+    /// window. Third time that shape of bug appeared here; the fix is structural rather than a
+    /// darker colour.
     private var split: some View {
         HStack(spacing: 0) {
             if model.isSidebarVisible {
                 SidebarColumn(model: model, app: app, context: context, topInset: chromeHeight)
                     .transition(.move(edge: .leading).combined(with: .opacity))
-                columnDivider
             }
             // The one opaque plane. Its scroll insets give the band's height back, so no cell is
             // hidden by chrome — see `GridPane`.
@@ -230,21 +244,12 @@ struct DocumentWindow: View {
                 SheetTabPlate(model: model, context: context)
             }
             if model.isInspectorVisible {
-                columnDivider
                 InspectorColumn(model: model, context: context, topInset: chromeHeight)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .animation(DS.Motion.standard, value: model.isSidebarVisible)
         .animation(DS.Motion.standard, value: model.isInspectorVisible)
-    }
-
-    /// The hairline between a chrome column and the grid. Full height, because the columns now are
-    /// — a divider that stopped short of the top edge was the visible half of the same bug.
-    private var columnDivider: some View {
-        Rectangle()
-            .fill(DS.Chrome.separator(context))
-            .frame(width: DS.Stroke.hairline(context))
     }
 
     // MARK: - Floating: the palette
@@ -522,13 +527,35 @@ struct DocumentWindow: View {
 /// button. The window is `fullSizeContentView` with a transparent titlebar (A5's
 /// ``GlassUI/WindowChrome``), which is what lets the document plane run to the very top of the
 /// window instead of stopping at a hard seam.
+/// The window's title row — **on the traffic-light line**, not below it.
+///
+/// # Why it is not its own band
+///
+/// It used to be a 38pt row underneath the titlebar, which left the traffic lights sitting alone
+/// on an otherwise empty strip. That is two rows of chrome doing one row of work, and in an app
+/// whose entire job is showing as many spreadsheet rows as possible it is the most expensive kind
+/// of whitespace. Finder, Xcode, Safari and Notes all put real controls inline beside the lights;
+/// this now does the same, and the grid gets the height back.
+///
+/// # The two things that make it work
+///
+/// **The leading inset is measured.** ``TitleBarMetrics`` reads the zoom button's frame, so the
+/// content clears the real buttons wherever the system puts them, and collapses to a plain margin
+/// in full screen when they are gone.
+///
+/// **The empty stretches still drag the window.** Everything here is either a control or a
+/// `Spacer`, and the row draws no background of its own — the band behind it does. The metrics
+/// reader returns `nil` from `hitTest`, and `Spacer`/`Text` are not hit-testable, so a click on
+/// the empty middle falls through to AppKit's titlebar and drags. Only the buttons and the chip
+/// take the click.
 private struct TitleBarRow: View {
     @Bindable var model: DocumentModel
     let context: AppearanceContext
+    let metrics: TitleBarMetrics
 
     var body: some View {
         HStack(spacing: DS.Space.s) {
-            Color.clear.frame(width: DS.Metrics.trafficLightInset, height: DS.Stroke.hairline(context))
+            Color.clear.frame(width: metrics.leadingInset, height: DS.Stroke.hairline(context))
 
             Button {
                 model.isSidebarVisible.toggle()
@@ -547,6 +574,11 @@ private struct TitleBarRow: View {
                 .font(DS.Text.controlEmphasis)
                 .foregroundStyle(DS.Chrome.primary)
                 .lineLimit(1)
+                // The name yields first when the window narrows. The alternative — a fixed name
+                // and a compressed chip — turns "3 unsaved" into an ellipsis, and the chip is the
+                // half that is telling you something you did not already know.
+                .truncationMode(.middle)
+                .layoutPriority(-1)
             if model.hasUnsavedEdits {
                 Circle()
                     .fill(DS.Chrome.secondary)
@@ -554,7 +586,7 @@ private struct TitleBarRow: View {
                     .accessibilityLabel("Unsaved changes")
             }
 
-            Spacer(minLength: DS.Space.l)
+            Spacer(minLength: DS.Space.s)
 
             SyncStateChip(state: chipState, context: context) {
                 switch model.syncState {
@@ -578,8 +610,9 @@ private struct TitleBarRow: View {
             .help("Show or hide the inspector")
             .accessibilityLabel("Toggle inspector")
         }
-        .padding(.horizontal, DS.Space.m)
-        .frame(height: DS.Metrics.titleBarHeight)
+        .padding(.trailing, DS.Space.m)
+        // Twice the measured centre line, so the row's own centre lands exactly on the buttons'.
+        .frame(height: metrics.centreFromTop * 2)
         .accessibilityElement(children: .contain)
     }
 
