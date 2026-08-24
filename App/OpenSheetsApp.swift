@@ -48,8 +48,12 @@ import UniformTypeIdentifiers
 /// with a menu bar, an empty Window menu, and nothing on screen. ``DocumentCore/LaunchArguments``
 /// is the reading, ``OpenActions/handleLaunch(_:)`` is the window.
 ///
-/// Each of those is asserted somewhere that runs: the model-level ones in
-/// `DocumentCoreTests.OpenDocumentTests`, the window-level ones by launching the app cold.
+/// Each of those is asserted somewhere that runs, and both layers are in one file —
+/// `DocumentCoreTests.OpenDocumentTests` — because the gap between them is where a window bug
+/// hides: two windows can host one `DocumentModel`, so the model-level count stays right while the
+/// screen is wrong. The rules the window scenarios exercise are
+/// ``DocumentCore/DocumentWindows``; this file is the wiring that runs them against the live
+/// `NSApp.windows`.
 @main
 struct OpenSheetsApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -206,33 +210,9 @@ struct RootView: View {
     }
 }
 
-/// Marks the window this view landed in as the launcher or as a document, so ``OpenActions`` can
-/// tell them apart by looking at `NSApp.windows`.
-///
-/// # Why a marker and not a registry
-///
-/// There was a registry, keyed by path, filled from `viewDidMoveToWindow`. It kept going stale:
-/// SwiftUI moves views between windows while a window lives on, closes and re-shows the same
-/// window without telling anyone, and re-presents a scene whose window we thought we had closed.
-/// Every one of those left the bookkeeping describing a world that no longer existed, and the
-/// symptom was a stray window nothing would close.
-///
-/// `NSApp.windows` cannot go stale — it *is* the world. So the only thing kept per window is what
-/// the window is *for*, carried by a view that is in the hierarchy exactly as long as the content
-/// it describes.
-final class WindowRoleView: NSView {
-    /// `nil` marks the launcher.
-    var path: String?
-
-    init(path: String?) {
-        self.path = path
-        super.init(frame: .zero)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("not from a nib") }
-}
-
+/// Puts ``DocumentCore/WindowRoleView`` — the mark that says what this window is for — into the
+/// window's view hierarchy. The rules that read it are in ``DocumentCore/DocumentWindows``, where
+/// tests can reach them.
 private struct WindowRegistrar: NSViewRepresentable {
     let path: String?
 
@@ -365,64 +345,18 @@ enum OpenActions {
 
     /// **One launcher, and only when nothing else is open. One window per file.**
     ///
-    /// Read off `NSApp.windows` every time rather than from bookkeeping of our own, because the
-    /// list of windows is the only description of the windows that cannot be wrong. macOS asks a
-    /// `WindowGroup` for its default window whenever it decides the app needs one — at launch, on
-    /// a dock click, on `open(1)` against a running copy — and each of those used to leave another
-    /// launcher behind.
+    /// The decision is ``DocumentCore/DocumentWindows/extras(in:)`` — which windows nobody asked
+    /// for — and it lives in the package because that is where the tests are. This end is the part
+    /// that cannot be tested away from a running app: reading the live list, and closing what the
+    /// decision names.
     private static func tidyWindows() {
-        let documents = documentWindows()
-        var seen: Set<String> = []
-        for (identity, window) in documents {
-            // Two windows on one file would mean two of everything downstream. The first one
-            // stays; anything after it is a duplicate macOS made, not one the user asked for.
-            if !seen.insert(identity).inserted { dismiss(window) }
-        }
-        // A launcher belongs on screen only when nothing else is.
-        var keptLauncher = !documents.isEmpty
-        for window in launcherWindows {
-            if keptLauncher {
-                dismiss(window)
-            } else {
-                keptLauncher = true
-            }
-        }
+        for window in DocumentWindows.extras(in: NSApp.windows) { dismiss(window) }
     }
 
-    /// Oldest first. The order matters: ``tidyWindows()`` keeps the first of any duplicate set,
-    /// and `NSApp.windows` is in no order worth relying on — so on one pass it would keep window
-    /// A and close B, and on the next keep B and close A, which is how "one window" became "no
-    /// windows". `windowNumber` rises with creation, so oldest-first is the same answer every
-    /// time, and the window the user has already seen is the one that survives.
-    private static var launcherWindows: [NSWindow] {
-        NSApp.windows
-            .filter { window in
-                guard window.isVisible, let role = roleView(in: window.contentView) else { return false }
-                return role.path == nil
-            }
-            .sorted { $0.windowNumber < $1.windowNumber }
-    }
-
-    private static func documentWindows() -> [(String, NSWindow)] {
-        NSApp.windows
-            .sorted { $0.windowNumber < $1.windowNumber }
-            .compactMap { window in
-                guard window.isVisible, let path = roleView(in: window.contentView)?.path else { return nil }
-                return (key(for: URL(fileURLWithPath: path)), window)
-            }
-    }
+    private static var launcherWindows: [NSWindow] { DocumentWindows.launchers(in: NSApp.windows) }
 
     private static func documentWindow(for identity: String) -> NSWindow? {
-        documentWindows().first { $0.0 == identity }?.1
-    }
-
-    private static func roleView(in view: NSView?) -> WindowRoleView? {
-        guard let view else { return nil }
-        if let marker = view as? WindowRoleView { return marker }
-        for subview in view.subviews {
-            if let marker = roleView(in: subview) { return marker }
-        }
-        return nil
+        DocumentWindows.window(for: identity, in: NSApp.windows)
     }
 
     /// Closes a window nobody asked for, on the next turn of the run loop.
@@ -436,9 +370,7 @@ enum OpenActions {
 
     /// The same key ``DocumentCore/AppModel`` uses, so the two cannot disagree about whether a
     /// file is already open.
-    private static func key(for url: URL) -> String {
-        url.resolvingSymlinksInPath().standardized.path(percentEncoded: false)
-    }
+    private static func key(for url: URL) -> String { DocumentWindows.identity(for: url) }
 
     static func showOpenPanel() {
         let panel = NSOpenPanel()

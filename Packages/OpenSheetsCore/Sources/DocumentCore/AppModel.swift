@@ -136,7 +136,7 @@ public final class AppModel {
         at url: URL,
         consent: WorkspaceConsent = .fromOutsideTheApp
     ) async throws(SheetError) -> DocumentModel {
-        let key = Self.key(for: url)
+        let key = Self.documentKey(for: url)
         if let existing = open[key]?.model { return existing }
 
         let task: Task<DocumentModel, any Error>
@@ -226,7 +226,7 @@ public final class AppModel {
     /// Forgets a closed document. Called from the window's teardown.
     public func closeDocument(_ model: DocumentModel) {
         model.close()
-        open.removeValue(forKey: Self.key(for: model.url))
+        open.removeValue(forKey: Self.documentKey(for: model.url))
     }
 
     /// Live documents. Used by the "save everything before quitting" prompt.
@@ -320,7 +320,12 @@ public final class AppModel {
         return search(root)
     }
 
-    private static func key(for url: URL) -> String {
+    /// The identity a file is known by.
+    ///
+    /// Public because the window layer asks the same question — see
+    /// ``DocumentWindows/identity(for:)``. Two spellings of one path are one document, and a
+    /// window layer that disagreed would open a window this table then refuses to fill.
+    public static func documentKey(for url: URL) -> String {
         url.resolvingSymlinksInPath().standardized.path(percentEncoded: false)
     }
 }

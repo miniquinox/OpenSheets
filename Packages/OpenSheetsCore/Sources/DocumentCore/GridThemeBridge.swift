@@ -67,7 +67,15 @@ public enum GridThemeBridge {
             headerWidth: Double(theme.headerColumnWidth),
             headerFontSize: 11,
             frozenDivider: color(theme.gridlineMajor),
-            frozenDividerShadow: color(theme.gridlineMajor.opacity(0.35)),
+            // **Black, not a tint of the gridline.** A shadow darkens; it never lightens. Deriving
+            // it from `gridlineMajor` gives a *light* grey on a dark canvas, and a light shadow
+            // spread on both sides of a divider is a glow — which is exactly how it read: column A
+            // appeared to be lit from its right edge. Heavier in dark because a dark canvas
+            // swallows a soft shadow; these are GridKit's own default alphas (36/255, 120/255).
+            frozenDividerShadow: RGBAColor(
+                red: 0, green: 0, blue: 0,
+                alpha: context.colorScheme == .dark ? 120 : 36
+            ),
             frozenDividerWidth: 1,
             flashTint: color(theme.changeMarker),
             flashPeakOpacity: theme.changeFlashFill.alpha,

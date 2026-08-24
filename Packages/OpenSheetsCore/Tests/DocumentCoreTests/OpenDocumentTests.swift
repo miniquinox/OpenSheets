@@ -1,3 +1,4 @@
+import AppKit
 import DocumentCore
 import Foundation
 import SheetFormat
@@ -19,6 +20,14 @@ import Testing
 /// five stray windows on screen actually meant, and what would have turned a save into data loss.
 ///
 /// A criterion nothing checks is a comment. These are the checks.
+///
+/// # And the layer below them
+///
+/// Counting models is only half of it, and the half that keeps passing while the app is wrong: two
+/// windows can host **one** `DocumentModel`, so `openDocuments.count == 1` says nothing about what
+/// is on screen. The window scenarios below count windows instead, on real `NSWindow`s, through the
+/// same ``DocumentCore/DocumentWindows`` rules the app runs at launch. Both layers are here rather
+/// than in two files because it was the gap *between* them that hid a window bug.
 @Suite(.serialized)
 @MainActor
 struct OpenDocumentTests {
@@ -77,6 +86,134 @@ struct OpenDocumentTests {
         let harness = try await Harness(autoRefresh: nil)
         harness.close()
         #expect(harness.app.openDocuments.isEmpty)
+    }
+
+    // MARK: - One window per file (the layer no test used to reach)
+
+    /// A launch: macOS makes the `WindowGroup`'s default window — the launcher — and the file the
+    /// launch named arrives in a second one. One window should survive, and it should be the file's.
+    ///
+    /// Measured, so the shape is the real one: the launcher is created first (lower `windowNumber`)
+    /// and the document window a beat later, both at the same frame. Looking like one window is
+    /// exactly why nothing caught this by looking.
+    @Test func aLaunchLeavesExactlyOneDocumentWindow() {
+        let stage = WindowStage()
+        defer { stage.tearDown() }
+        stage.launcher()
+        stage.document(at: "/files/budget.xlsx")
+
+        stage.tidy()
+
+        #expect(stage.documentWindowCount == 1, "the file's window is the one the launch asked for")
+        #expect(stage.launcherCount == 0, "a launcher belongs on screen only when nothing else is")
+    }
+
+    /// Opening a file that is already open must not add a window — however macOS asked.
+    ///
+    /// The first half is the lookup the open path does: it finds the live window and fronts it. The
+    /// second half is the belt to that brace — if a window for the file appeared anyway, the tidy
+    /// pass takes it back off screen.
+    @Test func reopeningAnAlreadyOpenFileLeavesOneWindow() {
+        let stage = WindowStage()
+        defer { stage.tearDown() }
+        let first = stage.document(at: "/files/budget.xlsx")
+
+        #expect(
+            stage.window(for: "/files/budget.xlsx") === first,
+            "the open path has to find this window, or it opens a second one"
+        )
+
+        stage.document(at: "/files/budget.xlsx")
+        stage.tidy()
+
+        #expect(stage.documentWindowCount == 1)
+        #expect(first.isVisible, "and it is the window the user was already looking at")
+    }
+
+    /// Two spellings of one path are one document — so they are one window, too.
+    @Test func twoSpellingsOfOnePathAreOneWindow() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("opensheets-window-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("budget.xlsx")
+        try Data().write(to: file)
+        let link = directory.appendingPathComponent("alias.xlsx")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file)
+
+        let stage = WindowStage()
+        defer { stage.tearDown() }
+        stage.document(at: file.path)
+        stage.document(at: link.path)
+
+        stage.tidy()
+        #expect(stage.documentWindowCount == 1)
+    }
+
+    /// One window *per file*, not one window in total. Tidying is not a licence to close the other
+    /// document the user has open.
+    @Test func twoFilesKeepTwoWindows() {
+        let stage = WindowStage()
+        defer { stage.tearDown() }
+        stage.document(at: "/files/budget.xlsx")
+        stage.document(at: "/files/plan.xlsx")
+
+        stage.tidy()
+        #expect(stage.documentWindowCount == 2)
+    }
+
+    /// The duplicate that goes is the newer one, on every pass.
+    ///
+    /// `NSApp.windows` is in no order worth relying on, and an unordered tidy kept window A on one
+    /// pass and window B on the next — closing both across two passes, which is how "one window"
+    /// became "no windows". Two passes, one survivor, and it is the window the user has already
+    /// seen.
+    @Test func theWindowTheUserAlreadySawIsTheOneThatSurvives() {
+        let stage = WindowStage()
+        defer { stage.tearDown() }
+        let first = stage.document(at: "/files/budget.xlsx")
+        stage.document(at: "/files/budget.xlsx")
+
+        stage.tidy()
+        stage.tidy()
+
+        #expect(stage.documentWindowCount == 1)
+        #expect(stage.window(for: "/files/budget.xlsx") === first)
+    }
+
+    /// The launcher is not a window nobody asked for when it is the only one there is.
+    @Test func theLauncherStaysWhenNothingElseIsOpen() {
+        let stage = WindowStage()
+        defer { stage.tearDown() }
+        stage.launcher()
+
+        stage.tidy()
+        #expect(stage.launcherCount == 1)
+    }
+
+    /// A second launcher is one macOS manufactured — on a dock click, or `open(1)` against a
+    /// running copy — and it goes.
+    @Test func aSecondLauncherIsClosed() {
+        let stage = WindowStage()
+        defer { stage.tearDown() }
+        let first = stage.launcher()
+        stage.launcher()
+
+        stage.tidy()
+        #expect(stage.launcherCount == 1)
+        #expect(first.isVisible)
+    }
+
+    /// Windows that are not ours are not ours to close — an alert or a panel is nobody's duplicate.
+    @Test func anUnmarkedWindowIsLeftAlone() {
+        let stage = WindowStage()
+        defer { stage.tearDown() }
+        let stranger = stage.unmarked()
+        stage.document(at: "/files/budget.xlsx")
+
+        stage.tidy()
+        #expect(stranger.isVisible, "no marker, no opinion")
+        #expect(stage.documentWindowCount == 1)
     }
 
     // MARK: - Opening a file grants its folder (PLAN.md §1.1)
@@ -277,6 +414,89 @@ struct OpenDocumentTests {
     }
 
     // MARK: - Scaffolding
+
+    /// Real windows, marked the way the app marks them, so the assertions are about
+    /// `NSApp.windows` rather than about a model of it.
+    ///
+    /// The marker is *nested* inside the content view rather than being it, because that is where
+    /// SwiftUI puts it — `.background(WindowRegistrar(…))` lands somewhere inside the hosting
+    /// view — and a search that only looked at the content view would find nothing, decide the app
+    /// has no windows of its own, and tidy nothing at all.
+    @MainActor
+    final class WindowStage {
+        private var made: [NSWindow] = []
+
+        init() { _ = NSApplication.shared }
+
+        @discardableResult
+        func document(at path: String) -> NSWindow { window(marking: path) }
+
+        @discardableResult
+        func launcher() -> NSWindow { window(marking: nil) }
+
+        /// A window with no mark on it: something AppKit or a framework put on screen.
+        @discardableResult
+        func unmarked() -> NSWindow {
+            let window = bareWindow()
+            window.contentView = NSView(frame: .zero)
+            window.orderFront(nil)
+            return window
+        }
+
+        /// What the app does on every change: ask which windows nobody asked for, and close them.
+        func tidy() {
+            for window in DocumentWindows.extras(in: mine) { window.close() }
+        }
+
+        var documentWindowCount: Int { DocumentWindows.documents(in: mine).count }
+
+        var launcherCount: Int { DocumentWindows.launchers(in: mine).count }
+
+        func window(for path: String) -> NSWindow? {
+            DocumentWindows.window(for: DocumentWindows.identity(for: URL(fileURLWithPath: path)), in: mine)
+        }
+
+        func tearDown() {
+            for window in made { window.close() }
+            made = []
+        }
+
+        /// Only the windows this stage made — `NSApp.windows` in a test process belongs to
+        /// whatever else is running in it, and a suite that closed those would be a suite with a
+        /// temper — and handed over **newest first**.
+        ///
+        /// The order is the point. `NSApp.windows` is in no order worth relying on, and a tidy pass
+        /// that trusted it kept window A on one pass and window B on the next. Giving these back in
+        /// the most inconvenient order there is means the rules have to do their own sorting to
+        /// pass, which is the only way this suite can tell that they still do.
+        private var mine: [NSWindow] { made.reversed() }
+
+        private func window(marking path: String?) -> NSWindow {
+            let window = bareWindow()
+            let content = NSView(frame: .zero)
+            content.addSubview(NSView(frame: .zero))
+            content.subviews[0].addSubview(WindowRoleView(path: path))
+            window.contentView = content
+            window.orderFront(nil)
+            return window
+        }
+
+        /// Borderless and fully transparent: these windows are real enough for `isVisible` and
+        /// `windowNumber`, which is all the rules read, without flashing over whatever the person
+        /// running the tests is looking at.
+        private func bareWindow() -> NSWindow {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
+                styleMask: .borderless,
+                backing: .buffered,
+                defer: false
+            )
+            window.alphaValue = 0
+            window.isReleasedWhenClosed = false
+            made.append(window)
+            return window
+        }
+    }
 
     /// A temporary folder holding real `.xlsx` bytes, so the grant under test is a grant on a
     /// folder that exists.
