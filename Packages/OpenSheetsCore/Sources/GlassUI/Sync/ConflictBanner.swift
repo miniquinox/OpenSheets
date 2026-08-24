@@ -67,7 +67,7 @@ public struct ConflictBanner: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(ink)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: DS.Space.hair) {
                 Text(model.headline)
                     .font(DS.Text.bodyEmphasis)
                     .foregroundStyle(ink)

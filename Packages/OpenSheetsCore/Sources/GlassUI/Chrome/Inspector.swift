@@ -130,15 +130,22 @@ public struct Inspector: View {
     /// enumerating fonts is slow enough to want caching and that cache does not belong in a view.
     private let availableFonts: [String]
 
+    /// How much anchored chrome floats over the top of this column. See ``Sidebar`` — the
+    /// material runs up behind the band, the content starts below it, and the height is measured
+    /// by the caller rather than guessed here.
+    private let topInset: CGFloat
+
     public init(
         state: InspectorState,
         availableFonts: [String] = [],
         context: AppearanceContext,
+        topInset: CGFloat = 0,
         perform: @escaping (InspectorAction) -> Void
     ) {
         self.state = state
         self.availableFonts = availableFonts
         self.context = context
+        self.topInset = topInset
         self.perform = perform
     }
 
@@ -159,8 +166,9 @@ public struct Inspector: View {
             }
             .padding(DS.Space.l)
         }
-        .frame(width: 264)
-        .glassChrome(context: context, radius: DS.Radius.panel)
+        .safeAreaPadding(.top, topInset)
+        .frame(width: DS.Metrics.inspectorWidth)
+        .vibrantChrome(.sidebar, context: context)
         .disabled(!state.isEditable)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Inspector for \(state.selectionLabel)")
@@ -192,7 +200,7 @@ public struct Inspector: View {
             .pickerStyle(.menu)
 
             if let code = state.customFormatCode {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: DS.Space.hair) {
                     Text(code)
                         .font(DS.Text.mono)
                         .foregroundStyle(DS.Chrome.primary)

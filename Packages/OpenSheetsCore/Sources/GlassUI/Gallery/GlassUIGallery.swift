@@ -188,7 +188,7 @@ public struct GlassUIGallery: View {
 
     private var rail: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: DS.Space.rowGap) {
                 ForEach(Item.allCases) { entry in
                     SidebarRow(
                         title: entry.title,
@@ -263,8 +263,8 @@ public struct GlassUIGallery: View {
         Text(label)
             .font(DS.Text.caption)
             .foregroundStyle(isOn ? DS.Chrome.onAccent : DS.Chrome.tertiary)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
+            .padding(.horizontal, DS.Space.badgeX)
+            .padding(.vertical, DS.Space.rowGap)
             .background {
                 Capsule(style: .continuous)
                     .fill(isOn ? DS.Chrome.accent : DS.Chrome.separator)
@@ -430,6 +430,10 @@ public struct DocumentScene: View {
     private let context: AppearanceContext
     private let backdropTheme: GridTheme
 
+    /// Room for the pill→panel morph to grow downward into. A measurement of this demo rig, not a
+    /// design token — see the use site.
+    private static let morphDemoClearance: CGFloat = 58
+
     @State private var phase: SyncSurface.Phase = .pill
 
     public init(context: AppearanceContext, backdropTheme: GridTheme) {
@@ -485,7 +489,10 @@ public struct DocumentScene: View {
                                 }
                             }
                         }
-                        .padding(.bottom, 58)
+                        // Clearance for the morph demo's expanded panel, which grows downward
+                        // out of the pill and would otherwise be clipped by the scroll view.
+                        // A demo-rig measurement, not a design token.
+                        .padding(.bottom, Self.morphDemoClearance)
                     }
                 }
                 .padding(.horizontal, DS.Space.m)

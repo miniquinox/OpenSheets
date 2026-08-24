@@ -19,9 +19,12 @@ struct SidebarColumn: View {
     @Bindable var model: DocumentModel
     let app: AppModel
     let context: AppearanceContext
+    /// The height of the anchored band that floats over this column's top. Measured by
+    /// ``DocumentWindow``; the material runs up behind it, the content starts below it.
+    var topInset: CGFloat = 0
 
     var body: some View {
-        Sidebar(state: state, context: context) { action in
+        Sidebar(state: state, context: context, topInset: topInset) { action in
             perform(action)
         }
         .accessibilityLabel("Document sidebar")
@@ -118,9 +121,11 @@ struct SidebarColumn: View {
 struct InspectorColumn: View {
     @Bindable var model: DocumentModel
     let context: AppearanceContext
+    /// The anchored band's measured height — see ``SidebarColumn/topInset``.
+    var topInset: CGFloat = 0
 
     var body: some View {
-        Inspector(state: state, context: context) { action in
+        Inspector(state: state, context: context, topInset: topInset) { action in
             perform(action)
         }
     }
@@ -207,7 +212,18 @@ struct InspectorColumn: View {
     }
 }
 
-/// The sheet tab strip, anchored along the bottom of the window.
+/// The sheet tab strip, anchored along the bottom of the grid column.
+///
+/// # It sits on the grid, not on the window
+///
+/// It used to span the full window width in the outer stack, with no surface of its own — which
+/// worked only while the window painted an opaque rectangle behind everything, and became a strip
+/// of bare desktop the moment that went away.
+///
+/// It now lives inside the grid column, on the grid's own opaque plane. That is the arrangement
+/// PLAN.md §3 actually asks for: the tabs are *floating glass over the one opaque plane*, which is
+/// a lens with something real behind it, rather than a lens over the desktop. It also lets the
+/// sidebar run unbroken to the bottom edge of the window, the way a Mac sidebar does.
 struct SheetTabPlate: View {
     @Bindable var model: DocumentModel
     let context: AppearanceContext
@@ -221,6 +237,8 @@ struct SheetTabPlate: View {
         }
         .padding(.horizontal, DS.Space.m)
         .padding(.vertical, DS.Space.s)
+        .frame(maxWidth: .infinity)
+        .gridPlane(context)
         .background(alignment: .top) {
             Rectangle()
                 .fill(DS.Chrome.separator(context))

@@ -124,7 +124,7 @@ public struct SnapshotBrowser: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: DS.Space.hair) {
                 Text("Restore points")
                     .font(DS.Text.panelTitle)
                     .foregroundStyle(DS.Chrome.primary)
@@ -168,7 +168,7 @@ public struct SnapshotBrowser: View {
                     .foregroundStyle(DS.Chrome.secondary)
                     .frame(width: 16)
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: DS.Space.rowGap) {
                     HStack(spacing: DS.Space.xs) {
                         Text(entry.takenAt)
                             .dsNumeric(DS.Text.controlEmphasis)
@@ -187,7 +187,7 @@ public struct SnapshotBrowser: View {
 
                 Spacer(minLength: DS.Space.s)
 
-                VStack(alignment: .trailing, spacing: 1) {
+                VStack(alignment: .trailing, spacing: DS.Space.rowGap) {
                     Text(entry.relative)
                         .dsNumeric(DS.Text.numericCaption)
                         .foregroundStyle(DS.Chrome.tertiary)

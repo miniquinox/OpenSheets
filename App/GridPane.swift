@@ -41,7 +41,7 @@ struct GridPane: View {
     /// range that changed under the user's fingers every time a file changed on disk would be a
     /// worse bug than the one this fixes. It is the stats pill's height plus its inset, which is
     /// the surface that is always there.
-    private var floatingInset: CGFloat { 32 + DS.Space.floatingInset }
+    private var floatingInset: CGFloat { DS.Metrics.pillHeight + DS.Space.floatingInset }
 
     var body: some View {
         ZStack(alignment: .bottom) {

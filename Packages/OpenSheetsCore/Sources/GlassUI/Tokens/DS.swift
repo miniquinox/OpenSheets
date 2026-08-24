@@ -47,6 +47,65 @@ public extension DS {
 
         /// Minimum touch/click target padding around small controls.
         public static let hitSlop: CGFloat = 6
+
+        // MARK: Sub-scale
+
+        // The three below are smaller than ``hair``, and that is deliberate rather than sloppy.
+        // Every one of them is a gap *inside* one thing — between a row and the next row of the
+        // same list, between a chip's text and its own edge — where the job is to stop two
+        // elements touching without ever reading as a separation. The 4pt scale is for gaps
+        // *between* things; using it here is what makes a sidebar list look like eight unrelated
+        // buttons instead of one block.
+        //
+        // They are named for where they go, not for how big they are, so that the next person
+        // reaches for one only when they are in that situation.
+
+        /// Between rows of a list that has to read as a single block: sidebar sheets, the
+        /// snapshot list, the named-range list.
+        public static let rowGap: CGFloat = 1
+
+        /// Vertical padding inside a chip, a sheet tab, or a sync pill — anything capsule-shaped
+        /// whose height is set by its text.
+        public static let chipY: CGFloat = 3
+
+        /// Horizontal padding inside a count badge. Wider than ``chipY`` because a badge is
+        /// usually one or two digits and needs the width to stay round rather than oval.
+        public static let badgeX: CGFloat = 5
+    }
+
+    /// Fixed sizes that are **not** spacing and cannot come off the scale: column widths laid out
+    /// for their contents, a titlebar height set by the system's traffic lights, the height of a
+    /// specific surface another view has to reserve room for.
+    ///
+    /// These live here rather than inline for one reason: an inline `72` in a layout is
+    /// indistinguishable from an eyeballed guess, and the only way to tell the two apart later is
+    /// to have written down which it was.
+    enum Metrics {
+        /// The sidebar's width. Its contents are laid out for it — the file table's label column,
+        /// the feed's timestamp gutter — which is also why there is no draggable divider.
+        public static let sidebarWidth: CGFloat = 248
+
+        /// The inspector's width. Wider than the sidebar by one step because its rows are
+        /// label-plus-control rather than label-only.
+        public static let inspectorWidth: CGFloat = 264
+
+        /// The document titlebar row. Matches the height AppKit gives a unified titlebar, so the
+        /// traffic lights sit on its centre line.
+        public static let titleBarHeight: CGFloat = 38
+
+        /// Clearance for the window's traffic lights, which are drawn by AppKit over our content
+        /// because the titlebar is transparent and full-size.
+        public static let trafficLightInset: CGFloat = 72
+
+        /// The height of a floating pill. ``GridKit`` reserves this at the bottom of the grid so
+        /// the last row can always be scrolled clear of the stats pill.
+        public static let pillHeight: CGFloat = 32
+
+        /// The smallest a document window may get. Below this the toolbar starts dropping
+        /// controls and the sidebar plus the inspector leave under three columns of grid, which
+        /// is a window nobody can work in.
+        public static let minimumWindowWidth: CGFloat = 900
+        public static let minimumWindowHeight: CGFloat = 560
     }
 }
 
@@ -69,6 +128,14 @@ public extension DS {
         public static let cellEditor: CGFloat = 6
         /// Chips and dots.
         public static let chip: CGFloat = 7
+
+        /// No radius at all — an edge-anchored band that runs into the window's own corners.
+        ///
+        /// A rounded card butted against the window edge is the single clearest sign of a panel
+        /// that has not decided whether it floats: it has the corners of something detached and
+        /// nowhere to be detached to. A flush band is the native idiom (Finder, Mail, Xcode) and
+        /// the window's own corner radius does the rounding.
+        public static let flush: CGFloat = 0
 
         public static func shape(_ radius: CGFloat) -> RoundedRectangle {
             RoundedRectangle(cornerRadius: radius, style: .continuous)

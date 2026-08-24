@@ -112,7 +112,7 @@ public struct SyncStateChip: View {
             }
             .foregroundStyle(tint)
             .padding(.horizontal, DS.Space.s)
-            .padding(.vertical, 3)
+            .padding(.vertical, DS.Space.chipY)
             .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
@@ -141,7 +141,11 @@ public enum WindowChrome {
     /// Transparent, unified, full-size content. Call once per document window.
     public static func configureDocumentWindow(_ window: NSWindow) {
         window.titlebarAppearsTransparent = true
-        window.titleVisibility = .visible
+        // Hidden, because the window draws its own. `TitleBarRow` shows the file name next to the
+        // sync chip and the sidebar toggle; leaving AppKit's copy visible put the same file name
+        // on screen twice, one above the other, once the titlebar strip stopped being covered by
+        // an opaque window background.
+        window.titleVisibility = .hidden
         window.styleMask.insert(.fullSizeContentView)
         window.toolbarStyle = .unified
         window.isMovableByWindowBackground = false

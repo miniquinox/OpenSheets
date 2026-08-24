@@ -115,7 +115,7 @@ public struct SheetTabBar: View {
                         tabView(tab, at: index)
                     }
                 }
-                .padding(.horizontal, 2)
+                .padding(.horizontal, DS.Space.hair)
             }
             .scrollIndicators(.never)
             if !state.hiddenTabs.isEmpty {
@@ -161,7 +161,7 @@ public struct SheetTabBar: View {
                 }
             }
         } label: {
-            HStack(spacing: 3) {
+            HStack(spacing: DS.Space.chipY) {
                 Image(systemName: "eye.slash")
                     .font(.system(size: 10, weight: .medium))
                 Text("\(state.hiddenTabs.count)")

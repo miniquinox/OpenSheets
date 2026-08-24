@@ -53,14 +53,18 @@ struct AppearanceSnapshotTests {
         var lines = ["# \(context.snapshotName)", ""]
         lines.append("## Components")
         for component in ComponentCatalog.all {
-            let resolution = GlassResolution.resolve(
-                tier: component.tier,
-                signal: component.signal,
-                context: context
-            )
+            let described = if let vibrancy = component.vibrancy {
+                VibrancyResolution.resolve(role: vibrancy, context: context).description
+            } else {
+                GlassResolution.resolve(
+                    tier: component.tier,
+                    signal: component.signal,
+                    context: context
+                ).description
+            }
             let name = component.name.padding(toLength: 22, withPad: " ", startingAt: 0)
             let shape = component.shape.rawValue.padding(toLength: 10, withPad: " ", startingAt: 0)
-            lines.append("  \(name) \(shape) \(resolution.description)")
+            lines.append("  \(name) \(shape) \(described)")
         }
 
         lines.append("")
@@ -252,6 +256,29 @@ enum ComponentCatalog {
         let signal: DS.SignalKind
         let shape: Shape
         let expectedModifier: String
+        /// Non-`nil` when this surface is a **material** rather than a lens — an edge band that
+        /// borders the desktop. Those resolve through ``VibrancyResolution`` instead of
+        /// ``GlassResolution``, and the golden has to say which, or it describes a lens that is
+        /// not there. See ``ChromeVibrancy``.
+        var vibrancy: ChromeVibrancy?
+
+        init(
+            name: String,
+            file: String,
+            tier: GlassTier,
+            signal: DS.SignalKind,
+            shape: Shape,
+            expectedModifier: String,
+            vibrancy: ChromeVibrancy? = nil
+        ) {
+            self.name = name
+            self.file = file
+            self.tier = tier
+            self.signal = signal
+            self.shape = shape
+            self.expectedModifier = expectedModifier
+            self.vibrancy = vibrancy
+        }
     }
 
     static let all: [Entry] = [
@@ -267,13 +294,18 @@ enum ComponentCatalog {
             name: "SheetTabBar", file: "Chrome/SheetTabBar.swift",
             tier: .chrome, signal: .neutral, shape: .control, expectedModifier: ".glassChrome("
         ),
+        // The two side columns are **materials**, not lenses. They border the desktop rather than
+        // the grid, and a lens with no window content behind it shows the wallpaper at full
+        // sharpness — see ``ChromeVibrancy``. `.none` shape because a flush band has no radius.
         Entry(
             name: "Sidebar", file: "Chrome/Sidebar.swift",
-            tier: .chrome, signal: .neutral, shape: .panel, expectedModifier: ".glassChrome("
+            tier: .chrome, signal: .neutral, shape: .none,
+            expectedModifier: ".vibrantChrome(", vibrancy: .sidebar
         ),
         Entry(
             name: "Inspector", file: "Chrome/Inspector.swift",
-            tier: .chrome, signal: .neutral, shape: .panel, expectedModifier: ".glassChrome("
+            tier: .chrome, signal: .neutral, shape: .none,
+            expectedModifier: ".vibrantChrome(", vibrancy: .sidebar
         ),
         Entry(
             name: "SelectionStatsPill", file: "Floating/SelectionStatsPill.swift",

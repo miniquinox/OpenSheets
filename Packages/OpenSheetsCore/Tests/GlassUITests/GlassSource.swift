@@ -110,9 +110,38 @@ enum GlassSource {
             .resolvingSymlinksInPath()
     }
 
+    /// The **app target's** sources, which are outside this package.
+    ///
+    /// Reaching out of the package is deliberate and is limited to one rule: the spacing lint.
+    /// Every other rule here is about how a component is built, and components live in `GlassUI`.
+    /// Spacing is different — it is broken at *assembly*, by the file that puts the components in
+    /// a window, and that file is `App/DocumentWindow.swift`. A lint that could not see it would
+    /// have passed on all three of the magic numbers it was written to catch.
+    static var appDirectory: URL {
+        URL(fileURLWithPath: #filePath)
+            .resolvingSymlinksInPath()
+            .deletingLastPathComponent() // GlassUITests
+            .deletingLastPathComponent() // Tests
+            .deletingLastPathComponent() // OpenSheetsCore
+            .deletingLastPathComponent() // Packages
+            .deletingLastPathComponent() // the repository root
+            .appendingPathComponent("App")
+            .resolvingSymlinksInPath()
+    }
+
     /// Every `.swift` file under `Sources/GlassUI`, as (relative path, contents).
     static func files() throws -> [(path: String, contents: String)] {
-        let root = sourceDirectory
+        try files(under: sourceDirectory)
+    }
+
+    /// `Sources/GlassUI` *and* `App/`, each path prefixed so a violation names the target it is
+    /// in. Only the spacing rule uses this.
+    static func layoutFiles() throws -> [(path: String, contents: String)] {
+        try files(under: sourceDirectory).map { ("GlassUI/\($0.path)", $0.contents) }
+            + files(under: appDirectory).map { ("App/\($0.path)", $0.contents) }
+    }
+
+    private static func files(under root: URL) throws -> [(path: String, contents: String)] {
         let enumerator = FileManager.default.enumerator(
             at: root,
             includingPropertiesForKeys: [.isRegularFileKey]

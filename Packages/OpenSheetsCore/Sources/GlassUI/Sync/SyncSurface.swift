@@ -208,7 +208,7 @@ public struct DiffPanel: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: DS.Space.s) {
             SignalBadge(changeSet.notice.signal, context: context, showsLabel: false)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: DS.Space.hair) {
                 Text(changeSet.notice.headline)
                     .font(DS.Text.panelTitle)
                     .foregroundStyle(DS.Chrome.primary)
@@ -400,7 +400,7 @@ public struct DiffRow: View {
                     .truncationMode(.head)
             }
             .padding(.horizontal, DS.Space.l)
-            .padding(.vertical, 5)
+            .padding(.vertical, DS.Space.badgeX)
             .background {
                 if isHovering {
                     Rectangle().fill(DS.Chrome.separator)

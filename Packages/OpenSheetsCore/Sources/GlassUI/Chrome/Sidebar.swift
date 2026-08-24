@@ -183,23 +183,52 @@ public enum SidebarAction: Sendable, Hashable {
 
 /// Sheets · named ranges · file · **Claude**.
 ///
-/// Chrome glass, edge-anchored, with the grid running under its inner edge via
-/// ``SwiftUI/View/gridPlane(_:)`` on the container.
+/// # Flush, not floating
+///
+/// This is a native sidebar: it runs the full height of the window, has no corner radius of its
+/// own, and meets the grid at a hairline. It is *not* a card with a margin around it.
+///
+/// The choice was between the two idioms and it is not a matter of taste. A floating panel only
+/// reads as floating when the content continues *underneath* it — that is what the shadow and the
+/// inset are evidence of. Here the grid is a sibling column that stops at the sidebar's inner
+/// edge, so an inset panel would be a card floating over nothing, with a strip of desktop showing
+/// down its outside. That is the state the window was already in: card corners, no margin to put
+/// them in, and a 1pt separator butted against them.
+///
+/// The flush form also gives the grid back the ~40pt that margins would have cost, which in a
+/// spreadsheet is most of another column.
+///
+/// # The material
+///
+/// ``ChromeVibrancy/sidebar`` — a real `NSVisualEffectView`, not Liquid Glass. The distinction and
+/// the reason for it are in ``ChromeVibrancy``; the short version is that a lens refracts *window
+/// content* and there is none behind this column, so glass here degrades to a clear hole onto the
+/// desktop. The material gives the diffuse cast of the wallpaper that a Mac sidebar has.
+///
+/// # `topInset`
+///
+/// The anchored chrome band spans the full window width and floats *over* this column, so the
+/// material runs up behind it while the content starts below it. The caller measures the band and
+/// passes its height rather than anybody hardcoding one — see ``DS/Metrics/titleBarHeight`` for
+/// why a guessed number here would drift.
 ///
 /// The Claude panel is at the bottom rather than the top, which is deliberate: it is the section
 /// you glance at, not the one you work in. Sheets are what you click.
 public struct Sidebar: View {
     private let state: SidebarState
     private let context: AppearanceContext
+    private let topInset: CGFloat
     private let perform: (SidebarAction) -> Void
 
     public init(
         state: SidebarState,
         context: AppearanceContext,
+        topInset: CGFloat = 0,
         perform: @escaping (SidebarAction) -> Void
     ) {
         self.state = state
         self.context = context
+        self.topInset = topInset
         self.perform = perform
     }
 
@@ -211,14 +240,17 @@ public struct Sidebar: View {
                     namedRangesSection
                     fileSection
                 }
+                // The same inset on all four sides. The top-only padding this replaced is what
+                // made the column look like it had been dropped in rather than laid out.
                 .padding(DS.Space.l)
             }
             .scrollIndicators(.never)
+            .safeAreaPadding(.top, topInset)
             Divider().overlay(DS.Chrome.separator(context))
             ClaudePanel(state: state.claude, context: context, perform: perform)
         }
-        .frame(width: 248)
-        .glassChrome(context: context, radius: DS.Radius.panel)
+        .frame(width: DS.Metrics.sidebarWidth)
+        .vibrantChrome(.sidebar, context: context)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sidebar")
     }
@@ -226,7 +258,7 @@ public struct Sidebar: View {
     private var sheetsSection: some View {
         VStack(alignment: .leading, spacing: DS.Space.s) {
             SectionHeader("Sheets", trailing: "\(state.sheets.count)")
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: DS.Space.rowGap) {
                 ForEach(state.sheets) { sheet in
                     SidebarRow(
                         title: sheet.name,
@@ -250,7 +282,7 @@ public struct Sidebar: View {
                     .font(DS.Text.caption)
                     .foregroundStyle(DS.Chrome.tertiary)
             } else {
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: DS.Space.rowGap) {
                     ForEach(state.definedNames) { item in
                         SidebarRow(
                             title: item.name,
@@ -387,9 +419,9 @@ public struct ClaudePanel: View {
                 isActive: state.mcpStatus == .connected,
                 reduceMotion: context.reduceMotion
             )
-            .padding(.top, 4)
+            .padding(.top, DS.Space.xs)
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: DS.Space.rowGap) {
                 Text(state.mcpStatus.label)
                     .font(DS.Text.controlEmphasis)
                     .foregroundStyle(DS.Chrome.primary)
@@ -526,8 +558,8 @@ public struct SidebarRow: View {
                     Text(badge)
                         .dsNumeric(DS.Text.numericCaption)
                         .foregroundStyle(DS.Chrome.onAccent)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
+                        .padding(.horizontal, DS.Space.badgeX)
+                        .padding(.vertical, DS.Space.rowGap)
                         .background(Capsule(style: .continuous).fill(DS.Chrome.accent))
                 }
             }

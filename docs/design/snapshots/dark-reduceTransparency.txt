@@ -4,8 +4,8 @@
   ToolbarSurface         none       solid #2A2A2E border #FFFFFF2E @ 1.0pt
   FormulaBar             control    solid #2A2A2E border #FFFFFF2E @ 1.0pt
   SheetTabBar            control    solid #2A2A2E border #FFFFFF2E @ 1.0pt
-  Sidebar                panel      solid #2A2A2E border #FFFFFF2E @ 1.0pt
-  Inspector              panel      solid #2A2A2E border #FFFFFF2E @ 1.0pt
+  Sidebar                none       solid #2A2A2E border #FFFFFF2E @ 1.0pt
+  Inspector              none       solid #2A2A2E border #FFFFFF2E @ 1.0pt
   SelectionStatsPill     capsule    solid #323236 border #FFFFFF2E @ 1.0pt
   CommandPalette         card       solid #323236 border #FFFFFF2E @ 1.0pt
   SnapshotBrowser        card       solid #323236 border #FFFFFF2E @ 1.0pt

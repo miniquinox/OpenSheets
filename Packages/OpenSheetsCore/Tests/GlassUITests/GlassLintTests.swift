@@ -305,6 +305,73 @@ struct GlassLintTests {
         )
     }
 
+    // MARK: - Spacing
+
+    /// **No numeric literal reaches `.padding(…)` or `spacing:`.**
+    ///
+    /// This is the same shape of rule as the glass container lint above, and it exists for the
+    /// same reason that one does: `DS.Space` was defined carefully and then, at assembly, largely
+    /// not used. The window that shipped had `.padding(.top, 120)` next to `.padding(.top, 132)`
+    /// — two eyeballed numbers twelve apart, both of them standing in for a chrome height the file
+    /// was already measuring six lines away — plus a sidebar with padding on exactly one of its
+    /// four sides.
+    ///
+    /// None of that is a bug a person notices in review. It is only visible when you sit in front
+    /// of the window and feel that the gaps are uneven, which is exactly how it was found: a user
+    /// said *"I see many inconsistencies in padding and margins"*. A rule that runs on every commit
+    /// is the only thing that keeps a scale from decaying back into literals.
+    ///
+    /// **`0` is legal.** `spacing: 0` is not a magic number, it is the statement *"these two views
+    /// touch"*, and there is no token that could say it more clearly.
+    ///
+    /// Anything that genuinely cannot come off the scale — a measured chrome height, a system
+    /// metric, the clearance a demo rig needs — goes in ``DS/Metrics`` or in a named constant with
+    /// a comment saying why. That is the whole escape hatch, and it costs a name, which is the
+    /// point: a name is the difference between a measurement and a guess.
+    @Test("No numeric literal reaches .padding or spacing:")
+    func spacingComesFromTheScale() throws {
+        var violations: [String] = []
+        for (path, contents) in try GlassSource.layoutFiles() {
+            let lines = GlassSource.stripComments(contents.components(separatedBy: "\n"))
+            for (offset, line) in lines.enumerated() {
+                for literal in SpacingLint.literals(in: line) {
+                    violations.append("\(path):\(offset + 1) passes \(literal) — \(line.trimmingCharacters(in: .whitespaces))")
+                }
+            }
+        }
+        #expect(
+            violations.isEmpty,
+            """
+            Spacing comes from `DS.Space`. A literal here is a value nobody can find again: it \
+            cannot be changed in one place, it does not move with the scale, and it is \
+            indistinguishable from a number somebody nudged until it looked right. `0` is legal; \
+            a measurement belongs in `DS.Metrics` or in a named constant that says why it is not \
+            a token.
+            \(violations.joined(separator: "\n"))
+            """
+        )
+    }
+
+    /// The spacing scan reaches **both** targets.
+    ///
+    /// Same reasoning as ``scanIsNotSilentlyEmpty()``, and more necessary here: this is the only
+    /// rule that reads a directory outside the package, so it is the only one that breaks if the
+    /// repository is ever laid out differently. A spacing lint that silently scans zero app files
+    /// passes forever while the file it was written for rots.
+    @Test("The spacing scan reaches the app target, not just the package")
+    func spacingScanReachesBothTargets() throws {
+        let files = try GlassSource.layoutFiles()
+        #expect(
+            files.contains { $0.path == "App/DocumentWindow.swift" },
+            """
+            `App/DocumentWindow.swift` was not scanned — `GlassSource.appDirectory` no longer \
+            points at the app target. Every magic number this rule exists to catch lives in that \
+            file, so the rule is now decorative.
+            """
+        )
+        #expect(files.contains { $0.path.hasPrefix("GlassUI/Tokens/") }, "the package half went missing")
+    }
+
     @Test("The scan actually found the source")
     func scanIsNotSilentlyEmpty() throws {
         // A lint that reads zero files passes every rule. This is the guard against a green
@@ -317,5 +384,42 @@ struct GlassLintTests {
             files.contains { $0.path == GlassSource.glassSurfaceFile },
             "GlassSurface.swift was not found — the path in GlassSource is stale"
         )
+    }
+}
+
+/// The pattern behind ``GlassLintTests/spacingComesFromTheScale()``.
+///
+/// Deliberately narrow. It matches a **bare numeric literal** in the two places that set layout
+/// gaps, and nothing else: `DS.Space.m`, `chromeHeight + DS.Space.s` and `Self.morphDemoClearance`
+/// all pass without an allowlist entry, because none of them is a literal. That is what keeps the
+/// escape hatch honest — you do not ask the lint for permission, you give the number a name.
+enum SpacingLint {
+    /// `.padding(8)`, `.padding(.top, 8)`, `.safeAreaPadding(.top, 8)`, `spacing: 8`.
+    private static let patterns: [NSRegularExpression] = {
+        let sources = [
+            #"\.(?:safeArea)?[pP]adding\(\s*(?:\.\w+\s*,\s*)?(-?\d+(?:\.\d+)?)\s*\)"#,
+            #"\bspacing:\s*(-?\d+(?:\.\d+)?)\b"#,
+        ]
+        return sources.compactMap { try? NSRegularExpression(pattern: $0) }
+    }()
+
+    /// The offending literals on one line of code. Empty when the line is clean.
+    ///
+    /// `0` is filtered here rather than in the pattern so that the pattern stays readable and the
+    /// exemption stays a stated decision rather than a subtlety of a regex.
+    static func literals(in line: String) -> [String] {
+        let range = NSRange(line.startIndex..., in: line)
+        var found: [String] = []
+        for pattern in patterns {
+            for match in pattern.matches(in: line, range: range) {
+                guard match.numberOfRanges > 1,
+                      let captured = Range(match.range(at: 1), in: line)
+                else { continue }
+                let literal = String(line[captured])
+                guard Double(literal) != 0 else { continue }
+                found.append(literal)
+            }
+        }
+        return found
     }
 }

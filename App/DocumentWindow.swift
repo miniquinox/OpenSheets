@@ -20,23 +20,34 @@ import SwiftUI
 /// is readable"* — so here the window is a vertical stack of real rows:
 ///
 /// ```
-/// ┌───────────────────────────────────────────────────────────┐
-/// │ titlebar        name · sync chip            sidebar toggle │  anchored, traffic-light inset
-/// ├───────────────────────────────────────────────────────────┤
-/// │ toolbar                                                    │  anchored — the grid runs under it
-/// ├───────────────────────────────────────────────────────────┤
-/// │ formula bar                                                │  anchored — and under this too
-/// ├──────────────┬────────────────────────────────────────────┤
-/// │ sidebar      │ grid              ·stats pill  ·sync pill   │  siblings; only the two pills float
-/// ├──────────────┴────────────────────────────────────────────┤
-/// │ sheet tabs                                                 │  anchored, full window width
-/// └───────────────────────────────────────────────────────────┘
+/// ┌═══════════════════════════════════════════════════════════┐  ═ one material, full width,
+/// ║ ⦿⦿⦿   name · sync chip                    sidebar toggle  ║    from the window's top edge
+/// ║ toolbar                                                   ║
+/// ║ formula bar                                               ║
+/// ╞══════════════┬════════════════════════════════════════════╡
+/// │ sidebar      │ grid                 ·stats pill ·sync pill│  the one opaque plane
+/// │ material     │                                            │
+/// │ full height  ├────────────────────────────────────────────┤
+/// │              │ sheet tabs — glass, on the grid's plane     │
+/// └──────────────┴────────────────────────────────────────────┘
 /// ```
 ///
-/// The toolbar spans the whole window, above the split, so the sidebar cannot clip its leading
-/// controls no matter how wide it gets. The grid is the one opaque plane and carries
-/// ``SwiftUI/View/gridPlane(_:)``, so the chrome's lens sits on the document rather than on a
-/// window background of its own.
+/// Two things in that picture are load-bearing and were both learned the hard way.
+///
+/// **The band spans the full width and starts at the very top of the window.** It has to span the
+/// width so the sidebar cannot clip the toolbar's leading controls. It has to start at the top
+/// because the window is *not opaque* — a glass app cannot be, or its materials have nothing to
+/// sample — and any strip the band does not cover is not "empty", it is a hole onto the desktop.
+///
+/// **The columns run the full height and inset their own content.** They used to be pushed down by
+/// the band's height, which left the top-left corner belonging to nothing; that corner is exactly
+/// where the wallpaper showed through. Now the sidebar's material reaches the top edge and the
+/// band's material sits on top of it, so the two meet with no seam and no gap.
+///
+/// Which surface gets which treatment is not a style choice — see ``GlassUI/ChromeVibrancy``.
+/// Edge bands take a **material** (`NSVisualEffectView`), because they border the desktop and a
+/// lens over the desktop is a window. Floating surfaces take **glass**, because the grid is behind
+/// them and a lens needs something to refract. The grid takes neither.
 ///
 /// # Anchored *and* refracting
 ///
@@ -52,8 +63,9 @@ import SwiftUI
 /// This is **not** A5's composite floating a panel over rows 1–5. The difference is permanence: an
 /// overlay hides those rows for good, an inset hides nothing — the reserved band is scroll range,
 /// so every cell is one scroll away, which is how Numbers and every native app of this shape
-/// behaves. The sidebar and the inspector stay below the chrome rather than under it: they are
-/// glass themselves, and glass on glass is two lenses stacked, which §3.2 forbids.
+/// behaves. The sidebar and the inspector run *under* the band rather than starting below it, but
+/// only their material does: their content is inset by the same measured height, so nothing is
+/// covered and there is no second lens stacked on the first.
 ///
 /// **Exactly three things float**: the selection stats pill, the refresh pill / diff panel, and
 /// the ⌘K palette. The first two live in the grid's bottom corners, over the reserved bottom
@@ -77,23 +89,27 @@ struct DocumentWindow: View {
     private var context: AppearanceContext { appearance.context(for: colorScheme) }
 
     var body: some View {
-        VStack(spacing: 0) {
-            TitleBarRow(model: model, context: context)
+        Group {
             if let empty = emptyState {
-                EmptyStateView(model: empty, context: context) { action in
-                    handle(empty, action)
+                VStack(spacing: 0) {
+                    TitleBarRow(model: model, context: context)
+                    EmptyStateView(model: empty, context: context) { action in
+                        handle(empty, action)
+                    }
                 }
                 .gridPlane(context)
             } else {
+                // One ZStack, not a VStack of bands: the columns run the **full height of the
+                // window** and the chrome floats over them. That is what lets the sidebar's
+                // material reach the top edge, which is the difference between a band and a hole
+                // — see `chrome` and ``GlassUI/ChromeVibrancy``.
                 ZStack(alignment: .top) {
                     split
                     chrome
                 }
-                SheetTabPlate(model: model, context: context)
             }
         }
-        .frame(minWidth: 900, minHeight: 560)
-        .background(GridTheme.resolved(context).canvas.color)
+        .frame(minWidth: DS.Metrics.minimumWindowWidth, minHeight: DS.Metrics.minimumWindowHeight)
         .glassAppearance(context)
         .overlay { palette }
         .overlay(alignment: .top) { stalenessNote }
@@ -131,26 +147,50 @@ struct DocumentWindow: View {
 
     // MARK: - Anchored chrome
 
-    /// The toolbar and the formula bar, as one anchored band.
+    /// The titlebar, the toolbar and the formula bar, as **one** anchored band on **one** material.
     ///
-    /// Measured rather than sized: the grid needs the exact height to inset by, and hardcoding it
-    /// would drift the moment a control size or a font changed — which shows up as row 1 sitting
-    /// half under the formula bar, the most obviously broken thing a spreadsheet can do.
+    /// # Why all three are one surface
+    ///
+    /// They used to be three things: a titlebar row in the outer stack, then a toolbar and a
+    /// formula bar sharing a `VStack` with no backing of their own. That worked only because the
+    /// window painted an opaque rectangle behind the entire content. The moment the window stopped
+    /// doing that — which is what a glass app has to do, or there is nothing for a material to
+    /// sample — each of them turned into a clear hole onto the desktop, with the wallpaper legible
+    /// between the toolbar buttons and behind the document title.
+    ///
+    /// So the band is now a single ``GlassUI/ChromeVibrancy/band`` surface that spans the full
+    /// window width and runs from the very top of the window to the bottom of the formula bar.
+    /// The per-control glass capsules in `ToolbarSurface` sit *on* it; they were never a
+    /// substitute for it.
+    ///
+    /// # Measured, not sized
+    ///
+    /// The grid insets its scroll range by this band's height, so hardcoding one would show up as
+    /// row 1 sitting half under the formula bar. It is measured, and now that the titlebar is part
+    /// of the same stack the measurement covers it too — which is what let two eyeballed `120`
+    /// and `132` offsets elsewhere in this file become `chromeHeight` plus a token.
     private var chrome: some View {
         VStack(spacing: 0) {
+            TitleBarRow(model: model, context: context)
+
             ToolbarSurface(state: model.toolbar, context: context) { action in
                 perform(action)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            // Vertical rhythm of its own. Without it the toolbar's capsules touch the titlebar
+            // above and the formula bar below, and the band reads as three things jammed together
+            // rather than one surface.
+            .padding(.vertical, DS.Space.xs)
             .background(alignment: .bottom) { hairline }
 
             FormulaBar(state: model.formulaBar, context: context) { action in
                 perform(action)
             }
             .padding(.horizontal, DS.Space.m)
-            .padding(.bottom, DS.Space.s)
+            .padding(.vertical, DS.Space.s)
             .background(alignment: .bottom) { hairline }
         }
+        .vibrantChrome(.band, context: context)
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.height
         } action: { height in
@@ -166,32 +206,45 @@ struct DocumentWindow: View {
 
     // MARK: - The split
 
+    /// The three columns, **every one of them full height**.
+    ///
+    /// Each column used to be pushed down by `.padding(.top, chromeHeight)` so it would start
+    /// below the band. That left the top-left corner of the window — the strip above the sidebar —
+    /// belonging to nothing at all, which is exactly where the desktop showed through once the
+    /// window's opaque backing was removed.
+    ///
+    /// Now the *surfaces* run edge to edge and each column insets its own *content* instead. The
+    /// sidebar's material therefore reaches the top of the window and the band's material sits on
+    /// top of it, so there is no seam and no gap — the arrangement Finder, Mail and Xcode all use.
     private var split: some View {
         HStack(spacing: 0) {
             if model.isSidebarVisible {
-                SidebarColumn(model: model, app: app, context: context)
-                    .padding(.top, chromeHeight)
+                SidebarColumn(model: model, app: app, context: context, topInset: chromeHeight)
                     .transition(.move(edge: .leading).combined(with: .opacity))
-                Rectangle()
-                    .fill(DS.Chrome.separator(context))
-                    .frame(width: DS.Stroke.hairline(context))
-                    .padding(.top, chromeHeight)
+                columnDivider
             }
-            // The only column that runs the full height, up behind the chrome. Its scroll insets
-            // give the band back, so nothing is hidden — see `GridPane`.
-            GridPane(model: model, context: context, chromeInset: chromeHeight)
+            // The one opaque plane. Its scroll insets give the band's height back, so no cell is
+            // hidden by chrome — see `GridPane`.
+            VStack(spacing: 0) {
+                GridPane(model: model, context: context, chromeInset: chromeHeight)
+                SheetTabPlate(model: model, context: context)
+            }
             if model.isInspectorVisible {
-                Rectangle()
-                    .fill(DS.Chrome.separator(context))
-                    .frame(width: DS.Stroke.hairline(context))
-                    .padding(.top, chromeHeight)
-                InspectorColumn(model: model, context: context)
-                    .padding(.top, chromeHeight)
+                columnDivider
+                InspectorColumn(model: model, context: context, topInset: chromeHeight)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .animation(DS.Motion.standard, value: model.isSidebarVisible)
         .animation(DS.Motion.standard, value: model.isInspectorVisible)
+    }
+
+    /// The hairline between a chrome column and the grid. Full height, because the columns now are
+    /// — a divider that stopped short of the top edge was the visible half of the same bug.
+    private var columnDivider: some View {
+        Rectangle()
+            .fill(DS.Chrome.separator(context))
+            .frame(width: DS.Stroke.hairline(context))
     }
 
     // MARK: - Floating: the palette
@@ -207,7 +260,10 @@ struct DocumentWindow: View {
                     handle(action)
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.top, 120)
+                // Was an eyeballed 120. The palette hangs below the anchored band, and the band
+                // measures itself — so this is that measurement plus one step of air, and it
+                // stays right when a control size or a font changes.
+                .padding(.top, chromeHeight + DS.Space.xl)
             }
             .transition(.opacity)
             .onAppear { rebuildPalette() }
@@ -222,7 +278,7 @@ struct DocumentWindow: View {
             HStack(alignment: .firstTextBaseline, spacing: DS.Space.s) {
                 Image(systemName: "info.circle")
                     .foregroundStyle(DS.Signal.staleInk(context))
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: DS.Space.hair) {
                     Text(reason.headline).font(DS.Text.controlEmphasis)
                     Text(reason.detail)
                         .font(DS.Text.caption)
@@ -236,7 +292,10 @@ struct DocumentWindow: View {
             .padding(DS.Space.m)
             .frame(maxWidth: 520)
             .glassCard(context: context, radius: DS.Radius.panel)
-            .padding(.top, 132)
+            // Was an eyeballed 132 — 12 more than the palette's 120, which is what compensating
+            // for an unmeasured chrome height looks like. Same measurement, tighter air, because
+            // this note is anchored *to* the formula bar rather than floating below it.
+            .padding(.top, chromeHeight + DS.Space.s)
             .transition(.move(edge: .top).combined(with: .opacity))
         }
     }
@@ -469,7 +528,7 @@ private struct TitleBarRow: View {
 
     var body: some View {
         HStack(spacing: DS.Space.s) {
-            Color.clear.frame(width: 72, height: 1)
+            Color.clear.frame(width: DS.Metrics.trafficLightInset, height: DS.Stroke.hairline(context))
 
             Button {
                 model.isSidebarVisible.toggle()
@@ -520,7 +579,7 @@ private struct TitleBarRow: View {
             .accessibilityLabel("Toggle inspector")
         }
         .padding(.horizontal, DS.Space.m)
-        .frame(height: 38)
+        .frame(height: DS.Metrics.titleBarHeight)
         .accessibilityElement(children: .contain)
     }
 

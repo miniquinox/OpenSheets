@@ -4,8 +4,8 @@
   ToolbarSurface         none       glass regular
   FormulaBar             control    glass regular
   SheetTabBar            control    glass regular
-  Sidebar                panel      glass regular
-  Inspector              panel      glass regular
+  Sidebar                none       material NSVisualEffectView.sidebar behindWindow
+  Inspector              none       material NSVisualEffectView.sidebar behindWindow
   SelectionStatsPill     capsule    glass regular.interactive
   CommandPalette         card       glass regular.interactive
   SnapshotBrowser        card       glass regular.interactive
