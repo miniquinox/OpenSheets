@@ -10,7 +10,7 @@ Your API decisions are load-bearing. Spend your effort on `SheetModel` being rig
 features. There is no UI in this task.
 
 ## Dependencies
-None. Reference `/Users/quino/Documents/GitHub/SignalToNoise` for house style — `App/Design/DesignSystem.swift`
+None. Reference the author's `SignalToNoise` app for house style — `App/Design/DesignSystem.swift`
 for the doc-comment register, `Shared/Store.swift` for the `@Observable` store pattern, `PLAN.md`
 for prose voice.
 

@@ -998,7 +998,7 @@ command name.
 because it is fixed in the app, not by retrying. Verified:
 
 ```
-$ opensheets describe /Users/quino/…/Fixtures/perf/100k-cells.xlsx
+$ opensheets describe Fixtures/perf/100k-cells.xlsx
 [grant.outsideWorkspace] /Users/…/100k-cells.xlsx is outside every folder you have granted.
 Open the folder in OpenSheets and grant it there — the server cannot grant itself access.
 Open the folder in OpenSheets and grant it, then try again.

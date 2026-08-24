@@ -8,7 +8,7 @@ and feel like a truly glass product"* — and specifically **real native glass, 
 `div`.** On macOS 26 that means the actual `glassEffect` APIs, used with discipline.
 
 Read **PLAN.md §3 ("Quiet Glass") in full** before writing a line. Then read
-`/Users/quino/Documents/GitHub/SignalToNoise/App/Design/DesignSystem.swift` — that is the house
+`SignalToNoise/App/Design/DesignSystem.swift` (the author's own app) — that is the house
 pattern for `DS` tokens and the `GlassSurface` modifier, and you are extending it to macOS and to
 light mode. Also invoke the `frontend-design` skill before you start.
 

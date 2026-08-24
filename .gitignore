@@ -40,3 +40,7 @@ docs/perf/*.trace
 
 # Local demo workspace
 Demo/
+
+# Python build artefacts
+__pycache__/
+*.pyc
