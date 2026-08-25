@@ -270,6 +270,167 @@ struct ComponentModelTests {
         #expect(NameBoxLabel.text(for: other, definedNames: names) == "A1:D9")
     }
 
+    // MARK: - File tabs
+
+    @Test("A tab is identified by its document key, not by its name")
+    func fileTabIdentityIsTheDocumentKey() {
+        // Two files called data.csv are two tabs; one file reached by two spellings of its path is
+        // one tab. Both facts fall out of using the model layer's own key as the id, which is why
+        // the strip takes a resolved string rather than a URL.
+        let work = FileTabItem(id: "/w/data.csv", title: "data.csv", fullPath: "/w/data.csv")
+        let models = FileTabItem(id: "/m/data.csv", title: "data.csv", fullPath: "/m/data.csv")
+        #expect(work != models)
+        #expect(work.id != models.id)
+
+        var renamed = work
+        renamed.title = "renamed.csv"
+        #expect(renamed.id == work.id, "a rename is not a different tab")
+
+        let state = FileTabStripState(tabs: [work, models], activeID: models.id)
+        #expect(Set(state.tabs.map(\.id)).count == 2)
+        #expect(state.activeID == models.id)
+        #expect(!state.isEmpty)
+        #expect(FileTabStripState(tabs: []).isEmpty)
+    }
+
+    @Test("Equal states are equal, so the strip does not re-render on a no-op")
+    func fileTabStripStateEquality() {
+        let tabs = [FileTabItem(id: "1", title: "a.csv", fullPath: "/a.csv")]
+        #expect(FileTabStripState(tabs: tabs, activeID: "1") == FileTabStripState(tabs: tabs, activeID: "1"))
+        #expect(FileTabStripState(tabs: tabs, activeID: "1") != FileTabStripState(tabs: tabs))
+
+        var changed = tabs
+        changed[0].status = .agentChanged
+        #expect(FileTabStripState(tabs: changed) != FileTabStripState(tabs: tabs))
+    }
+
+    @Test("Every status maps to exactly one dot, and only two of them draw nothing")
+    func statusMapsToOneDot() {
+        // Plan §1.5: one dot per tab, worst news wins. The precedence itself belongs to the app
+        // layer; what belongs here is that each resolved status has one unambiguous rendering.
+        let expected: [(FileTabItem.Status, FileTabDot)] = [
+            (.none, .absent),
+            (.loading, .progress),
+            (.unsaved, .unsaved),
+            (.agentChanged, .agent),
+            (.conflict, .conflict),
+            (.problem, .problem),
+        ]
+        for (status, dot) in expected {
+            #expect(FileTabDot(status) == dot)
+        }
+        // Distinct statuses must not collapse onto one dot, or the strip is telling six stories
+        // with five faces.
+        #expect(Set(expected.map(\.1)).count == expected.count)
+
+        for context in AppearanceContext.snapshotMatrix {
+            #expect(FileTabDot.absent.color(context) == nil, "an absent dot has no colour to draw")
+            #expect(FileTabDot.progress.color(context) == nil, "loading draws a spinner, not a dot")
+            for dot in [FileTabDot.unsaved, .agent, .conflict, .problem] {
+                #expect(dot.color(context) != nil, "\(dot) has no colour in \(context.snapshotName)")
+            }
+        }
+    }
+
+    @Test("The dot is spoken, never left to colour alone")
+    func statusIsCarriedInTheAccessibilityLabel() {
+        #expect(FileTabDot.absent.spokenStatus == nil, "silence is correct when nothing is wrong")
+        for dot in [FileTabDot.progress, .unsaved, .agent, .conflict, .problem] {
+            #expect(dot.spokenStatus?.isEmpty == false, "\(dot) says nothing to VoiceOver")
+        }
+
+        let tab = FileTabItem(
+            id: "1", title: "data.csv", disambiguator: "work",
+            fullPath: "/w/data.csv", status: .conflict
+        )
+        let label = tab.accessibilityLabel
+        #expect(label.contains("data.csv"))
+        #expect(label.contains("work"), "the disambiguator is on screen, so it is spoken")
+        #expect(label.contains("conflict"))
+
+        let quiet = FileTabItem(id: "2", title: "b.csv", fullPath: "/b.csv")
+        #expect(quiet.accessibilityLabel == "b.csv", "a quiet tab says its name and stops")
+    }
+
+    // MARK: - Change tracking
+
+    @Test("The chip counts what it tints, and nothing else")
+    func chipCountsExcludeFormatting() {
+        let chip = ChangeTrackingChipState(added: 12, modified: 5, removed: 3)
+        #expect(chip.total == 20)
+        #expect(!chip.isEmpty)
+        #expect(chip.count(.added) == 12)
+        #expect(chip.count(.modified) == 5)
+        #expect(chip.count(.removed) == 3)
+
+        // Zero is hidden, not rendered as `+0 ~0 −0`.
+        #expect(ChangeTrackingChipState().isEmpty)
+        // …unless the differ gave up, in which case zero is a floor rather than a fact and the
+        // chip has to stay on screen to say so.
+        #expect(!ChangeTrackingChipState(isTruncated: true).isEmpty)
+    }
+
+    @Test("A row is identified by sheet and address, so two sheets never collide")
+    func panelRowIDsAreUniqueAcrossSheets() {
+        let sections = [
+            ChangeTrackingPanelState.Section(
+                id: "Q4", sheetName: "Q4",
+                rows: [
+                    .init(id: "Q4!D2", sheetName: "Q4", refA1: "D2", summary: "120 → 129.6", kind: .modified),
+                    .init(id: "Q4!E7", sheetName: "Q4", refA1: "E7", summary: "new", kind: .added),
+                ]
+            ),
+            ChangeTrackingPanelState.Section(
+                id: "Summary", sheetName: "Summary",
+                rows: [
+                    // The same address on a different sheet. A bare "D2" id here would make one of
+                    // these rows disappear from the ForEach, which is the specific bug this pins.
+                    .init(id: "Summary!D2", sheetName: "Summary", refA1: "D2", summary: "9 → 11", kind: .modified),
+                    .init(
+                        id: "structural-Summary-rows-14", sheetName: "Summary",
+                        summary: "deleted 2 rows at 14", kind: .structural
+                    ),
+                ]
+            ),
+        ]
+        let ids = sections.flatMap { $0.rows.map(\.id) }
+        #expect(Set(ids).count == ids.count, "two rows share an id: \(ids)")
+        #expect(Set(sections.map(\.id)).count == sections.count)
+
+        // A structural row has nowhere to jump to, and the panel must be able to tell.
+        let structural = sections[1].rows[1]
+        #expect(structural.refA1 == nil)
+        #expect(sections[0].rows.allSatisfy { $0.refA1 != nil })
+    }
+
+    @Test("Every baseline source names itself")
+    func baselineSourcesAreLabelled() {
+        let sources: [ChangeTrackingPanelState.SourceChoice] = [.asOpened, .checkpoint, .gitHEAD]
+        for source in sources {
+            #expect(!source.label.isEmpty)
+        }
+        #expect(Set(sources.map(\.label)).count == sources.count, "two sources read the same")
+        // The default offer omits git: it is only real inside a work tree, and an option that can
+        // never be chosen on this machine is better absent than permanently greyed out.
+        let panel = ChangeTrackingPanelState(chip: .init(), baselineLabel: "Since opened")
+        #expect(!panel.sources.contains(.gitHEAD))
+        #expect(panel.activeSource == .asOpened)
+    }
+
+    @Test("Change kinds carry a glyph and a word, not just a colour")
+    func changeKindsAreNotColourOnly() {
+        for kind in DS.Change.Kind.allCases {
+            #expect(!kind.glyph.isEmpty)
+            #expect(!kind.symbolName.isEmpty)
+            #expect(!kind.label.isEmpty)
+        }
+        #expect(DS.Change.Kind.allCases.count == 3, "style-only changes are counted, never tinted")
+        #expect(Set(DS.Change.Kind.allCases.map(\.glyph)).count == 3)
+        // A real minus sign, not a hyphen: next to tabular figures a hyphen sits too high and too
+        // short to read as a sign.
+        #expect(DS.Change.Kind.removed.glyph == "\u{2212}")
+    }
+
     // MARK: - Empty states
 
     @Test("Every empty state says what happened and offers a way forward")

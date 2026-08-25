@@ -184,6 +184,57 @@ public enum Palette {
     public static let connectedLight = RGBA(hex: "#1F8A46")
     public static let connectedDark = RGBA(hex: "#3FD37A")
 
+    // MARK: - Change tracking
+    //
+    // Green added · amber changed · red removed. The diff vocabulary, and the one place this
+    // design system knowingly puts a fourth, fifth and sixth colour next to the three signals.
+    //
+    // **Why that is not the "fourth tint" the signal note forbids.** A signal describes the
+    // *app's* relationship with the file — the agent touched it, you disagree with it, it failed —
+    // and there are three of those because there are three things that can be true. These describe
+    // *content*: which cells moved since a baseline the user chose. They live on the grid plane
+    // rather than on chrome, they annotate data rather than announce state, and green/amber/red is
+    // not a palette we invented — it is what every diff the user has ever read already uses.
+    // Reaching for the conflict amber here would say "you and the file disagree" about a cell that
+    // simply has a new number in it.
+    //
+    // **Ink and tint are separate, for the same reason ``conflictTintLight`` and
+    // ``conflictInkLight`` are.** The tint is a 14% wash under a cell, chosen to be *seen* without
+    // pushing the cell's own text under 4.5:1. The ink is the `+12` on the chip and the glyph on a
+    // panel row, chosen to *be read* on chrome. A single value cannot do both: the green that reads
+    // as a wash on white is 2.7:1 as text, and the green that reads as text is nearly black as a
+    // wash. `PaletteContrastTests` pins both jobs separately.
+    //
+    // Every value below is authored for its scheme. The greens are the same hue as
+    // ``connectedLight``/``connectedDark`` at two different weights — the app has one green, and
+    // this is it at text weight (4.5:1) rather than dot weight (3:1).
+
+    /// A cell that did not exist at the baseline. Ink: `+12` on the chip, the row glyph in the panel.
+    public static let changeAddedInkLight = RGBA(hex: "#0F7434")
+    public static let changeAddedInkDark = RGBA(hex: "#3FD37A")
+
+    /// …and the wash under the cell itself, applied at ``DS/Change/cellTintOpacity(_:)``.
+    public static let changeAddedTintLight = RGBA(hex: "#34C759")
+    public static let changeAddedTintDark = RGBA(hex: "#30D158")
+
+    /// A cell whose value or formula moved. Amber, and deliberately a hair more golden than
+    /// ``conflictTintLight`` — the two are adjacent in hue and mean different things, so the
+    /// difference has to be visible when a conflict banner and a changed cell are on screen at once.
+    public static let changeModifiedInkLight = RGBA(hex: "#8A5A00")
+    public static let changeModifiedInkDark = RGBA(hex: "#F5C24C")
+
+    public static let changeModifiedTintLight = RGBA(hex: "#E8940C")
+    public static let changeModifiedTintDark = RGBA(hex: "#FFB02E")
+
+    /// A cell that is gone. Not ``errorInkLight``: a removed row is not a failure, and using the
+    /// error red for it would mean the app cries wolf every time an agent tidies a sheet. This is a
+    /// deeper, quieter red that still reads as a deletion.
+    public static let changeRemovedInkLight = RGBA(hex: "#A81E1E")
+    public static let changeRemovedInkDark = RGBA(hex: "#FF8A82")
+
+    public static let changeRemovedTintLight = RGBA(hex: "#E5484D")
+    public static let changeRemovedTintDark = RGBA(hex: "#FF6369")
+
     // MARK: - Sheet tab dots
 
     /// The colour dots on sheet tabs. Excel lets a user colour a tab; this is our palette for it.
