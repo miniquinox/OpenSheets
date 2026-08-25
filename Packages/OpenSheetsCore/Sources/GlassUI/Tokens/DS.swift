@@ -452,6 +452,139 @@ public extension DS {
     }
 }
 
+// MARK: - Change tracking
+
+public extension DS {
+    /// Green added · amber changed · red removed, for the baseline diff. See ``Palette`` for why
+    /// this is allowed to exist next to the three signals: a signal is about the app's
+    /// relationship with the file, this is an annotation of the content.
+    ///
+    /// Shaped exactly like ``DS/Signal``: a **tint** (what the grid washes a cell with) and an
+    /// **ink** (what the chip's counts and the panel's glyphs are set in), because one value cannot
+    /// do both jobs — a wash light enough to keep cell text at 4.5:1 is invisible as text.
+    ///
+    /// **On `increaseContrast`.** The inks do not move, because they already clear 4.5:1 against
+    /// every chrome surface in every appearance — there is nothing for the setting to fix. What
+    /// does move is the wash: ``cellTintOpacity(_:)`` and ``bandTintOpacity(_:)`` step up, the same
+    /// way ``GridTheme/changeFlashFill`` does, so an annotation that was quiet by design becomes
+    /// unmissable for someone who asked for that. Cell text stays over 4.5:1 at the raised
+    /// opacity; `PaletteContrastTests` asserts it at both.
+    ///
+    /// **On `reduceTransparency`.** Nothing here is glass, so nothing here changes. The inks are
+    /// asserted against the *opaque* ``DS/Surface`` tokens rather than against a modelled lens,
+    /// which makes the reduce-transparency case the one the numbers were chosen for.
+    ///
+    /// **On colour alone.** It never is. Every count on the chip carries ``Kind/glyph`` and every
+    /// panel row carries ``Kind/symbolName`` and ``Kind/label``, for the same reason
+    /// ``DS/SignalKind/symbolName`` exists.
+    enum Change {
+        /// What happened to a cell since the baseline. Style-only changes are deliberately absent:
+        /// they are not tinted and not counted, only mentioned (plan §1.3).
+        public enum Kind: String, Sendable, Hashable, CaseIterable, Codable {
+            case added
+            case modified
+            case removed
+
+            /// The prefix on the chip: `+12 ~5 −3`. A real minus sign (U+2212), not a hyphen —
+            /// next to tabular figures a hyphen sits too high and too short to read as a sign.
+            public var glyph: String {
+                switch self {
+                case .added: "+"
+                case .modified: "~"
+                case .removed: "−"
+                }
+            }
+
+            public var symbolName: String {
+                switch self {
+                case .added: "plus.circle.fill"
+                case .modified: "pencil.circle.fill"
+                case .removed: "minus.circle.fill"
+                }
+            }
+
+            public var label: String {
+                switch self {
+                case .added: "Added"
+                case .modified: "Changed"
+                case .removed: "Removed"
+                }
+            }
+        }
+
+        /// The ink, as a value, for the contrast tests.
+        public static func inkValue(_ kind: Kind, _ context: AppearanceContext) -> RGBA {
+            switch kind {
+            case .added: context.pick(
+                    light: Palette.changeAddedInkLight,
+                    dark: Palette.changeAddedInkDark
+                )
+            case .modified: context.pick(
+                    light: Palette.changeModifiedInkLight,
+                    dark: Palette.changeModifiedInkDark
+                )
+            case .removed: context.pick(
+                    light: Palette.changeRemovedInkLight,
+                    dark: Palette.changeRemovedInkDark
+                )
+            }
+        }
+
+        /// The wash, as a value. Opaque — the opacity is applied by whoever draws it, so the
+        /// renderer can composite once instead of carrying a layer.
+        public static func tintValue(_ kind: Kind, _ context: AppearanceContext) -> RGBA {
+            switch kind {
+            case .added: context.pick(
+                    light: Palette.changeAddedTintLight,
+                    dark: Palette.changeAddedTintDark
+                )
+            case .modified: context.pick(
+                    light: Palette.changeModifiedTintLight,
+                    dark: Palette.changeModifiedTintDark
+                )
+            case .removed: context.pick(
+                    light: Palette.changeRemovedTintLight,
+                    dark: Palette.changeRemovedTintDark
+                )
+            }
+        }
+
+        public static func ink(_ kind: Kind, _ context: AppearanceContext) -> Color {
+            inkValue(kind, context).color
+        }
+
+        public static func tint(_ kind: Kind, _ context: AppearanceContext) -> Color {
+            tintValue(kind, context).color
+        }
+
+        /// "This cell is new."
+        public static func addedInk(_ context: AppearanceContext) -> Color { ink(.added, context) }
+        /// "This cell's value or formula moved."
+        public static func modifiedInk(_ context: AppearanceContext) -> Color { ink(.modified, context) }
+        /// "This cell is gone."
+        public static func removedInk(_ context: AppearanceContext) -> Color { ink(.removed, context) }
+
+        /// How strongly a changed cell is washed.
+        ///
+        /// 0.14 is the number the whole feature hangs on. A standing tint is not a flash: it is on
+        /// screen for as long as the user goes without setting a checkpoint, which can be a whole
+        /// afternoon, and it sits *under text they are trying to read*. At 0.25 a column of
+        /// modified cells is a stripe of orange you cannot look past; at 0.08 you cannot tell a
+        /// changed cell from an unchanged one without hunting. 0.14 is where the wash is findable
+        /// in peripheral vision and the number on top of it is still black on near-white.
+        public static func cellTintOpacity(_ context: AppearanceContext) -> Double {
+            context.increaseContrast ? 0.20 : 0.14
+        }
+
+        /// The band across a wholly inserted row or column. Half the cell wash, because a band is
+        /// hundreds of points wide and carries its meaning by *extent* rather than by strength —
+        /// at cell strength a single inserted row repaints the whole viewport.
+        public static func bandTintOpacity(_ context: AppearanceContext) -> Double {
+            context.increaseContrast ? 0.11 : 0.07
+        }
+    }
+}
+
 // MARK: - Solid surfaces
 
 public extension DS {

@@ -84,6 +84,28 @@ public struct GridTheme: Sendable, Hashable {
     public var changeMarker: RGBA
     public var changeFlashDuration: TimeInterval
 
+    // MARK: Change tracking
+
+    // The standing tints, as opposed to the flash above. Two different facts drawn on the same
+    // cell: the flash is *news* — this changed a moment ago — and decays over six seconds; these
+    // are *state* — this differs from the baseline you chose — and stay until the baseline moves.
+    // The renderer draws them under the flash so a fresh change still reads as fresh.
+    //
+    // Opaque, with the opacity carried separately, because the renderer composites them itself and
+    // wants one `CGColor` per hue rather than one per hue per strength.
+
+    /// A cell that did not exist at the baseline.
+    public var changeAddedTint: RGBA
+    /// A cell whose value or formula moved. Style-only changes are not tinted at all.
+    public var changeModifiedTint: RGBA
+    /// A cell that is gone.
+    public var changeRemovedTint: RGBA
+    /// How strongly a changed cell is washed. See ``DS/Change/cellTintOpacity(_:)`` for why 0.14.
+    public var changeTintOpacity: Double
+    /// The band across a wholly inserted row or column — half the cell wash, because a band
+    /// carries its meaning by extent rather than by strength.
+    public var changeBandOpacity: Double
+
     // MARK: The in-cell editor
 
     public var editorBackground: RGBA
@@ -192,6 +214,11 @@ public struct GridTheme: Sendable, Hashable {
             changeFlashFill: accent.opacity(contrast ? 0.28 : 0.20),
             changeMarker: accent,
             changeFlashDuration: DS.Motion.changeFlashDuration,
+            changeAddedTint: DS.Change.tintValue(.added, context),
+            changeModifiedTint: DS.Change.tintValue(.modified, context),
+            changeRemovedTint: DS.Change.tintValue(.removed, context),
+            changeTintOpacity: DS.Change.cellTintOpacity(context),
+            changeBandOpacity: DS.Change.bandTintOpacity(context),
             editorBackground: canvas,
             editorStroke: accent,
             editorInk: context.pick(light: Palette.inkLight, dark: Palette.inkDark),
@@ -227,6 +254,8 @@ public struct GridTheme: Sendable, Hashable {
         fillHandleSize: CGFloat, fillHandleFill: RGBA, fillHandleStroke: RGBA,
         referenceStroke: RGBA,
         changeFlashFill: RGBA, changeMarker: RGBA, changeFlashDuration: TimeInterval,
+        changeAddedTint: RGBA, changeModifiedTint: RGBA, changeRemovedTint: RGBA,
+        changeTintOpacity: Double, changeBandOpacity: Double,
         editorBackground: RGBA, editorStroke: RGBA, editorInk: RGBA, editorCornerRadius: CGFloat,
         defaultRowHeight: CGFloat, defaultColumnWidth: CGFloat, headerRowHeight: CGFloat,
         headerColumnWidth: CGFloat, cellPadding: CGFloat, cellFontName: String?,
@@ -256,6 +285,11 @@ public struct GridTheme: Sendable, Hashable {
         self.changeFlashFill = changeFlashFill
         self.changeMarker = changeMarker
         self.changeFlashDuration = changeFlashDuration
+        self.changeAddedTint = changeAddedTint
+        self.changeModifiedTint = changeModifiedTint
+        self.changeRemovedTint = changeRemovedTint
+        self.changeTintOpacity = changeTintOpacity
+        self.changeBandOpacity = changeBandOpacity
         self.editorBackground = editorBackground
         self.editorStroke = editorStroke
         self.editorInk = editorInk
@@ -312,6 +346,11 @@ public struct GridTheme: Sendable, Hashable {
             (cellInk, "cellInk"), (cellInkSecondary, "cellInkSecondary"),
             (cellInkFormula, "cellInkFormula"), (cellInkError, "cellInkError"),
             (cellInkStale, "cellInkStale"), (editorBackground, "editorBackground"),
+            // The change tints are opaque *hues*; their strength is `changeTintOpacity` and
+            // `changeBandOpacity`. A tint that arrived here already carrying an alpha would be
+            // washed twice and land at 2% — visible in no appearance and in no test.
+            (changeAddedTint, "changeAddedTint"), (changeModifiedTint, "changeModifiedTint"),
+            (changeRemovedTint, "changeRemovedTint"),
         ] {
             requireOpaque(color, name)
         }
@@ -332,6 +371,31 @@ public struct GridTheme: Sendable, Hashable {
         requireContrast(
             cellInk, on: changeFlashFill.composited(over: canvas), "cellInk over changeFlashFill", min: 4.5
         )
+
+        // …and through a standing change tint, which is the harder case: the flash is gone in six
+        // seconds, but a tinted cell can be tinted for an afternoon. This is the assertion the low
+        // default opacity exists to satisfy — if a future palette edit makes the wash louder, this
+        // is what says so.
+        for (tint, name) in [
+            (changeAddedTint, "changeAddedTint"),
+            (changeModifiedTint, "changeModifiedTint"),
+            (changeRemovedTint, "changeRemovedTint"),
+        ] {
+            let wash = tint.opacity(changeTintOpacity).composited(over: canvas)
+            requireContrast(cellInk, on: wash, "cellInk over \(name)", min: 4.5)
+            // The other half: a wash nobody can see is not a wash. 1.05:1 is well under the
+            // gridline floor on purpose — a tint is an area, and an area needs far less contrast
+            // than a one-point line to register.
+            let visibility = wash.contrastRatio(against: canvas)
+            if visibility < 1.05 {
+                problems.append(
+                    Problem(
+                        token: name,
+                        detail: String(format: "%.3f:1 against the canvas — invisible as a wash", visibility)
+                    )
+                )
+            }
+        }
 
         // Lines are not text; 1.2:1 is the floor at which a one-point line is still findable.
         for (line, name) in [(gridline, "gridline"), (gridlineMajor, "gridlineMajor")] {
@@ -363,6 +427,8 @@ public struct GridTheme: Sendable, Hashable {
             ("fillHandleFill", fillHandleFill), ("fillHandleStroke", fillHandleStroke),
             ("referenceStroke", referenceStroke),
             ("changeFlashFill", changeFlashFill), ("changeMarker", changeMarker),
+            ("changeAddedTint", changeAddedTint), ("changeModifiedTint", changeModifiedTint),
+            ("changeRemovedTint", changeRemovedTint),
             ("editorBackground", editorBackground), ("editorStroke", editorStroke),
             ("editorInk", editorInk),
         ]
@@ -370,6 +436,8 @@ public struct GridTheme: Sendable, Hashable {
             ("selectionStrokeWidth", String(format: "%.1f", selectionStrokeWidth)),
             ("fillHandleSize", String(format: "%.1f", fillHandleSize)),
             ("changeFlashDuration", String(format: "%.1f", changeFlashDuration)),
+            ("changeTintOpacity", String(format: "%.2f", changeTintOpacity)),
+            ("changeBandOpacity", String(format: "%.2f", changeBandOpacity)),
             ("editorCornerRadius", String(format: "%.1f", editorCornerRadius)),
             ("defaultRowHeight", String(format: "%.1f", defaultRowHeight)),
             ("defaultColumnWidth", String(format: "%.1f", defaultColumnWidth)),

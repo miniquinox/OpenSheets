@@ -48,12 +48,17 @@ GridTheme
   referenceStroke          #007AFFB3
   changeFlashFill          #007AFF33
   changeMarker             #007AFF
+  changeAddedTint          #30D158
+  changeModifiedTint       #FFB02E
+  changeRemovedTint        #FF6369
   editorBackground         #1C1C1E
   editorStroke             #007AFF
   editorInk                #F5F5F7
   selectionStrokeWidth     2.0
   fillHandleSize           6.0
   changeFlashDuration      6.0
+  changeTintOpacity        0.14
+  changeBandOpacity        0.07
   editorCornerRadius       6.0
   defaultRowHeight         24.0
   defaultColumnWidth       92.0

@@ -210,6 +210,142 @@ struct PaletteContrastTests {
         #expect(connected.contrastRatio(against: surface) >= Self.largeTextMinimum)
     }
 
+    @Test("Change inks are readable on every chrome surface", arguments: AppearanceContext.snapshotMatrix)
+    func changeInksAreReadable(_ context: AppearanceContext) {
+        // The chip's `+12 ~5 −3` and the panel's row glyphs are **text**, and they land on whatever
+        // the title bar and the popover resolve to. Under reduce-transparency that is exactly one
+        // of these two opaque tokens, which makes this the case the numbers were chosen against;
+        // with real glass the lens is lighter than the solid in light mode and darker in dark, so
+        // the solid is the harder backdrop in both. Asserting the harder one is the honest test.
+        let surfaces: [(String, RGBA)] = [
+            ("chrome", DS.Surface.chromeColor(context)),
+            ("floating", DS.Surface.floatingColor(context)),
+        ]
+        for kind in DS.Change.Kind.allCases {
+            let ink = DS.Change.inkValue(kind, context)
+            for (name, surface) in surfaces {
+                let ratio = ink.contrastRatio(against: surface)
+                #expect(
+                    ratio >= Self.bodyTextMinimum,
+                    """
+                    \(context.snapshotName): the \(kind.rawValue) ink \(ink.hexString) is \
+                    \(String(format: "%.2f", ratio)):1 on the \(name) surface \
+                    (\(surface.hexString)). A diff count is text; the tint is what gets to be quiet.
+                    """
+                )
+            }
+        }
+
+        // Three inks that measure the same are one ink drawn three times. The chip puts all three
+        // side by side, so they have to separate from each other as well as from the surface.
+        let inks = DS.Change.Kind.allCases.map { DS.Change.inkValue($0, context) }
+        #expect(Set(inks.map(\.hexString)).count == inks.count)
+    }
+
+    @Test("A change tint never costs the cell its text", arguments: AppearanceContext.snapshotMatrix)
+    func changeTintsKeepCellTextReadable(_ context: AppearanceContext) {
+        // The whole reason the wash is only 14%. Unlike the change *flash*, which is gone in six
+        // seconds, a standing tint sits under a number for as long as the user goes without setting
+        // a checkpoint — an afternoon, in the case this feature was built for. If a palette edit
+        // ever makes the wash louder, this is the assertion that says so.
+        let theme = GridTheme.resolved(context)
+        let tints: [(String, RGBA)] = [
+            ("added", theme.changeAddedTint),
+            ("modified", theme.changeModifiedTint),
+            ("removed", theme.changeRemovedTint),
+        ]
+        for (name, tint) in tints {
+            for (label, opacity) in [
+                ("cell", theme.changeTintOpacity),
+                ("band", theme.changeBandOpacity),
+                // A selected cell that also changed is the most important cell on screen. It is
+                // wearing both washes at once, and it is still the one you are trying to read.
+                ("cell under selection", theme.changeTintOpacity),
+            ] {
+                var backdrop = tint.opacity(opacity).composited(over: theme.canvas)
+                if label.hasSuffix("selection") {
+                    backdrop = theme.selectionFill.composited(over: backdrop)
+                }
+                let ratio = theme.cellInk.contrastRatio(against: backdrop)
+                #expect(
+                    ratio >= Self.bodyTextMinimum,
+                    """
+                    \(context.snapshotName): cell text over the \(name) \(label) wash \
+                    (\(backdrop.hexString)) is \(String(format: "%.2f", ratio)):1. The tint \
+                    annotates the number; it does not get to hide it.
+                    """
+                )
+            }
+        }
+    }
+
+    @Test("A change tint is quiet, but it is not invisible", arguments: AppearanceContext.snapshotMatrix)
+    func changeTintsAreVisible(_ context: AppearanceContext) {
+        // The other half of the 14%. There is no WCAG number for "an area tint you can notice out
+        // of the corner of your eye", so this floor is set against the thing the palette already
+        // measures: a gridline clears 1.4:1 at one point wide, and a wash covering a whole cell
+        // needs far less than a line to register. Below 1.05 it is not quiet, it is absent — which
+        // is the failure that made the gridlines get re-authored (see `hairlineMinimum`).
+        let theme = GridTheme.resolved(context)
+        let tints: [(String, RGBA)] = [
+            ("added", theme.changeAddedTint),
+            ("modified", theme.changeModifiedTint),
+            ("removed", theme.changeRemovedTint),
+        ]
+        for (name, tint) in tints {
+            let wash = tint.opacity(theme.changeTintOpacity).composited(over: theme.canvas)
+            let ratio = wash.contrastRatio(against: theme.canvas)
+            #expect(
+                ratio >= 1.05,
+                """
+                \(context.snapshotName): the \(name) tint composites to \(wash.hexString), which is \
+                \(String(format: "%.3f", ratio)):1 against the canvas — you cannot tell a changed \
+                cell from an unchanged one.
+                """
+            )
+        }
+
+        // Three washes that land on the same luminance are one wash. They separate by hue, so this
+        // compares the composited pixels rather than the ratios.
+        let washes = tints.map { $0.1.opacity(theme.changeTintOpacity).composited(over: theme.canvas) }
+        #expect(Set(washes.map(\.hexString)).count == washes.count)
+    }
+
+    @Test("Increase-contrast strengthens the change wash", arguments: [GlassColorScheme.light, .dark])
+    func changeTintsRespondToIncreaseContrast(_ scheme: GlassColorScheme) {
+        let plain = GridTheme.resolved(AppearanceContext(colorScheme: scheme))
+        let bold = GridTheme.resolved(AppearanceContext(colorScheme: scheme, increaseContrast: true))
+
+        #expect(bold.changeTintOpacity > plain.changeTintOpacity, "\(scheme): the cell wash did not")
+        #expect(bold.changeBandOpacity > plain.changeBandOpacity, "\(scheme): the band did not")
+        // The hue does not move — these are content annotations, not chrome, and someone who asked
+        // for more contrast asked for a stronger signal, not a different vocabulary.
+        #expect(bold.changeAddedTint == plain.changeAddedTint)
+        #expect(bold.changeModifiedTint == plain.changeModifiedTint)
+        #expect(bold.changeRemovedTint == plain.changeRemovedTint)
+        // A band is always quieter than a cell: it is hundreds of points wide and carries its
+        // meaning by extent. If that inverts, one inserted row repaints the viewport.
+        #expect(bold.changeBandOpacity < bold.changeTintOpacity)
+        #expect(plain.changeBandOpacity < plain.changeTintOpacity)
+    }
+
+    @Test("The change tints are hues, not washes — the strength is carried separately")
+    func changeTintsAreOpaqueHues() {
+        // A tint that arrived carrying its own alpha would be washed twice by the renderer and land
+        // at 2%: visible in no appearance, and caught by no other test because both halves would be
+        // individually reasonable.
+        for context in AppearanceContext.snapshotMatrix {
+            let theme = GridTheme.resolved(context)
+            for (name, tint) in [
+                ("changeAddedTint", theme.changeAddedTint),
+                ("changeModifiedTint", theme.changeModifiedTint),
+                ("changeRemovedTint", theme.changeRemovedTint),
+            ] {
+                #expect(tint.alpha == 1, "\(context.snapshotName): \(name) is \(tint.hexString)")
+            }
+        }
+    }
+
     @Test("Sheet-tab swatches read as dots on both chrome surfaces", arguments: AppearanceContext.snapshotMatrix)
     func tabSwatchesAreDistinguishable(_ context: AppearanceContext) {
         let surface = context.pick(light: Palette.solidChromeLight, dark: Palette.solidChromeDark)

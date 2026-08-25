@@ -27,6 +27,132 @@ struct PreviewStage<Content: View>: View {
     }
 }
 
+/// Fixtures for the file-tab strip and the change-tracking pair.
+///
+/// Separate from ``Mock`` because that one tells a single consistent story — one refresh, 42 cells,
+/// on the sheet called Q4 — and `ComponentModelTests` asserts it stays consistent. These are
+/// deliberately *inconsistent* with each other: each one exists to put a component in one specific
+/// state that is otherwise hard to reach, including several that only occur when something has gone
+/// wrong.
+enum TabsMock {
+    static let single = FileTabStripState(
+        tabs: [
+            FileTabItem(id: "1", title: "budget.xlsx", fullPath: "/Users/q/work/budget.xlsx"),
+        ],
+        activeID: "1"
+    )
+
+    /// Every status at once, which never happens in life and is the only way to review them.
+    static let everyStatus = FileTabStripState(
+        tabs: [
+            FileTabItem(id: "1", title: "budget.xlsx", fullPath: "/Users/q/work/budget.xlsx"),
+            FileTabItem(
+                id: "2", title: "forecast.csv", fullPath: "/Users/q/models/forecast.csv",
+                status: .agentChanged
+            ),
+            FileTabItem(
+                id: "3", title: "payroll.xlsx", fullPath: "/Users/q/work/payroll.xlsx",
+                status: .unsaved
+            ),
+            FileTabItem(
+                id: "4", title: "ledger.xlsx", fullPath: "/Users/q/work/ledger.xlsx",
+                status: .conflict
+            ),
+            FileTabItem(
+                id: "5", title: "gone.csv", fullPath: "/Users/q/work/gone.csv",
+                status: .problem
+            ),
+            FileTabItem(
+                id: "6", title: "opening.xlsx", fullPath: "/Users/q/work/opening.xlsx",
+                status: .loading
+            ),
+        ],
+        activeID: "2"
+    )
+
+    /// Two files with one name. The disambiguator appears on **both**, because a folder name on
+    /// one of them would read as a property of that file rather than as a distinction.
+    static let collision = FileTabStripState(
+        tabs: [
+            FileTabItem(
+                id: "1", title: "data.csv", disambiguator: "work",
+                fullPath: "/Users/q/work/data.csv"
+            ),
+            FileTabItem(
+                id: "2", title: "data.csv", disambiguator: "models",
+                fullPath: "/Users/q/models/data.csv", status: .agentChanged
+            ),
+            FileTabItem(id: "3", title: "notes.csv", fullPath: "/Users/q/work/notes.csv"),
+        ],
+        activeID: "1"
+    )
+
+    static let many = FileTabStripState(
+        tabs: (1 ... 12).map { index in
+            FileTabItem(
+                id: "\(index)",
+                title: "quarter-\(index).xlsx",
+                fullPath: "/Users/q/work/quarter-\(index).xlsx",
+                status: index == 4 ? .agentChanged : .none
+            )
+        },
+        activeID: "4"
+    )
+
+    static let counts = ChangeTrackingChipState(added: 12, modified: 5, removed: 3)
+
+    static let truncatedCounts = ChangeTrackingChipState(
+        added: 500, modified: 128, removed: 4, isTruncated: true
+    )
+
+    static let panel = ChangeTrackingPanelState(
+        chip: counts,
+        baselineLabel: "Since opened · 09:41",
+        styleOnlyCount: 7,
+        sections: [
+            ChangeTrackingPanelState.Section(
+                id: "Q4", sheetName: "Q4",
+                rows: [
+                    .init(id: "Q4!D2", sheetName: "Q4", refA1: "D2", summary: "120 → 129.6", kind: .modified),
+                    .init(id: "Q4!D3", sheetName: "Q4", refA1: "D3", summary: "98 → 105.8", kind: .modified),
+                    .init(id: "Q4!E7", sheetName: "Q4", refA1: "E7", summary: "= SUM(D2:D6)", kind: .added),
+                    .init(
+                        id: "structural-Q4-rows-5", sheetName: "Q4",
+                        summary: "inserted 1 row at 5", kind: .structural
+                    ),
+                ],
+                omittedCount: 3
+            ),
+            ChangeTrackingPanelState.Section(
+                id: "Summary", sheetName: "Summary",
+                rows: [
+                    .init(id: "Summary!B4", sheetName: "Summary", refA1: "B4", summary: "gone", kind: .removed),
+                ]
+            ),
+        ]
+    )
+
+    static let panelWithGit = ChangeTrackingPanelState(
+        chip: counts,
+        baselineLabel: "Since a1b2c3d",
+        highlightsEnabled: false,
+        sources: [.asOpened, .checkpoint, .gitHEAD],
+        activeSource: .gitHEAD,
+        sections: panel.sections
+    )
+
+    static let panelAfterCheckpoint = ChangeTrackingPanelState(
+        chip: ChangeTrackingChipState(),
+        baselineLabel: "Since checkpoint · 12:03",
+        activeSource: .checkpoint
+    )
+
+    static let panelTruncated = ChangeTrackingPanelState(
+        chip: truncatedCounts,
+        baselineLabel: "Since opened · 09:41"
+    )
+}
+
 #Preview("Toolbar · light") {
     PreviewStage(context: .light, height: 200) { context in
         ToolbarSurface(state: Mock.toolbar, context: context) { _ in }
@@ -72,6 +198,84 @@ struct PreviewStage<Content: View>: View {
 #Preview("Sheet tabs · dark") {
     PreviewStage(context: .dark, height: 180) { context in
         SheetTabBar(state: Mock.tabBar, context: context) { _ in }
+    }
+}
+
+#Preview("File tabs · light") {
+    PreviewStage(context: .light, height: 180) { context in
+        FileTabStrip(state: TabsMock.everyStatus, context: context) { _ in }
+    }
+}
+
+#Preview("File tabs · dark") {
+    PreviewStage(context: .dark, height: 180) { context in
+        FileTabStrip(state: TabsMock.everyStatus, context: context) { _ in }
+    }
+}
+
+#Preview("File tabs · one file") {
+    // The everyday shape, and the one the strip has to look deliberate in: a single tab should
+    // read as "this is the file", not as a control waiting for more of itself.
+    PreviewStage(context: .light, height: 180) { context in
+        FileTabStrip(state: TabsMock.single, context: context) { _ in }
+    }
+}
+
+#Preview("File tabs · duplicate names") {
+    PreviewStage(context: .light, height: 180) { context in
+        FileTabStrip(state: TabsMock.collision, context: context) { _ in }
+    }
+}
+
+#Preview("File tabs · overflow") {
+    // Narrow on purpose. This is the case the content-width cap exists for: the strip hugs its
+    // tabs until they do not fit, and only then starts scrolling.
+    PreviewStage(context: .dark, width: 520, height: 180) { context in
+        FileTabStrip(state: TabsMock.many, context: context) { _ in }
+    }
+}
+
+#Preview("Changes chip · light") {
+    PreviewStage(context: .light, height: 160) { context in
+        ChangeTrackingChip(state: TabsMock.counts, context: context) {}
+    }
+}
+
+#Preview("Changes chip · dark") {
+    PreviewStage(context: .dark, height: 160) { context in
+        ChangeTrackingChip(state: TabsMock.truncatedCounts, context: context) {}
+    }
+}
+
+#Preview("Changes panel · light") {
+    PreviewStage(context: .light, height: 620) { context in
+        ChangeTrackingPanel(state: TabsMock.panel, context: context) { _ in }
+    }
+}
+
+#Preview("Changes panel · dark") {
+    PreviewStage(context: .dark, height: 620) { context in
+        ChangeTrackingPanel(state: TabsMock.panel, context: context) { _ in }
+    }
+}
+
+#Preview("Changes panel · git offered") {
+    PreviewStage(context: .light, height: 620) { context in
+        ChangeTrackingPanel(state: TabsMock.panelWithGit, context: context) { _ in }
+    }
+}
+
+#Preview("Changes panel · nothing since checkpoint") {
+    // What the panel looks like immediately after Set Checkpoint — the reward state, and the one
+    // that is easiest to leave looking like an error.
+    PreviewStage(context: .dark, height: 420) { context in
+        ChangeTrackingPanel(state: TabsMock.panelAfterCheckpoint, context: context) { _ in }
+    }
+}
+
+#Preview("Changes panel · truncated") {
+    PreviewStage(context: .light, height: 420) { context in
+        ChangeTrackingPanel(state: TabsMock.panelTruncated, context: context) { _ in }
     }
 }
 

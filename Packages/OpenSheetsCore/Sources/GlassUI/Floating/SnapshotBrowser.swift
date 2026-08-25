@@ -8,12 +8,20 @@ public enum SnapshotReason: String, Sendable, Hashable, CaseIterable, Codable {
     case preRefresh
     case preSave
     case manual
+    /// The user said "everything is compared against here from now on".
+    ///
+    /// Mechanically a manual snapshot, and it is listed as its own reason for one reason: it is the
+    /// only restore point in the list the user *chose the meaning of*. "Manual" among a dozen
+    /// automatic ones says somebody pressed a button; "Checkpoint" says this is the state they
+    /// declared correct, which is exactly what you are looking for when you open this browser.
+    case checkpoint
 
     public var label: String {
         switch self {
         case .preRefresh: "Before refresh"
         case .preSave: "Before save"
         case .manual: "Manual"
+        case .checkpoint: "Checkpoint"
         }
     }
 
@@ -22,6 +30,7 @@ public enum SnapshotReason: String, Sendable, Hashable, CaseIterable, Codable {
         case .preRefresh: "arrow.clockwise"
         case .preSave: "square.and.arrow.down"
         case .manual: "bookmark"
+        case .checkpoint: "flag"
         }
     }
 }
