@@ -213,6 +213,29 @@ public final class TabsModel {
 
 Every mutation that changes `tabs`/`activeTabID` calls `persist(persisted)`.
 
+**Compile trap, measured by T1 on Swift 6.3.3 — read before wiring this up.** A closure
+literal's *thrown* type is not inferred from the parameter it is passed to, so the natural
+call site does not compile:
+
+```swift
+TabsModel(open: { try await app.openDocument(at: $0, consent: $1) }, …)
+// error: invalid conversion of thrown error type 'any Error' to 'SheetError'
+```
+
+A capture list or a type annotation on a local does not rescue it either. Spell the closure
+signature out in full — this is the only form that works, and `throws(SheetError)` stays
+because `Phase.failed` carries exactly that type:
+
+```swift
+open: { (url: URL, consent: WorkspaceConsent) async throws(SheetError) -> DocumentModel in
+    try await app.openDocument(at: url, consent: consent)
+}
+```
+
+Two more behaviours C1 left unstated, now decided: `activateNext`/`activatePrevious` **wrap
+around** (VS Code-style), and **phase changes do not persist** — only membership and activation
+do, which is what keeps the persist call count assertable.
+
 **C2 — DocumentModel baseline API (DocumentCore, additions).** Owner: T2. Consumers: T6, T7.
 All plain data — no GlassUI or GridKit types, so wave-1 tasks never depend on each other's code.
 
