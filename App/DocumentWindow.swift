@@ -7,7 +7,25 @@ import SheetModel
 import SheetStore
 import SwiftUI
 
-/// The document window.
+/// The workspace window: one window, a tab per open file.
+///
+/// # Why there is one window and not one per file
+///
+/// There used to be one window per file, and everything in this file took a `DocumentModel`
+/// directly. The product this app is for — watching a file an agent is editing — turned that into
+/// a screen full of near-identical windows the moment more than one file was involved, with no
+/// answer to "which `data.csv` is that one" short of dragging windows apart to read their titles.
+///
+/// So files are now **tabs** (``DocumentCore/TabsModel``) in a single window, and the tab strip
+/// lives on the traffic-light line where it costs no vertical space at all. Nothing below the tab
+/// changed: a tab owns a `DocumentModel` exactly as a window used to, background tabs keep their
+/// watchers, and the sync machine has no idea any of this happened. What moved is *lifetime* —
+/// the window's `onDisappear` used to close the document, and now ``DocumentCore/TabsModel`` does
+/// (see ``releaseWorkspace()`` for the one case where this file still has to).
+///
+/// Explicitly out of scope for v1 (§1.1): dragging a tab out into its own window, more than one
+/// workspace window, and native `NSWindow` tabbing — native tabs cannot carry a status dot or a
+/// provenance tooltip, and they would stack a second bar under the custom title row.
 ///
 /// # The layout rule this file exists to enforce
 ///
@@ -21,7 +39,7 @@ import SwiftUI
 ///
 /// ```
 /// ┌═══════════════════════════════════════════════════════════┐  ═ one material, full width,
-/// ║ ⦿⦿⦿   name · sync chip                    sidebar toggle  ║    from the window's top edge
+/// ║ ⦿⦿⦿  ▤  budget.xlsx │ data.csv — work    +12 ~5 ·sync· ▤  ║    from the window's top edge
 /// ║ toolbar                                                   ║
 /// ║ formula bar                                               ║
 /// ╞══════════════┬════════════════════════════════════════════╡
@@ -43,11 +61,448 @@ import SwiftUI
 /// the band's height, which left the top-left corner belonging to nothing; that corner is exactly
 /// where the wallpaper showed through. Now the sidebar's material reaches the top edge and the
 /// band's material sits on top of it, so the two meet with no seam and no gap.
+struct DocumentWindow: View {
+    let tabs: TabsModel
+    let app: AppModel
+    let appearance: AccessibilityAppearance
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
+
+    /// Where the traffic lights are, measured. See ``TitleBarMetrics``.
+    @State private var titleBarMetrics: TitleBarMetrics = .unmeasured
+    @State private var isPresentingChanges = false
+    @State private var closeRequest: TabCloseRequest?
+
+    /// What ``WorkspaceState/status(of:asOf:)`` measures "refreshed in the last six seconds"
+    /// against, and the whole mechanism by which that window ever *lapses*.
+    ///
+    /// A dot that appears when `lastRefreshAt` is set would never go away on its own: nothing
+    /// else changes six seconds later, so nothing re-evaluates this view. Rather than tick at
+    /// 1 Hz forever in an app that otherwise idles, the `.task(id:)` below sleeps exactly once
+    /// per refresh and then stamps this — which both re-evaluates the strip and, because the new
+    /// stamp is later than the refresh, is the reason the dot goes out.
+    @State private var agentDotClock = Date()
+
+    private var context: AppearanceContext { appearance.context(for: colorScheme) }
+
+    var body: some View {
+        content
+            .frame(minWidth: DS.Metrics.minimumWindowWidth, minHeight: DS.Metrics.minimumWindowHeight)
+            .glassAppearance(context)
+            .background(WindowConfigurator())
+            // The menu bar talks to whichever window is in front. `document` is the active tab's
+            // model — so ⌘S and ⌘Z reach the file the user is looking at rather than the file the
+            // window was opened with — and `workspaceTabs` is what ⌘1…⌘9 and ⇧⌘] steer.
+            .focusedSceneValue(\.document, tabs.activeDocument)
+            .focusedSceneValue(\.workspaceTabs, tabs)
+            .navigationTitle(tabs.activeDocument?.url.lastPathComponent ?? "OpenSheets")
+            .onAppear {
+                app.refreshMCPStatus()
+                OpenActions.closeActiveTab = { closeActiveTab() }
+                OpenActions.closeWorkspaceWindow = { requestCloseWindow() }
+            }
+            .onDisappear { releaseWorkspace() }
+            .task(id: newestRefreshAt) { await lapseAgentDot() }
+            .alert(
+                closeRequest?.title ?? "",
+                isPresented: Binding(
+                    get: { closeRequest != nil },
+                    set: { if !$0 { closeRequest = nil } }
+                ),
+                presenting: closeRequest
+            ) { request in
+                Button("Save") { save(request) }
+                Button("Discard", role: .destructive) { complete(request) }
+                Button("Cancel", role: .cancel) { closeRequest = nil }
+            } message: { request in
+                Text(request.message)
+            }
+    }
+
+    /// What the active tab has to show. Loading and failure are states of the **tab**, not
+    /// alerts (§1.2): the user asked for this file here, so the answer belongs here, and the tab
+    /// strip stays on screen and stays clickable throughout.
+    @ViewBuilder
+    private var content: some View {
+        switch activeTab?.phase {
+        case let .some(.ready(model)):
+            DocumentPane(model: model, app: app, context: context) { titleBar }
+        case .some(.loading):
+            plane {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        case let .some(.failed(error)):
+            plane {
+                EmptyStateView(
+                    model: .unreadable(detail: "\(error.code): \(error.message)"),
+                    context: context
+                ) { _ in }
+            }
+        case .none:
+            // Closing the last tab closes the window (§1.2 step 9), so this is one frame on the
+            // way out rather than a state anybody sits in. It still has to draw the plane: an
+            // unpainted window is a hole onto the desktop, not an empty window.
+            plane { Color.clear }
+        }
+    }
+
+    /// The title row over the opaque plane, for the states that have no document to build a
+    /// chrome band from.
+    private func plane(@ViewBuilder _ content: () -> some View) -> some View {
+        VStack(spacing: 0) {
+            titleBar
+            content()
+        }
+        .gridPlane(context)
+    }
+
+    private var activeTab: TabsModel.Tab? {
+        guard let id = tabs.activeTabID else { return nil }
+        return tabs.tabs.first { $0.id == id }
+    }
+
+    // MARK: - The title row
+
+    /// The window's top row — **on the traffic-light line**, not below it.
+    ///
+    /// # Why it is not its own band
+    ///
+    /// It used to be a 38pt row underneath the titlebar, which left the traffic lights sitting
+    /// alone on an otherwise empty strip. That is two rows of chrome doing one row of work, and in
+    /// an app whose entire job is showing as many spreadsheet rows as possible it is the most
+    /// expensive kind of whitespace. Finder, Xcode, Safari and Notes all put real controls inline
+    /// beside the lights; this does the same, and the grid gets the height back.
+    ///
+    /// # The two things that make it work
+    ///
+    /// **The leading inset is measured.** ``TitleBarMetrics`` reads the zoom button's frame, so
+    /// the content clears the real buttons wherever the system puts them, and collapses to a plain
+    /// margin in full screen when they are gone.
+    ///
+    /// **The empty stretches still drag the window.** Everything here is either a control or a
+    /// `Spacer`, and the row draws no background of its own — the band behind it does. The metrics
+    /// reader returns `nil` from `hitTest`, and `Spacer` is not hit-testable, so a click on the
+    /// empty middle falls through to AppKit's titlebar and drags. Only the controls take the click.
+    ///
+    /// # Where the document's name went
+    ///
+    /// It used to sit here with a grey dot beside it for unsaved edits. The tab strip now says
+    /// both, per file, for every open file — repeating the active one in the middle of the row
+    /// would be the same fact twice, and it would be the half that yields first when the window
+    /// narrows. `navigationTitle` still carries the name for the Window menu and the proxy icon.
+    private var titleBar: some View {
+        HStack(spacing: DS.Space.s) {
+            Color.clear.frame(width: titleBarMetrics.leadingInset, height: DS.Stroke.hairline(context))
+
+            paneToggle(
+                systemImage: "sidebar.left",
+                help: "Show or hide the sidebar",
+                label: "Toggle sidebar"
+            ) { model in model.isSidebarVisible.toggle() }
+
+            FileTabStrip(state: tabStripState, context: context) { action in handle(action) }
+
+            Spacer(minLength: DS.Space.s)
+
+            // glass-lint: the changes chip and the sync chip are two separate statements — "what
+            // has changed since your baseline" and "where this file stands against disk" — and
+            // they must not be merged into one lens. Neither draws glass of its own; both are
+            // text on the band, exactly like `SyncStateChip` has always been.
+            changesChip
+            syncChip
+
+            paneToggle(
+                systemImage: "sidebar.right",
+                help: "Show or hide the inspector",
+                label: "Toggle inspector"
+            ) { model in model.isInspectorVisible.toggle() }
+        }
+        .padding(.trailing, DS.Space.m)
+        // Twice the measured centre line, so the row's own centre lands exactly on the buttons'.
+        .frame(height: titleBarMetrics.centreFromTop * 2)
+        .background(TitleBarMetricsReader { titleBarMetrics = $0 })
+        .accessibilityElement(children: .contain)
+    }
+
+    private func paneToggle(
+        systemImage: String,
+        help: String,
+        label: String,
+        perform: @escaping (DocumentModel) -> Void
+    ) -> some View {
+        Button {
+            guard let model = tabs.activeDocument else { return }
+            perform(model)
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: Self.titleGlyphSize, weight: .medium))
+                .foregroundStyle(DS.Chrome.secondary)
+                .frame(width: Self.titleButtonWidth, height: Self.titleButtonHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(label)
+        .disabled(tabs.activeDocument == nil)
+    }
+
+    @ViewBuilder
+    private var changesChip: some View {
+        if let model = tabs.activeDocument, let chip = WorkspaceState.chip(for: model) {
+            ChangeTrackingChip(state: chip, context: context) { isPresentingChanges = true }
+                .popover(isPresented: $isPresentingChanges, arrowEdge: .bottom) {
+                    ChangeTrackingPanel(state: WorkspaceState.panel(for: model), context: context) { action in
+                        handle(action, on: model)
+                    }
+                    .glassAppearance(context)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var syncChip: some View {
+        if let model = tabs.activeDocument {
+            SyncStateChip(state: chipState(for: model), context: context) {
+                switch model.syncState {
+                case .stale: Task { await model.refresh() }
+                case .conflict: model.showDiffPanel()
+                case .dirty: Task { await model.save() }
+                default: Task { await model.setAutoRefresh(!model.isWatching) }
+                }
+            }
+        }
+    }
+
+    private var tabStripState: FileTabStripState {
+        WorkspaceState.tabStrip(for: tabs, asOf: agentDotClock)
+    }
+
+    private func chipState(for model: DocumentModel) -> GlassUI.SyncState {
+        SyncPresentation.chip(
+            for: model.syncState,
+            pendingCellCount: model.changeSet?.notice.cellCount ?? 0,
+            localEditCount: model.localEditCount,
+            isWatching: model.isWatching,
+            readOnlyReason: model.workbook.meta.readOnlyReason
+        )
+    }
+
+    // MARK: - The accent dot's six seconds
+
+    /// The most recent refresh across **all** tabs, which is what the lapse timer keys on. One
+    /// timer for the window rather than one per tab: the newest refresh is always the last dot to
+    /// go out, so waiting for it covers every earlier one.
+    private var newestRefreshAt: Date? {
+        tabs.tabs.compactMap { tab -> Date? in
+            guard case let .ready(model) = tab.phase else { return nil }
+            return model.lastRefreshAt
+        }.max()
+    }
+
+    private func lapseAgentDot() async {
+        guard let newest = newestRefreshAt else { return }
+        let remaining = WorkspaceState.agentDotWindow - Date().timeIntervalSince(newest)
+        guard remaining > 0 else { return }
+        try? await Task.sleep(for: .seconds(remaining))
+        guard !Task.isCancelled else { return }
+        agentDotClock = Date()
+    }
+
+    // MARK: - Tab actions
+
+    private func handle(_ action: FileTabAction) {
+        switch action {
+        case let .select(id):
+            tabs.activate(id)
+        case let .close(id):
+            requestClose([id], closesWindow: false)
+        case let .closeOthers(id):
+            requestClose(tabs.tabs.map(\.id).filter { $0 != id }, closesWindow: false)
+        case let .revealInFinder(id):
+            guard let url = url(of: id) else { return }
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        case let .copyPath(id):
+            guard let url = url(of: id) else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(url.path(percentEncoded: false), forType: .string)
+        }
+    }
+
+    private func url(of id: String) -> URL? {
+        tabs.tabs.first { $0.id == id }?.url
+    }
+
+    private func model(of id: String) -> DocumentModel? {
+        guard let tab = tabs.tabs.first(where: { $0.id == id }),
+              case let .ready(model) = tab.phase
+        else { return nil }
+        return model
+    }
+
+    // MARK: - Closing
+
+    /// A close that may have to ask first.
+    ///
+    /// Carries the tabs rather than one tab because *Close Others* and *Close Window* are the same
+    /// question asked about a set, and asking it once for the set is the difference between one
+    /// panel and four.
+    private struct TabCloseRequest: Identifiable {
+        let id: String
+        let ids: [String]
+        /// File names with edits that are not on disk. Never empty — a request with nothing
+        /// unsaved never becomes a panel.
+        let unsaved: [String]
+        /// Whether saying yes closes the whole window. A window close deliberately leaves
+        /// `workspace.tabs` alone (§1.9), so relaunch brings the same tabs back; closing a tab
+        /// removes it from that set, which is why the two cannot share one code path.
+        let closesWindow: Bool
+
+        var title: String {
+            closesWindow
+                ? "Close the window with unsaved changes?"
+                : (unsaved.count == 1 ? "Close \u{201C}\(unsaved[0])\u{201D}?" : "Close \(unsaved.count) files?")
+        }
+
+        var message: String {
+            "Unsaved changes in \(unsaved.joined(separator: ", ")) will be lost unless you save."
+        }
+    }
+
+    private func requestClose(_ ids: [String], closesWindow: Bool) {
+        let unsaved = ids.compactMap { id -> String? in
+            guard let model = model(of: id), model.hasUnsavedEdits else { return nil }
+            return model.url.lastPathComponent
+        }
+        guard !unsaved.isEmpty else {
+            complete(ids: ids, closesWindow: closesWindow)
+            return
+        }
+        closeRequest = TabCloseRequest(
+            // Identity of the *question*, not of a tab: two different sets are two different
+            // panels, and re-asking about the same set should reuse the one on screen.
+            id: ids.joined(separator: "\n"),
+            ids: ids,
+            unsaved: unsaved,
+            closesWindow: closesWindow
+        )
+    }
+
+    private func save(_ request: TabCloseRequest) {
+        closeRequest = nil
+        Task {
+            for id in request.ids {
+                guard let model = model(of: id), model.hasUnsavedEdits else { continue }
+                // A failed save keeps everything open. The reason is already on screen through
+                // `lastError`, and closing anyway would be losing the work the save was for.
+                guard await model.save() else { return }
+            }
+            complete(ids: request.ids, closesWindow: request.closesWindow)
+        }
+    }
+
+    private func complete(_ request: TabCloseRequest) {
+        closeRequest = nil
+        complete(ids: request.ids, closesWindow: request.closesWindow)
+    }
+
+    private func complete(ids: [String], closesWindow: Bool) {
+        guard !closesWindow else {
+            dismiss()
+            return
+        }
+        for id in ids { tabs.close(id) }
+        // §1.2 step 9. A workspace window with no tabs is a window with nothing in it, and
+        // leaving it on screen would mean the launcher can never come back.
+        if tabs.isEmpty { dismiss() }
+    }
+
+    /// ⌘W. Reached from the menu bar through ``OpenActions/closeActiveTab``, because the confirm
+    /// panel belongs to a window and `DocumentCommands` is not one.
+    private func closeActiveTab() {
+        guard let id = tabs.activeTabID else { return }
+        requestClose([id], closesWindow: false)
+    }
+
+    /// ⌥⌘W.
+    private func requestCloseWindow() {
+        requestClose(tabs.tabs.map(\.id), closesWindow: true)
+    }
+
+    /// Window teardown.
+    ///
+    /// The models are released **without** going through ``DocumentCore/TabsModel/close(_:)``, and
+    /// that is the entire point: `close` persists the shrinking tab set, so a window close would
+    /// write an empty `workspace.tabs` and relaunch would come up with nothing (§1.9 wants the
+    /// opposite — the tabs come back). Releasing directly closes each session, which is what frees
+    /// the watcher's file descriptors, while the stored set stays exactly as it was.
+    ///
+    /// **The red button does not ask about unsaved edits**, and that is a deliberate limit rather
+    /// than an oversight: `NSWindow.delegate` belongs to SwiftUI here, so there is nowhere to
+    /// intercept the close and no way to cancel it once this runs. ⌥⌘W does ask. Windows closed
+    /// without prompting today too, so nothing regressed — a `windowShouldClose` interception is
+    /// a follow-up, and it is worth stating plainly rather than leaving as a surprise.
+    private func releaseWorkspace() {
+        OpenActions.workspaceClosed(tabs)
+        for tab in tabs.tabs {
+            guard case let .ready(model) = tab.phase else { continue }
+            app.closeDocument(model)
+        }
+    }
+
+    // MARK: - Change tracking
+
+    private func handle(_ action: ChangeTrackingAction, on model: DocumentModel) {
+        switch action {
+        case .setCheckpoint:
+            Task { await model.setCheckpoint() }
+        case let .choose(choice):
+            Task { await model.setBaselineSource(WorkspaceState.source(choice)) }
+        case .toggleHighlights:
+            model.isChangeHighlightingEnabled.toggle()
+        case let .reveal(sheetName, refA1):
+            reveal(sheetName: sheetName, refA1: refA1, in: model)
+        case .dismiss:
+            isPresentingChanges = false
+        }
+    }
+
+    /// §1.8: the sheet has to exist by name and the reference has to parse. Both can fail against
+    /// a diff that is a moment older than the workbook, and neither is worth a message — the row
+    /// simply does not jump.
+    private func reveal(sheetName: String, refA1: String, in model: DocumentModel) {
+        guard let sheet = model.workbook.sheet(named: sheetName),
+              let ref = CellRef(a1: refA1.uppercased())
+        else { return }
+        model.activeSheetID = sheet.id
+        model.selection.select(ref)
+        model.grid.scroll(to: ref)
+    }
+
+    // MARK: - Sizes
+
+    /// The title row's two chevron buttons. Not spacing — the size of a specific graphic — so it
+    /// is named here rather than taken off `DS.Space`.
+    private static let titleGlyphSize: CGFloat = 12
+    private static let titleButtonWidth: CGFloat = 24
+    private static let titleButtonHeight: CGFloat = 20
+}
+
+// MARK: - One tab's document
+
+/// Everything below the tab strip, for one document.
 ///
-/// Which surface gets which treatment is not a style choice — see ``GlassUI/ChromeVibrancy``.
-/// Edge bands take a **material** (`NSVisualEffectView`), because they border the desktop and a
-/// lens over the desktop is a window. Floating surfaces take **glass**, because the grid is behind
-/// them and a lens needs something to refract. The grid takes neither.
+/// This was `DocumentWindow`'s whole body before tabs, and it is unchanged in behaviour: the
+/// anchored band, the three columns, the palette, the staleness note, the snapshot browser and
+/// the save-as exporter. What it lost is lifetime — it no longer closes the document when it goes
+/// away, because a tab switch makes it go away and the background tab has to keep watching its
+/// file. ``DocumentCore/TabsModel`` owns that now.
+///
+/// The title row arrives as a closure rather than being built here, because it is the one part of
+/// the band that belongs to the *window* — the tab strip has to be the same strip whichever tab is
+/// in front, and it has to survive a tab that is still loading or has failed to open.
 ///
 /// # Anchored *and* refracting
 ///
@@ -67,15 +522,20 @@ import SwiftUI
 /// only their material does: their content is inset by the same measured height, so nothing is
 /// covered and there is no second lens stacked on the first.
 ///
+/// Which surface gets which treatment is not a style choice — see ``GlassUI/ChromeVibrancy``.
+/// Edge bands take a **material** (`NSVisualEffectView`), because they border the desktop and a
+/// lens over the desktop is a window. Floating surfaces take **glass**, because the grid is behind
+/// them and a lens needs something to refract. The grid takes neither.
+///
 /// **Exactly three things float**: the selection stats pill, the refresh pill / diff panel, and
 /// the ⌘K palette. The first two live in the grid's bottom corners, over the reserved bottom
 /// inset, so they never cover a cell that cannot be scrolled out from under them.
-struct DocumentWindow: View {
+private struct DocumentPane<TitleBar: View>: View {
     @Bindable var model: DocumentModel
     let app: AppModel
-    let appearance: AccessibilityAppearance
+    let context: AppearanceContext
+    @ViewBuilder var titleBar: () -> TitleBar
 
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
 
     @State private var snapshots: [SnapshotRecord] = []
@@ -85,16 +545,12 @@ struct DocumentWindow: View {
     /// The measured height of the anchored chrome, handed to the grid as a scroll inset so the
     /// two can never disagree about where row 1 begins.
     @State private var chromeHeight: CGFloat = 0
-    /// Where the traffic lights are, measured. See ``TitleBarMetrics``.
-    @State private var titleBarMetrics: TitleBarMetrics = .unmeasured
-
-    private var context: AppearanceContext { appearance.context(for: colorScheme) }
 
     var body: some View {
         Group {
             if let empty = emptyState {
                 VStack(spacing: 0) {
-                    TitleBarRow(model: model, context: context, metrics: titleBarMetrics)
+                    titleBar()
                     EmptyStateView(model: empty, context: context) { action in
                         handle(empty, action)
                     }
@@ -116,15 +572,8 @@ struct DocumentWindow: View {
                 .ignoresSafeArea(.container, edges: .top)
             }
         }
-        .frame(minWidth: DS.Metrics.minimumWindowWidth, minHeight: DS.Metrics.minimumWindowHeight)
-        .glassAppearance(context)
         .overlay { palette }
         .overlay(alignment: .top) { stalenessNote }
-        .background(WindowConfigurator())
-        .focusedSceneValue(\.document, model)
-        .navigationTitle(model.url.lastPathComponent)
-        .onAppear { app.refreshMCPStatus() }
-        .onDisappear { app.closeDocument(model) }
         .onChange(of: model.needsSaveAs) { _, needed in isPresentingSaveAs = needed }
         .fileExporter(
             isPresented: $isPresentingSaveAs,
@@ -154,7 +603,8 @@ struct DocumentWindow: View {
 
     // MARK: - Anchored chrome
 
-    /// The titlebar, the toolbar and the formula bar, as **one** anchored band on **one** material.
+    /// The title row, the toolbar and the formula bar, as **one** anchored band on **one**
+    /// material.
     ///
     /// # Why all three are one surface
     ///
@@ -165,27 +615,26 @@ struct DocumentWindow: View {
     /// sample — each of them turned into a clear hole onto the desktop, with the wallpaper legible
     /// between the toolbar buttons and behind the document title.
     ///
-    /// So the band is now a single ``GlassUI/ChromeVibrancy/band`` surface that spans the full
-    /// window width and runs from the very top of the window to the bottom of the formula bar.
-    /// The per-control glass capsules in `ToolbarSurface` sit *on* it; they were never a
-    /// substitute for it.
+    /// So the band is a single ``GlassUI/ChromeVibrancy/band`` surface that spans the full window
+    /// width and runs from the very top of the window to the bottom of the formula bar. The
+    /// per-control glass capsules in `ToolbarSurface` sit *on* it; they were never a substitute
+    /// for it.
     ///
     /// # Measured, not sized
     ///
     /// The grid insets its scroll range by this band's height, so hardcoding one would show up as
-    /// row 1 sitting half under the formula bar. It is measured, and now that the titlebar is part
-    /// of the same stack the measurement covers it too — which is what let two eyeballed `120`
-    /// and `132` offsets elsewhere in this file become `chromeHeight` plus a token.
+    /// row 1 sitting half under the formula bar. It is measured, and now that the title row is
+    /// part of the same stack the measurement covers it too — which is what let two eyeballed
+    /// `120` and `132` offsets elsewhere in this file become `chromeHeight` plus a token.
     private var chrome: some View {
         VStack(spacing: 0) {
-            TitleBarRow(model: model, context: context, metrics: titleBarMetrics)
-                .background(TitleBarMetricsReader { titleBarMetrics = $0 })
+            titleBar()
 
             ToolbarSurface(state: model.toolbar, context: context) { action in
                 perform(action)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            // Vertical rhythm of its own. Without it the toolbar's capsules touch the titlebar
+            // Vertical rhythm of its own. Without it the toolbar's capsules touch the title row
             // above and the formula bar below, and the band reads as three things jammed together
             // rather than one surface.
             .padding(.vertical, DS.Space.xs)
@@ -258,7 +707,7 @@ struct DocumentWindow: View {
     private var palette: some View {
         if model.isPaletteVisible {
             ZStack {
-                Color.black.opacity(0.18)
+                Color.black.opacity(PaneMetrics.scrimOpacity)
                     .ignoresSafeArea()
                     .onTapGesture { model.isPaletteVisible = false }
                 CommandPalette(state: paletteState, context: context) { action in
@@ -295,7 +744,7 @@ struct DocumentWindow: View {
                     .controlSize(.small)
             }
             .padding(DS.Space.m)
-            .frame(maxWidth: 520)
+            .frame(maxWidth: PaneMetrics.stalenessNoteWidth)
             .glassCard(context: context, radius: DS.Radius.panel)
             // Was an eyeballed 132 — 12 more than the palette's 120, which is what compensating
             // for an unmeasured chrome height looks like. Same measurement, tighter air, because
@@ -528,110 +977,18 @@ struct DocumentWindow: View {
     }
 }
 
-// MARK: - Titlebar
-
-/// The window's own top row: traffic lights, document name, live sync chip, sidebar toggle.
+/// ``DocumentPane``'s two measured constants.
 ///
-/// Anchored like everything else, and inset on the leading edge so nothing lands under the close
-/// button. The window is `fullSizeContentView` with a transparent titlebar (A5's
-/// ``GlassUI/WindowChrome``), which is what lets the document plane run to the very top of the
-/// window instead of stopping at a hard seam.
-/// The window's title row — **on the traffic-light line**, not below it.
-///
-/// # Why it is not its own band
-///
-/// It used to be a 38pt row underneath the titlebar, which left the traffic lights sitting alone
-/// on an otherwise empty strip. That is two rows of chrome doing one row of work, and in an app
-/// whose entire job is showing as many spreadsheet rows as possible it is the most expensive kind
-/// of whitespace. Finder, Xcode, Safari and Notes all put real controls inline beside the lights;
-/// this now does the same, and the grid gets the height back.
-///
-/// # The two things that make it work
-///
-/// **The leading inset is measured.** ``TitleBarMetrics`` reads the zoom button's frame, so the
-/// content clears the real buttons wherever the system puts them, and collapses to a plain margin
-/// in full screen when they are gone.
-///
-/// **The empty stretches still drag the window.** Everything here is either a control or a
-/// `Spacer`, and the row draws no background of its own — the band behind it does. The metrics
-/// reader returns `nil` from `hitTest`, and `Spacer`/`Text` are not hit-testable, so a click on
-/// the empty middle falls through to AppKit's titlebar and drags. Only the buttons and the chip
-/// take the click.
-private struct TitleBarRow: View {
-    @Bindable var model: DocumentModel
-    let context: AppearanceContext
-    let metrics: TitleBarMetrics
+/// Outside the view because `DocumentPane` is generic over the title row it hosts, and Swift has
+/// no static storage in a generic type. A named enum is the better home anyway: these are the two
+/// numbers in this file that are neither on the spacing scale nor measured from the window, and
+/// keeping them together is what makes that obvious.
+private enum PaneMetrics {
+    /// How far the palette dims the window behind it. Not spacing, and not a colour token — it is
+    /// the strength of one specific scrim, and A5's value.
+    static let scrimOpacity = 0.18
 
-    var body: some View {
-        HStack(spacing: DS.Space.s) {
-            Color.clear.frame(width: metrics.leadingInset, height: DS.Stroke.hairline(context))
-
-            Button {
-                model.isSidebarVisible.toggle()
-            } label: {
-                Image(systemName: "sidebar.left")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(DS.Chrome.secondary)
-                    .frame(width: 24, height: 20)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Show or hide the sidebar")
-            .accessibilityLabel("Toggle sidebar")
-
-            Text(model.url.lastPathComponent)
-                .font(DS.Text.controlEmphasis)
-                .foregroundStyle(DS.Chrome.primary)
-                .lineLimit(1)
-                // The name yields first when the window narrows. The alternative — a fixed name
-                // and a compressed chip — turns "3 unsaved" into an ellipsis, and the chip is the
-                // half that is telling you something you did not already know.
-                .truncationMode(.middle)
-                .layoutPriority(-1)
-            if model.hasUnsavedEdits {
-                Circle()
-                    .fill(DS.Chrome.secondary)
-                    .frame(width: 5, height: 5)
-                    .accessibilityLabel("Unsaved changes")
-            }
-
-            Spacer(minLength: DS.Space.s)
-
-            SyncStateChip(state: chipState, context: context) {
-                switch model.syncState {
-                case .stale: Task { await model.refresh() }
-                case .conflict: model.showDiffPanel()
-                case .dirty: Task { await model.save() }
-                default: Task { await model.setAutoRefresh(!model.isWatching) }
-                }
-            }
-
-            Button {
-                model.isInspectorVisible.toggle()
-            } label: {
-                Image(systemName: "sidebar.right")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(DS.Chrome.secondary)
-                    .frame(width: 24, height: 20)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Show or hide the inspector")
-            .accessibilityLabel("Toggle inspector")
-        }
-        .padding(.trailing, DS.Space.m)
-        // Twice the measured centre line, so the row's own centre lands exactly on the buttons'.
-        .frame(height: metrics.centreFromTop * 2)
-        .accessibilityElement(children: .contain)
-    }
-
-    private var chipState: GlassUI.SyncState {
-        SyncPresentation.chip(
-            for: model.syncState,
-            pendingCellCount: model.changeSet?.notice.cellCount ?? 0,
-            localEditCount: model.localEditCount,
-            isWatching: model.isWatching,
-            readOnlyReason: model.workbook.meta.readOnlyReason
-        )
-    }
+    /// The staleness note reads as a paragraph, so it is capped at a comfortable measure rather
+    /// than stretched to the window.
+    static let stalenessNoteWidth: CGFloat = 520
 }

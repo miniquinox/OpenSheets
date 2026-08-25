@@ -20,6 +20,7 @@ import SwiftUI
 struct DocumentCommands: Commands {
     let app: AppModel?
     @FocusedValue(\.document) private var document: DocumentModel?
+    @FocusedValue(\.workspaceTabs) private var tabs: TabsModel?
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -27,6 +28,18 @@ struct DocumentCommands: Commands {
                 .keyboardShortcut("n")
             Button("Open…") { OpenActions.showOpenPanel() }
                 .keyboardShortcut("o")
+            Divider()
+            // ⌘W closes a **tab**, and the window only when the tab was the last one — the
+            // behaviour of every tabbed editor, and the reason Close Window needs a shortcut of
+            // its own. ⌥⌘W rather than Safari's ⇧⌘W: ⇧⌘S is already Save As here, and colliding
+            // with a save is worse than deviating from Safari on a shortcut nobody has muscle
+            // memory for. Nothing else in this app uses ⌥⌘W.
+            Button("Close Tab") { OpenActions.closeActiveTab?() }
+                .keyboardShortcut("w")
+                .disabled(tabs?.activeTabID == nil)
+            Button("Close Window") { OpenActions.closeWorkspaceWindow?() }
+                .keyboardShortcut("w", modifiers: [.command, .option])
+                .disabled(tabs == nil)
         }
 
         CommandGroup(after: .saveItem) {
@@ -45,6 +58,12 @@ struct DocumentCommands: Commands {
                 Task { await document.setAutoRefresh(!document.isWatching) }
             }
             .disabled(document == nil)
+            // PLAN.md §1.2 step 8: mark here. Everything the chip reports is measured against
+            // whatever this last captured, so it sits with the other file-versus-disk commands
+            // rather than under View — it is a statement about the file, not about the display.
+            Button("Set Checkpoint") { Task { await document?.setCheckpoint() } }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .disabled(document == nil || !Flags.changeTrackingEnabled)
             Divider()
             Button("Restore Snapshot…") { document?.isPresentingSnapshots = true }
                 .disabled(document == nil)
@@ -127,6 +146,29 @@ struct DocumentCommands: Commands {
             Button("Zoom Out") { zoom(by: 0.8) }
                 .keyboardShortcut("-")
                 .disabled(document == nil)
+            Divider()
+            // ⇧⌘] / ⇧⌘[ — Safari's and Xcode's, and they wrap, because a shortcut that stops
+            // working when you reach the edge is a shortcut people stop using.
+            Button("Next Tab") { tabs?.activateNext() }
+                .keyboardShortcut("]", modifiers: [.command, .shift])
+                .disabled((tabs?.tabs.count ?? 0) < 2)
+            Button("Previous Tab") { tabs?.activatePrevious() }
+                .keyboardShortcut("[", modifiers: [.command, .shift])
+                .disabled((tabs?.tabs.count ?? 0) < 2)
+        }
+
+        // ⌘1…⌘9, in the Window menu, where Safari puts them. One item per **open** tab rather
+        // than nine every time: a menu offering "Show Tab 7" with four files open is a menu
+        // telling you about something that does not exist.
+        CommandGroup(after: .windowList) {
+            let open = Array((tabs?.tabs ?? []).prefix(Self.directTabShortcuts))
+            if !open.isEmpty {
+                Divider()
+                ForEach(Array(open.enumerated()), id: \.element.id) { index, tab in
+                    Button(tab.url.lastPathComponent) { tabs?.activate(index: index) }
+                        .keyboardShortcut(Self.digits[index], modifiers: .command)
+                }
+            }
         }
 
         CommandGroup(replacing: .help) {
@@ -135,6 +177,10 @@ struct DocumentCommands: Commands {
             }
         }
     }
+
+    /// ⌘1…⌘9. Nine because ⌘0 is Show Sidebar and because nobody counts tabs past nine by eye.
+    private static let directTabShortcuts = 9
+    private static let digits: [KeyEquivalent] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 
     private func zoom(by factor: Double) {
         guard let document else { return }
@@ -180,9 +226,20 @@ struct DocumentFocusKey: FocusedValueKey {
     typealias Value = DocumentModel
 }
 
+/// The focused window's tabs, so tab navigation and the enabled state of the tab commands read
+/// from the window that is actually in front rather than from a static nothing can observe.
+struct WorkspaceTabsFocusKey: FocusedValueKey {
+    typealias Value = TabsModel
+}
+
 extension FocusedValues {
     var document: DocumentModel? {
         get { self[DocumentFocusKey.self] }
         set { self[DocumentFocusKey.self] = newValue }
+    }
+
+    var workspaceTabs: TabsModel? {
+        get { self[WorkspaceTabsFocusKey.self] }
+        set { self[WorkspaceTabsFocusKey.self] = newValue }
     }
 }

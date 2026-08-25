@@ -22,7 +22,7 @@ import UniformTypeIdentifiers
 /// paid explicitly — `Open Recent`, window restoration and the unsaved-changes prompt are ours to
 /// build, and they are in `DocumentCommands.swift`.
 ///
-/// # One launcher, one window per file
+/// # One launcher, one workspace, files as tabs
 ///
 /// A single launch used to put five document windows and five launchers on screen for one file:
 /// five `DocumentModel`s, five watchers and five sync state machines racing over one path, which
@@ -31,12 +31,12 @@ import UniformTypeIdentifiers
 ///
 /// 1. **Scene restoration.** SwiftUI remembers a `WindowGroup(for:)`'s presented values and
 ///    re-creates a window for each of them at launch, on top of whatever the launch itself asked
-///    for. `.restorationBehavior(.disabled)` above; window restoration is a later version's
-///    feature (PLAN.md), and a half-restored launch is worse than none.
-/// 2. **A second window on the same file.** ``OpenActions`` keeps a registry of what is on
-///    screen and fronts the existing window instead of opening another. Belt and braces with
-///    ``DocumentCore/AppModel``, which refuses to build a second `DocumentModel` for one path
-///    however many callers ask at once.
+///    for. `.restorationBehavior(.disabled)` above; tab restore is our own deterministic path
+///    through ``OpenActions/handleLaunch(_:)`` rather than SwiftUI's half-remembered one.
+/// 2. **A second window on the same file.** There is now exactly **one** workspace window and
+///    every file is a tab in it (``DocumentCore/TabsModel``), so "the same file twice" is a
+///    question about tabs rather than about windows and is answered by
+///    ``DocumentCore/AppModel/documentKey(for:)`` in one place.
 /// 3. **A second launcher.** The launcher is the group's `nil` case, so macOS can manufacture one
 ///    whenever it decides the app needs a default window — at launch, on reopen, on `open(1)`
 ///    against a running copy. ``OpenActions`` reads the live window list after every change and
@@ -48,12 +48,12 @@ import UniformTypeIdentifiers
 /// with a menu bar, an empty Window menu, and nothing on screen. ``DocumentCore/LaunchArguments``
 /// is the reading, ``OpenActions/handleLaunch(_:)`` is the window.
 ///
-/// Each of those is asserted somewhere that runs, and both layers are in one file —
-/// `DocumentCoreTests.OpenDocumentTests` — because the gap between them is where a window bug
-/// hides: two windows can host one `DocumentModel`, so the model-level count stays right while the
-/// screen is wrong. The rules the window scenarios exercise are
-/// ``DocumentCore/DocumentWindows``; this file is the wiring that runs them against the live
-/// `NSApp.windows`.
+/// Each of those is asserted somewhere that runs, and every layer is in one file —
+/// `DocumentCoreTests.OpenDocumentTests` — because the gaps between them are where a window bug
+/// hides: a model-level count can stay right while the screen is wrong, and a tab-level count can
+/// stay right while there are two windows. The rules the window scenarios exercise are
+/// ``DocumentCore/DocumentWindows`` and ``DocumentCore/TabsModel``; this file is the wiring that
+/// runs them against the live `NSApp.windows`.
 @main
 struct OpenSheetsApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -132,22 +132,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
 
-/// What a window is opened for.
+/// What the workspace window is opened for: the first file to put in it.
 ///
-/// The path and nothing else, deliberately: this value **is** the window's identity to SwiftUI, so
-/// anything added here splits one file across two windows. How the open was requested travels
-/// beside it in ``OpenActions``, not inside it.
+/// A path and nothing else, still — this value **is** the window's identity to SwiftUI. What
+/// changed with tabs is what the identity *means*: there is one workspace window, so this is the
+/// value it was created with rather than the file it is showing, and every later file arrives
+/// through ``DocumentCore/TabsModel`` without SwiftUI hearing about it. `nil` is the launcher, as
+/// before.
 struct DocumentWindowRequest: Codable, Hashable, Sendable {
     var path: String
 
     var url: URL { URL(fileURLWithPath: path) }
 }
 
-/// Resolves a request into a live document.
+/// The launcher, or the workspace and its tabs.
 ///
-/// The open is asynchronous — parsing a million-cell workbook is not something to do on the main
-/// thread — so the window shows a quiet loading state rather than a beachball, and a failure lands
-/// in a designed empty state rather than an `NSAlert` (PLAN.md §1.4).
+/// Opening is asynchronous — parsing a million-cell workbook is not something to do on the main
+/// thread — but the *window* no longer waits for it: the tab appears immediately in its loading
+/// phase and the document lands in it when it arrives, so a slow file never leaves an empty window
+/// on screen and a failure is a state of the tab rather than an `NSAlert` (PLAN.md §1.4, §1.2).
 struct RootView: View {
     let request: DocumentWindowRequest?
     let app: AppModel?
@@ -155,34 +158,26 @@ struct RootView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openWindow) private var openWindow
-    @State private var model: DocumentModel?
-    @State private var failure: SheetError?
+    @State private var tabs: TabsModel?
 
     private var context: AppearanceContext { appearance.context(for: colorScheme) }
 
     var body: some View {
         Group {
-            if let app, let model {
-                DocumentWindow(model: model, app: app, appearance: appearance)
-            } else if let failure {
-                EmptyStateView(
-                    model: .unreadable(detail: "\(failure.code): \(failure.message)"),
-                    context: context
-                ) { _ in }
-                .frame(minWidth: 720, minHeight: 480)
-                .gridPlane(context)
+            if let app, let tabs {
+                DocumentWindow(tabs: tabs, app: app, appearance: appearance)
             } else if request == nil {
                 LauncherScene(app: app, appearance: appearance)
             } else {
                 ProgressView()
                     .controlSize(.small)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .frame(minWidth: 720, minHeight: 480)
+                    .frame(minWidth: DS.Metrics.minimumWindowWidth, minHeight: DS.Metrics.minimumWindowHeight)
                     .gridPlane(context)
             }
         }
         .glassAppearance(context)
-        .background(WindowRegistrar(path: request?.path))
+        .background(WindowRegistrar(role: request == nil ? .launcher : .workspace))
         .onDisappear { OpenActions.windowsChanged() }
         .onAppear {
             OpenActions.install(openWindow: openWindow)
@@ -191,22 +186,36 @@ struct RootView: View {
             // shows the default window again on every `open(1)` against a running copy.
             OpenActions.windowsChanged()
         }
-        .task(id: request) { await load() }
+        .task(id: request) { buildWorkspace() }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             OpenActions.handleDrop(providers)
         }
     }
 
-    private func load() async {
-        guard let app, let request, model == nil else { return }
+    /// Builds this window's ``DocumentCore/TabsModel`` and hands it to ``OpenActions``.
+    ///
+    /// One instance per workspace window, and there is at most one workspace window (§1.1), so
+    /// `OpenActions` can hold it in a static and every entry point — the menu, Finder, a drop,
+    /// `argv`, a recent — lands in the same strip.
+    private func buildWorkspace() {
+        guard let app, let request, tabs == nil else { return }
         // Installed here as well as in `onAppear`, because the ordering of the two is SwiftUI's
         // business and a missing hook means a refused open rather than a silent grant.
         OpenActions.attach(app)
-        do {
-            model = try await app.openDocument(at: request.url, consent: OpenActions.consent(for: request.url))
-        } catch {
-            failure = error
-        }
+        let model = TabsModel(
+            // Spelled out in full rather than `{ try await app.openDocument(at: $0, consent: $1) }`.
+            // A closure literal's *thrown* type is not inferred from the parameter it is passed
+            // to, so the short form comes out `throws(any Error)` and the conversion to
+            // `throws(SheetError)` is then refused — measured on Swift 6.3.3, and documented on
+            // `TabsModel.init` because it reads like a contract error and is not one.
+            open: { (url: URL, consent: WorkspaceConsent) async throws(SheetError) -> DocumentModel in
+                try await app.openDocument(at: url, consent: consent)
+            },
+            close: { model in app.closeDocument(model) },
+            persist: { persisted in OpenActions.persistTabs(persisted, in: app) }
+        )
+        tabs = model
+        OpenActions.installTabs(model, seed: request.url)
     }
 }
 
@@ -214,54 +223,182 @@ struct RootView: View {
 /// window's view hierarchy. The rules that read it are in ``DocumentCore/DocumentWindows``, where
 /// tests can reach them.
 private struct WindowRegistrar: NSViewRepresentable {
-    let path: String?
+    let role: WindowRoleView.Role
 
-    func makeNSView(context: Context) -> NSView { WindowRoleView(path: path) }
+    func makeNSView(context: Context) -> NSView { WindowRoleView(role: role) }
 
     func updateNSView(_ nsView: NSView, context: Context) {
         // The same view is reused when the request changes from `nil` to a file — which is what
         // happens when the launcher's window is handed a document — so the mark has to follow it.
-        (nsView as? WindowRoleView)?.path = path
+        (nsView as? WindowRoleView)?.role = role
     }
 }
 
-/// Opening files from every entry point: the menu, the dock, Finder, and a drop on a window.
+/// Opening files from every entry point: the menu, the dock, Finder, a drop on a window, `argv`,
+/// and the tab set the last session left behind.
 ///
-/// Centralised because two rules have to be true of *all* of them, and each is one forgotten call
-/// site away from not being:
+/// Centralised because three rules have to be true of *all* of them, and each is one forgotten
+/// call site away from not being:
 ///
-/// 1. **One window per file.** ``open(_:consent:)`` looks at what is already on screen and fronts
-///    that window rather than opening a second one. Two windows on one file would mean two
-///    `DocumentModel`s, two watchers and two opinions about whether the document is dirty —
-///    ``DocumentCore/AppModel`` refuses to build the second model, so the second window would sit
-///    there loading forever even if it were harmless, which it is not.
+/// 1. **One workspace window; every file is a tab in it.** ``open(_:consent:)`` hands the URL to
+///    ``DocumentCore/TabsModel`` when the workspace exists and asks SwiftUI for the workspace
+///    window when it does not — and, crucially, only ever asks *once*: a second
+///    `openWindow(value:)` with a different path would make a second window, which is the failure
+///    ``DocumentCore/DocumentWindows/extras(in:)`` then has to clean up after.
 /// 2. **Opening a file grants its parent folder** (PLAN.md §1.1), because the app is the only
 ///    thing that can — neither CLI binary links AppKit. Doing it in one place means drag-and-drop
 ///    and `Open Recent` get the same treatment as `Open…`. What differs between them is whether
 ///    the gesture was consent enough on its own: see ``DocumentCore/WorkspaceConsent``.
+/// 3. **A launcher belongs on screen only when nothing else is.** The launcher is the group's
+///    `nil` case, so macOS can manufacture one whenever it decides the app needs a default window.
+///    ``windowsChanged()`` reads the live list after every change and closes what nobody asked for.
+///
+/// # Why the statics
+///
+/// `openWindow` is an environment value, the tab set belongs to a window, and closing a tab may
+/// have to put a panel on screen — none of which a `Commands` struct or an `NSApplicationDelegate`
+/// can reach. There is at most one workspace window (§1.1), so a static *is* the whole registry,
+/// and every one of them is cleared when that window goes away (``workspaceClosed(_:)``).
 @MainActor
 enum OpenActions {
     /// The one scene's id, so ``showLauncher()`` can ask for a default (launcher) window by name.
     static let sceneID = "main"
 
+    /// PLAN.md §1.7. Unknown preference keys are never read, so a rollback leaves this behind
+    /// harmlessly.
+    static let tabsPreferenceKey = "workspace.tabs"
+
+    /// The workspace's tabs, installed by the workspace window when it appears. Private because
+    /// the menu bar reaches them through `@FocusedValue(\.workspaceTabs)` instead: a focused value
+    /// is observable and a static is not, so a `Close Tab` reading this one would be enabled or
+    /// disabled according to whatever it happened to be when the menu was last built.
+    private static var tabs: TabsModel?
+
+    /// ⌘W and ⌥⌘W, installed by the workspace window. They live here rather than being called on
+    /// ``tabs`` directly because both may have to ask about unsaved edits first, and only a window
+    /// can ask.
+    static var closeActiveTab: (() -> Void)?
+    static var closeWorkspaceWindow: (() -> Void)?
+
     /// Set by whichever window appears first, because `openWindow` is an environment value and
     /// this is not a view.
     private static var openWindow: OpenWindowAction?
-    /// URLs handed to us before any scene existed — the cold-launch file argument, which arrives
-    /// during `application(_:open:)` and would otherwise be dropped on the floor.
+    /// URLs handed to us before there was anywhere to put them — the cold-launch file argument,
+    /// which arrives during `application(_:open:)`, and everything after the first file while the
+    /// workspace window is still being built.
     private static var queued: [(URL, WorkspaceConsent)] = []
     /// How each pending or open document was asked for. Not part of `DocumentWindowRequest`,
     /// because that value is the window's identity.
     private static var consents: [String: WorkspaceConsent] = [:]
+    /// Whether SwiftUI has already been asked for the workspace window. Asking twice is what makes
+    /// two of them.
+    private static var workspaceRequested = false
+    /// The app model, kept so the launch path can read `workspace.tabs` — the preference store
+    /// belongs to ``DocumentCore/AppModel`` and the launch happens before any view exists.
+    private static var app: AppModel?
+    /// A stored tab set waiting for a workspace window to restore into.
+    private static var pendingRestore: TabsModel.PersistedTabs?
+    /// Whether this launch is allowed to restore at all. §1.9: **only** a launch that names no
+    /// files restores; anything else is the user asking for something specific.
+    private static var wantsTabRestore = false
 
     /// Gives the model the one thing only the app target can supply: a panel.
     static func attach(_ app: AppModel?) {
-        guard let app, app.confirmWorkspaceGrant == nil else { return }
-        app.confirmWorkspaceGrant = { folder in await confirmWorkspaceGrant(folder) }
+        guard let app else { return }
+        if self.app == nil { self.app = app }
+        if app.confirmWorkspaceGrant == nil {
+            app.confirmWorkspaceGrant = { folder in await confirmWorkspaceGrant(folder) }
+        }
+        // The launch decided *whether* to restore before there was an `AppModel` to read the
+        // preference from. This is where the two meet.
+        restoreTabsIfWanted()
     }
 
     static func install(openWindow action: OpenWindowAction) {
         openWindow = action
+        drainQueue()
+    }
+
+    /// The workspace window has appeared and brought its tab set.
+    ///
+    /// Everything that has been waiting opens **here**, sequentially, rather than as a task each:
+    /// the strip's order is the order the user asked for — `argv` order at launch, stored order on
+    /// a restore — and a task per file hands it back in whatever order the disk felt like.
+    static func installTabs(_ model: TabsModel, seed: URL?) {
+        guard tabs !== model else { return }
+        tabs = model
+        workspaceRequested = true
+        let restore = pendingRestore
+        pendingRestore = nil
+        let pending = queued
+        queued = []
+        Task {
+            if let seed { await model.open(seed, consent: consent(for: seed)) }
+            for (url, consent) in pending { await model.open(url, consent: consent) }
+            // Additive and self-deduping, so the seed being the first restored path costs nothing;
+            // the stored active index is applied at the end, which is what puts the tab the user
+            // was last on back in front.
+            if let restore { await model.restore(restore) }
+        }
+    }
+
+    /// The workspace window has gone. Every static that named it is cleared, so the next open
+    /// builds a new window rather than talking to a dead one.
+    static func workspaceClosed(_ model: TabsModel) {
+        guard tabs === model else { return }
+        tabs = nil
+        workspaceRequested = false
+        closeActiveTab = nil
+        closeWorkspaceWindow = nil
+    }
+
+    /// ``DocumentCore/TabsModel``'s persist hook: the tab set, as JSON, in the preference table.
+    ///
+    /// Fires on every membership and activation change rather than at quit, which is what makes
+    /// the answer survive a crash, a force-quit and a window closed by the red button — none of
+    /// which get to run a teardown.
+    static func persistTabs(_ persisted: TabsModel.PersistedTabs, in app: AppModel) {
+        guard let data = try? JSONEncoder().encode(persisted),
+              let json = String(data: data, encoding: .utf8)
+        else { return }
+        try? app.store.database.setPreference(tabsPreferenceKey, to: json)
+    }
+
+    /// Reopens the last session's tabs, once, if this launch is allowed to.
+    ///
+    /// Corrupt or absent JSON is treated as "restore nothing" rather than as an error (§1.7): a
+    /// preference nobody typed is not worth a message, and the launcher is a perfectly good answer.
+    private static func restoreTabsIfWanted() {
+        guard wantsTabRestore, let app else { return }
+        wantsTabRestore = false
+        guard let stored = storedTabs(in: app),
+              let seed = stored.paths.first(where: { $0.hasPrefix("/") })
+        else { return }
+        if let tabs {
+            Task { await tabs.restore(stored) }
+            return
+        }
+        pendingRestore = stored
+        // Restored tabs carry `.fromOutsideTheApp` consent: their folders were granted when the
+        // files were first opened, so no prompt appears — and if a grant was revoked between
+        // sessions the open fails into that tab's `.failed` phase, which is the designed answer
+        // (§1.6). Nothing here can widen a grant.
+        open(URL(fileURLWithPath: seed), consent: .fromOutsideTheApp)
+    }
+
+    private static func storedTabs(in app: AppModel) -> TabsModel.PersistedTabs? {
+        // One optional, not two: `try?` flattens into the `String?` the preference already
+        // returns. A store that cannot be read and a preference nobody has written mean the same
+        // thing here — restore nothing — so there is nothing to tell apart.
+        guard let raw = try? app.store.database.preference(tabsPreferenceKey),
+              let data = raw.data(using: .utf8),
+              let stored = try? JSONDecoder().decode(TabsModel.PersistedTabs.self, from: data),
+              !stored.paths.isEmpty
+        else { return nil }
+        return stored
+    }
+
+    private static func drainQueue() {
         let pending = queued
         queued = []
         for (url, consent) in pending { open(url, consent: consent) }
@@ -281,8 +418,15 @@ enum OpenActions {
     /// a document window, and ``tidyWindows()`` closes the launcher behind it — one window, the
     /// one the user asked for.
     static func handleLaunch(_ launch: LaunchArguments) {
+        let files = launch.files()
+        // §1.9: tab restore runs **only** when the launch names no files. A launch that names one
+        // is the user asking for that file, and burying it under six restored tabs is not what
+        // they asked for. Deferred rather than done here, because reading `workspace.tabs` needs
+        // an `AppModel` and no view has handed us one yet — see ``attach(_:)``.
+        wantsTabRestore = files.isEmpty
+        restoreTabsIfWanted()
         guard launch.suppressesTheDefaultWindow else { return }
-        for url in launch.files() { open(url, consent: .fromOutsideTheApp) }
+        for url in files { open(url, consent: .fromOutsideTheApp) }
         provokeDefaultWindow()
     }
 
@@ -310,28 +454,32 @@ enum OpenActions {
         return true
     }
 
+    /// Opens `url` as a tab in the workspace, building the workspace window first if there is not
+    /// one yet.
+    ///
+    /// "The same file five times" is one tab, not five windows: ``DocumentCore/TabsModel/open(_:consent:)``
+    /// dedupes on ``DocumentCore/AppModel/documentKey(for:)`` and activates the tab that already
+    /// has it. What this end has to get right is the *window* — asking SwiftUI for a second one
+    /// while the first is still being built is the only way two appear.
     static func open(_ url: URL, consent: WorkspaceConsent = .fromOutsideTheApp) {
-        let identity = key(for: url)
-        // Already on screen: front it. This is the line that turns "open the same file five
-        // times" into one window rather than five.
-        if let existing = documentWindow(for: identity) {
-            existing.makeKeyAndOrderFront(nil)
-            NSApp.activate()
-            tidyWindows()
+        consents[AppModel.documentKey(for: url)] = consent
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        if let tabs {
+            Task { await tabs.open(url, consent: consent) }
+            frontWorkspace()
             return
         }
-        consents[identity] = consent
-        NSDocumentController.shared.noteNewRecentDocumentURL(url)
-        guard let openWindow else {
+        guard let openWindow, !workspaceRequested else {
             queued.append((url, consent))
             return
         }
+        workspaceRequested = true
         openWindow(value: DocumentWindowRequest(path: url.path(percentEncoded: false)))
     }
 
     /// How `url` was asked for, for the grant decision. Defaults to the careful answer.
     static func consent(for url: URL) -> WorkspaceConsent {
-        consents[key(for: url)] ?? .fromOutsideTheApp
+        consents[AppModel.documentKey(for: url)] ?? .fromOutsideTheApp
     }
 
     /// A window has arrived, or the launcher has been shown again. Either way, put the set of
@@ -343,7 +491,7 @@ enum OpenActions {
         Task { tidyWindows() }
     }
 
-    /// **One launcher, and only when nothing else is open. One window per file.**
+    /// **One workspace window. One launcher, and only when the workspace is not open.**
     ///
     /// The decision is ``DocumentCore/DocumentWindows/extras(in:)`` — which windows nobody asked
     /// for — and it lives in the package because that is where the tests are. This end is the part
@@ -355,8 +503,15 @@ enum OpenActions {
 
     private static var launcherWindows: [NSWindow] { DocumentWindows.launchers(in: NSApp.windows) }
 
-    private static func documentWindow(for identity: String) -> NSWindow? {
-        DocumentWindows.window(for: identity, in: NSApp.windows)
+    /// Brings the workspace forward, because an open the user asked for should land somewhere they
+    /// can see. A miniaturized window is not in this list (``DocumentCore/DocumentWindows``
+    /// explains why), so this quietly does nothing then — the tab still opened, and un-minimising
+    /// shows it.
+    private static func frontWorkspace() {
+        guard let window = DocumentWindows.workspaces(in: NSApp.windows).first else { return }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+        tidyWindows()
     }
 
     /// Closes a window nobody asked for, on the next turn of the run loop.
@@ -367,10 +522,6 @@ enum OpenActions {
     private static func dismiss(_ window: NSWindow) {
         Task { window.close() }
     }
-
-    /// The same key ``DocumentCore/AppModel`` uses, so the two cannot disagree about whether a
-    /// file is already open.
-    private static func key(for url: URL) -> String { DocumentWindows.identity(for: url) }
 
     static func showOpenPanel() {
         let panel = NSOpenPanel()
