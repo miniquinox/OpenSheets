@@ -111,6 +111,16 @@ public struct ClaudePanelState: Sendable, Hashable {
 public struct FileInfo: Sendable, Hashable {
     public var name: String
     public var path: String
+
+    /// The folder the file lives in, already abbreviated for display (`~/work/budget`).
+    ///
+    /// Provenance at rest. A tab's tooltip answers "where is this one from" while the pointer is
+    /// over the tab; this answers it for the file you are looking at, without a gesture — which is
+    /// the question two tabs both reading `data.csv` raise and then leave hanging (plan §1.2
+    /// step 4). ``path`` stays the full, unabbreviated spelling for the tooltip, because a
+    /// truncated path is a path you cannot paste.
+    public var folder: String
+
     /// "412 KB", already formatted.
     public var size: String
     /// "Today at 14:22", already formatted.
@@ -124,6 +134,7 @@ public struct FileInfo: Sendable, Hashable {
     public init(
         name: String,
         path: String,
+        folder: String = "",
         size: String,
         modified: String,
         format: String,
@@ -133,6 +144,7 @@ public struct FileInfo: Sendable, Hashable {
     ) {
         self.name = name
         self.path = path
+        self.folder = folder
         self.size = size
         self.modified = modified
         self.format = format
@@ -302,6 +314,13 @@ public struct Sidebar: View {
             SectionHeader("File")
             VStack(alignment: .leading, spacing: DS.Space.xs) {
                 DetailRow("Name", state.fileInfo.name)
+                // Where the file is, not just what it is called. The row truncates in the middle
+                // (``DetailRow``), which keeps both the interesting ends — the volume and the
+                // folder — while the full path stays one hover away.
+                if !state.fileInfo.folder.isEmpty {
+                    DetailRow("Where", state.fileInfo.folder)
+                        .help(state.fileInfo.path)
+                }
                 DetailRow("Format", state.fileInfo.format)
                 DetailRow("Size", state.fileInfo.size, numeric: true)
                 DetailRow("Modified", state.fileInfo.modified)

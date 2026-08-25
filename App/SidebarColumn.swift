@@ -51,6 +51,7 @@ struct SidebarColumn: View {
         return FileInfo(
             name: model.url.lastPathComponent,
             path: model.url.path(percentEncoded: false),
+            folder: folderLabel,
             size: size.formatted(.byteCount(style: .file)),
             modified: formatter.string(from: modified),
             format: formatLabel,
@@ -58,6 +59,17 @@ struct SidebarColumn: View {
             isReadOnly: model.workbook.meta.readOnlyReason != nil,
             containsMacros: model.workbook.meta.containsMacros
         )
+    }
+
+    /// The containing folder, with the home directory written as `~`.
+    ///
+    /// `abbreviatingWithTildeInPath` rather than the raw path: `/Users/quino` is the least
+    /// interesting sixteen characters on screen, and spending them pushes the folder that
+    /// actually distinguishes two same-named files out of the truncation. It is also the spelling
+    /// the user would type. The untruncated path is still on the row's tooltip.
+    private var folderLabel: String {
+        (model.url.deletingLastPathComponent().path(percentEncoded: false) as NSString)
+            .abbreviatingWithTildeInPath
     }
 
     private var formatLabel: String {
