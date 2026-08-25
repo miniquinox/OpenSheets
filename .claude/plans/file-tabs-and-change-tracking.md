@@ -1082,6 +1082,38 @@ the one `GitBaselineAdapter.install(on:)` call in `App/DocumentWindow.swift` if 
 sequencing left it missing; import fixes; `DOCUMENTATION.md` (§ features + §12 limitations);
 `README.md` (feature-flag list gains `OSFlagChangeTracking`; layout section mentions tabs);
 `docs/agents/` — add a brief `T-tabs-tracking.md` recording ownership of the new files.
+**Known work handed to T8 by earlier agents — discovered during implementation, all verified:**
+
+1. **The `GitBaselineAdapter.install(on:)` call site is missing.** T7 shipped the function; T6 was
+   told not to call it (its worktree could not see T7's file). Add the one line in the tab-ready
+   path in `App/DocumentWindow.swift`. Without it the git baseline source never becomes available.
+2. **Palette commands, both halves** (reassigned here — see §3). Add `.setCheckpoint`,
+   `.toggleChangeHighlights`, `.nextTab`, `.previousTab` to `PaletteCommand` in
+   `DocumentCore/CommandRegistry.swift` **and** their arms to the `run(_:)` switch in
+   `App/DocumentWindow.swift`, in one commit. Offer the tab verbs only when tabs exist.
+3. **The sidebar provenance row was never added — T7's acceptance criterion 5 is genuinely
+   unmet.** The plan assumed the sidebar renders a path; it does not. `FileInfo.path` exists at
+   `GlassUI/Chrome/Sidebar.swift:113` and **no view reads it**. The fix is a `folder` field on
+   `FileInfo` plus a `DetailRow("Where", …)` in `fileSection` (~`Sidebar.swift:300-326`) — both in
+   GlassUI, which was outside T7's ownership. Nobody else touches that file.
+4. **Surface the density suppression in the panel.** `ChangeHighlightsMapping.suppression` is
+   `.density` or `.truncatedDiff`; the counts stay populated so the sentence can carry a real
+   number. `.density` → *"Most of this sheet changed — per-cell highlights are off"*;
+   `.truncatedDiff` → the existing "stopped counting" register. When the user turns highlights
+   off themselves the mapping is `.none` with `suppression == nil` — say nothing then, it was
+   their choice. **Never leave the grid unpainted while the chip reports thousands of changes.**
+5. **Dangling doc link:** `AppModel.swift:~326` still references ``DocumentWindows/identity(for:)``,
+   which T1 deleted. Not a build error (symbol links resolve only when building documentation).
+6. **`CellChange` is ambiguous** in any test importing both SheetModel and GlassUI —
+   `GlassUI/Sync/SyncModels.swift:68` declares its own. Qualify as `SheetModel.CellChange`.
+
+**Not T8's to fix, and deliberately so:** the repo does not pass `swiftformat --lint .` or
+`swiftlint lint --strict` at HEAD, because `.github/workflows/ci.yml:127-131` installs the tools
+unpinned via brew while its own comment says the configs were verified against swiftformat 0.58.6
+and swiftlint 0.61.0 (brew now ships 0.62.1 / 0.65.1). Three agents confirmed this against
+pristine HEAD copies. Scope both tools to changed files, and leave the mass reformat to the
+separate commit that ci.yml:124-126 explicitly asks for.
+
 **The checklist (report pass/fail per line, fix or file honestly):**
 1. `cd Packages/OpenSheetsCore && swift build -Xswiftc -warnings-as-errors` ✅/❌
 2. `swift test -Xswiftc -warnings-as-errors` — full suite, including perf lanes ✅/❌
