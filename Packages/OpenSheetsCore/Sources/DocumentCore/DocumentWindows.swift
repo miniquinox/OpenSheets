@@ -2,8 +2,8 @@
 import AppKit
 import Foundation
 
-/// Marks the window a view landed in as the launcher or as a document, so ``DocumentWindows`` can
-/// tell them apart by looking at `NSApp.windows`.
+/// Marks the window a view landed in as the launcher or as the workspace, so ``DocumentWindows``
+/// can tell them apart by looking at `NSApp.windows`.
 ///
 /// # Why a marker and not a registry
 ///
@@ -16,12 +16,29 @@ import Foundation
 /// `NSApp.windows` cannot go stale — it *is* the world. So the only thing kept per window is what
 /// the window is *for*, carried by a view that is in the hierarchy exactly as long as the content
 /// it describes.
+///
+/// # Why the mark no longer names a file
+///
+/// It used to carry the path of the document the window was showing, because there was one window
+/// per file and the open path had to find "the window already showing this". There is now one
+/// window for *every* file — files are tabs inside it (``TabsModel``) — so the question the mark
+/// has to answer shrank to two answers, and the file-level one moved to where the tabs are. A mark
+/// that still carried a path would have to be updated on every tab switch to stay true, and a
+/// marker that needs maintaining is the registry this exists instead of.
 public final class WindowRoleView: NSView {
-    /// `nil` marks the launcher.
-    public var path: String?
+    /// What this window is for.
+    public enum Role: Equatable, Sendable {
+        /// The first-run panel — the `WindowGroup`'s `nil` case, which macOS manufactures whenever
+        /// it decides the app needs a default window.
+        case launcher
+        /// The workspace: the tab strip, and whichever document is in front.
+        case workspace
+    }
 
-    public init(path: String?) {
-        self.path = path
+    public var role: Role
+
+    public init(role: Role) {
+        self.role = role
         super.init(frame: .zero)
     }
 
@@ -29,28 +46,36 @@ public final class WindowRoleView: NSView {
     public required init?(coder: NSCoder) { fatalError("not from a nib") }
 }
 
-/// What a window is for.
-public enum WindowRole: Equatable, Sendable {
-    /// The first-run panel — the `WindowGroup`'s `nil` case, which macOS manufactures whenever it
-    /// decides the app needs a default window.
-    case launcher
-    /// A document window, identified by the file it is showing.
-    case document(identity: String)
-}
+/// What a window is for. Spelled at call sites that ask a window rather than build one.
+public typealias WindowRole = WindowRoleView.Role
 
-/// **One launcher, and only when nothing else is open. One window per file.**
+/// **One workspace window. One launcher, and only when the workspace is not open.**
 ///
 /// The rules live here, in the package, rather than in the app target, because the app target has
-/// no tests and this is the layer where the failure is *visible*: two windows can share one
-/// `DocumentModel`, so `openDocuments.count == 1` stays true while two windows sit on screen. See
-/// `DocumentCoreTests.OpenDocumentTests` — the model-level scenarios and the window-level ones are
-/// deliberately in one file, because passing only one half is what let a window bug hide.
+/// no tests and this is the layer where the failure is *visible*: what is on screen and what the
+/// models think is open are two different counts, and passing only one of them is what let a window
+/// bug hide. See `DocumentCoreTests.OpenDocumentTests` — the model-level scenarios, the tab-level
+/// ones and the window-level ones are deliberately in one file for that reason.
 ///
 /// Everything is read off the live window list every time rather than from bookkeeping of our own,
 /// because the list of windows is the only description of the windows that cannot be wrong. macOS
 /// asks a `WindowGroup` for its default window whenever it decides the app needs one — at launch,
 /// on a dock click, on `open(1)` against a running copy — and each of those used to leave another
 /// launcher behind.
+///
+/// # Why one window, and what that cost the rules
+///
+/// There used to be one window per file, and the whole of this file was about keeping that true:
+/// an identity per window, a lookup from file to window, and a duplicate rule that kept the oldest
+/// window of each identity. Files are now tabs in a single workspace window, so the identity
+/// question moved to ``TabsModel`` — which is the only place it can be answered honestly now, since
+/// two tabs on one file are not two windows and no amount of looking at `NSApp.windows` would say
+/// so. What is left here is the smaller, blunter rule: **more than one workspace window is a
+/// window nobody asked for**, and the oldest one is the one the user has already seen.
+///
+/// Dragging a tab out into a second workspace window is explicitly out of scope for v1 (§1.1). If
+/// it lands, this rule is what has to change, and it should change into a count rather than back
+/// into a registry.
 ///
 /// # Two windows on screen is not always two windows
 ///
@@ -68,46 +93,34 @@ public enum WindowRole: Equatable, Sendable {
 ///
 /// # `isVisible`, and why a miniaturized window is deliberately not counted
 ///
-/// Measured, because the answer decides two rules at once: a miniaturized `NSWindow` reports
-/// `isVisible == false` while staying in `NSApp.windows`. So a document window in the Dock is not
-/// "on screen" here, and two things follow.
+/// Measured, because the answer decides the launcher rule: a miniaturized `NSWindow` reports
+/// `isVisible == false` while staying in `NSApp.windows`. So the workspace window sitting in the
+/// Dock is not "on screen" here — and counting it as though it were would make the tidy pass close
+/// the launcher that a dock click had just brought back, leaving a click with nothing to show for
+/// it.
 ///
-/// The first looks like a bug and is not: ``window(for:in:)`` returns `nil` for that file, so
-/// opening it again asks SwiftUI for a window rather than fronting one. SwiftUI presents the same
-/// value into the window that already has it — measured: re-opening a minimised document restores
-/// that window rather than making a second one — so the count stays at one either way.
-///
-/// The second is why the rule stays as it is: counting a miniaturized window as on screen would
-/// make the tidy pass close the launcher that a dock click had just brought back, leaving a click
-/// with nothing to show for it.
+/// The other half of that trade is now cheaper than it was. Under one-window-per-file it meant a
+/// minimised document's window could not be found and re-fronted; today the only thing a second
+/// open can ask for is the workspace, and if it is minimised SwiftUI presents into the window that
+/// already exists rather than making another — so the count stays at one either way.
 @MainActor
 public enum DocumentWindows {
-    /// The identity a file is known by, in both layers.
-    ///
-    /// Shared with ``AppModel`` on purpose: the window layer's "is this file already open" and the
-    /// model layer's "does this file already have a model" have to be the same question, or one of
-    /// them opens a window the other refuses to fill.
-    public static func identity(for url: URL) -> String { AppModel.documentKey(for: url) }
-
     /// What a window is for, or `nil` if it is not one of ours or is not on screen.
     public static func role(of window: NSWindow) -> WindowRole? {
         guard window.isVisible, let marker = roleView(in: window.contentView) else { return nil }
-        guard let path = marker.path else { return .launcher }
-        return .document(identity: identity(for: URL(fileURLWithPath: path)))
+        return marker.role
     }
 
-    /// The document windows on screen, **oldest first**.
+    /// The workspace windows on screen, **oldest first**. There should be exactly one; more than
+    /// one is what ``extras(in:)`` exists to name.
     ///
-    /// The order matters: ``extras(in:)`` keeps the first of any duplicate set, and `NSApp.windows`
-    /// is in no order worth relying on — so on one pass it would keep window A and close B, and on
-    /// the next keep B and close A, which is how "one window" became "no windows". `windowNumber`
-    /// rises with creation, so oldest-first is the same answer every time, and the window the user
-    /// has already seen is the one that survives.
-    public static func documents(in windows: [NSWindow]) -> [(identity: String, window: NSWindow)] {
-        oldestFirst(windows).compactMap { window in
-            guard case let .document(identity) = role(of: window) else { return nil }
-            return (identity, window)
-        }
+    /// The order matters: ``extras(in:)`` keeps the first, and `NSApp.windows` is in no order worth
+    /// relying on — so on one pass it would keep window A and close B, and on the next keep B and
+    /// close A, which is how "one window" became "no windows". `windowNumber` rises with creation,
+    /// so oldest-first is the same answer every time, and the window the user has already seen is
+    /// the one that survives.
+    public static func workspaces(in windows: [NSWindow]) -> [NSWindow] {
+        oldestFirst(windows).filter { role(of: $0) == .workspace }
     }
 
     /// The launcher windows on screen, oldest first. More than one means macOS made one nobody
@@ -116,27 +129,19 @@ public enum DocumentWindows {
         oldestFirst(windows).filter { role(of: $0) == .launcher }
     }
 
-    /// The window already showing `identity`, if there is one. This is the lookup that turns "open
-    /// the same file five times" into one window rather than five.
-    public static func window(for identity: String, in windows: [NSWindow]) -> NSWindow? {
-        documents(in: windows).first { $0.identity == identity }?.window
-    }
-
-    /// The windows nobody asked for: duplicates of a file that is already open, and any launcher
-    /// that is not the only thing on screen.
+    /// The windows nobody asked for: a second workspace, and any launcher that is not the only
+    /// thing on screen.
     ///
     /// This is the whole tidy decision, and it is a *decision* rather than an action so that a test
     /// can ask what it would do without a window server having to agree.
     public static func extras(in windows: [NSWindow]) -> [NSWindow] {
-        var doomed: [NSWindow] = []
-        var seen: Set<String> = []
-        for (identity, window) in documents(in: windows) {
-            // Two windows on one file would mean two of everything downstream. The first one
-            // stays; anything after it is a duplicate macOS made, not one the user asked for.
-            if !seen.insert(identity).inserted { doomed.append(window) }
-        }
+        let workspaces = workspaces(in: windows)
+        // A second workspace window would mean a second tab strip, a second set of tabs, and two
+        // `TabsModel`s writing over each other's `workspace.tabs`. The first one stays; anything
+        // after it is one macOS made, not one the user asked for.
+        var doomed = Array(workspaces.dropFirst())
         // A launcher belongs on screen only when nothing else is.
-        var keptLauncher = !seen.isEmpty
+        var keptLauncher = !workspaces.isEmpty
         for window in launchers(in: windows) {
             if keptLauncher {
                 doomed.append(window)
