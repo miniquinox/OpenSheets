@@ -47,9 +47,10 @@ struct GridPerformanceTests {
 
         func lookups(atRow row: Int) -> Int {
             let y = model.geometry.rows.offset(ofIndex: row)
-            GridInstrumentation.reset()
-            surface.render(model, sheetOrigin: CGPoint(x: 0, y: y))
-            return GridInstrumentation.snapshot().axisLookups
+            return GridWork.measured {
+                surface.render(model, sheetOrigin: CGPoint(x: 0, y: y))
+                return GridInstrumentation.snapshot().axisLookups
+            }
         }
 
         // Two equally dense screenfuls, twenty thousand rows apart.
@@ -77,9 +78,10 @@ struct GridPerformanceTests {
         func cellLookups(_ workbook: Workbook) -> Int {
             let model = renderModel(workbook)
             surface.render(model)
-            GridInstrumentation.reset()
-            surface.render(model)
-            return GridInstrumentation.snapshot().cellLookups
+            return GridWork.measured {
+                surface.render(model)
+                return GridInstrumentation.snapshot().cellLookups
+            }
         }
 
         let smallCost = cellLookups(small)
@@ -98,11 +100,12 @@ struct GridPerformanceTests {
         for step in 0 ..< 20 {
             surface.render(model, sheetOrigin: CGPoint(x: 0, y: Double(step) * 24))
         }
-        GridInstrumentation.reset()
-        for step in 0 ..< 20 {
-            surface.render(model, sheetOrigin: CGPoint(x: 0, y: Double(step) * 24))
+        let counters = GridWork.measured {
+            for step in 0 ..< 20 {
+                surface.render(model, sheetOrigin: CGPoint(x: 0, y: Double(step) * 24))
+            }
+            return GridInstrumentation.snapshot()
         }
-        let counters = GridInstrumentation.snapshot()
         #expect(counters.textCacheHits > counters.textShapes * 4)
     }
 
@@ -162,9 +165,11 @@ struct GridPerformanceTests {
         // The sheet only has 20,000 populated rows, so the bottom of the sheet is empty — and
         // drawing it must cost nothing rather than crash or scan.
         let surface = RenderSurface(width: 1200, height: 800)
-        GridInstrumentation.reset()
-        surface.render(model, sheetOrigin: CGPoint(x: 0, y: lastRowTop - 400))
-        #expect(GridInstrumentation.snapshot().cellLookups == 0)
+        let emptyRegionLookups = GridWork.measured {
+            surface.render(model, sheetOrigin: CGPoint(x: 0, y: lastRowTop - 400))
+            return GridInstrumentation.snapshot().cellLookups
+        }
+        #expect(emptyRegionLookups == 0)
     }
 
     @Test("The fling benchmark reports a full set of statistics")

@@ -338,14 +338,16 @@ struct ChangeHighlightTests {
         for row in 5000 ..< 55_000 { farAway.insert(CellRef(row: row, column: 3)) }
 
         let clean = RenderSurface()
-        GridInstrumentation.reset()
-        clean.render(model())
-        let cleanWork = GridInstrumentation.snapshot()
+        let cleanWork = GridWork.measured {
+            clean.render(model())
+            return GridInstrumentation.snapshot()
+        }
 
         let loaded = RenderSurface()
-        GridInstrumentation.reset()
-        loaded.render(model(highlights: ChangeHighlights(modified: farAway)))
-        let loadedWork = GridInstrumentation.snapshot()
+        let loadedWork = GridWork.measured {
+            loaded.render(model(highlights: ChangeHighlights(modified: farAway)))
+            return GridInstrumentation.snapshot()
+        }
 
         #expect(identicalPixels(clean, loaded))
         #expect(cleanWork.axisLookups == loadedWork.axisLookups)
@@ -369,9 +371,10 @@ struct ChangeHighlightTests {
         func work(_ highlights: ChangeHighlights) -> (RenderSurface, GridInstrumentation.Snapshot) {
             let surface = RenderSurface()
             surface.render(model(highlights: highlights)) // warm the caches
-            GridInstrumentation.reset()
-            surface.render(model(highlights: highlights))
-            return (surface, GridInstrumentation.snapshot())
+            return GridWork.measured {
+                surface.render(model(highlights: highlights))
+                return (surface, GridInstrumentation.snapshot())
+            }
         }
 
         let small = work(ChangeHighlights(modified: onScreen))

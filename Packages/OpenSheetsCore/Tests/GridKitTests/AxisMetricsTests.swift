@@ -109,11 +109,12 @@ struct AxisMetricsTests {
         })
 
         func lookups(at offset: Double) -> Int {
-            GridInstrumentation.reset()
-            let index = axis.index(atOffset: offset)
-            _ = axis.offset(ofIndex: index)
-            _ = axis.indices(fromOffset: offset, toOffset: offset + 900)
-            return GridInstrumentation.snapshot().axisLookups
+            GridWork.measured {
+                let index = axis.index(atOffset: offset)
+                _ = axis.offset(ofIndex: index)
+                _ = axis.indices(fromOffset: offset, toOffset: offset + 900)
+                return GridInstrumentation.snapshot().axisLookups
+            }
         }
 
         let atTop = lookups(at: 0)

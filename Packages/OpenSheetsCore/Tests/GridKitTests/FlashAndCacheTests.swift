@@ -145,12 +145,15 @@ struct TextLayoutCacheTests {
     @Test("A repeat lookup is served from the cache, not re-shaped")
     func hits() {
         let cache = TextLayoutCache(capacity: 64)
-        GridInstrumentation.reset()
-        _ = cache.shaped("hello", font: font)
-        #expect(GridInstrumentation.snapshot().textShapes == 1)
-        _ = cache.shaped("hello", font: font)
-        #expect(GridInstrumentation.snapshot().textShapes == 1)
-        #expect(GridInstrumentation.snapshot().textCacheHits == 1)
+        let (afterFirst, afterSecond) = GridWork.measured {
+            _ = cache.shaped("hello", font: font)
+            let first = GridInstrumentation.snapshot()
+            _ = cache.shaped("hello", font: font)
+            return (first, GridInstrumentation.snapshot())
+        }
+        #expect(afterFirst.textShapes == 1)
+        #expect(afterSecond.textShapes == 1)
+        #expect(afterSecond.textCacheHits == 1)
     }
 
     @Test("The cache never exceeds its capacity, however many strings go through it")
@@ -174,20 +177,24 @@ struct TextLayoutCacheTests {
             for text in working { _ = cache.shaped(text, font: font) }
             _ = cache.shaped("throwaway \(index)", font: font)
         }
-        GridInstrumentation.reset()
-        for text in working { _ = cache.shaped(text, font: font) }
-        #expect(GridInstrumentation.snapshot().textShapes == 0)
-        #expect(GridInstrumentation.snapshot().textCacheHits == working.count)
+        let counters = GridWork.measured {
+            for text in working { _ = cache.shaped(text, font: font) }
+            return GridInstrumentation.snapshot()
+        }
+        #expect(counters.textShapes == 0)
+        #expect(counters.textCacheHits == working.count)
     }
 
     @Test("Colour is not part of the key, so one line serves every colour")
     func colourIsNotKeyed() {
         let cache = TextLayoutCache(capacity: 16)
-        GridInstrumentation.reset()
-        _ = cache.shaped("1,234.00", font: font)
-        _ = cache.shaped("1,234.00", font: font)
+        let shapes = GridWork.measured {
+            _ = cache.shaped("1,234.00", font: font)
+            _ = cache.shaped("1,234.00", font: font)
+            return GridInstrumentation.snapshot().textShapes
+        }
         #expect(cache.count == 1)
-        #expect(GridInstrumentation.snapshot().textShapes == 1)
+        #expect(shapes == 1)
     }
 
     @Test("Bold and italic are different keys")
