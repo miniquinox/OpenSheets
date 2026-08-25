@@ -21,13 +21,19 @@ import Testing
 ///
 /// A criterion nothing checks is a comment. These are the checks.
 ///
-/// # And the layer below them
+/// # And the layers below them
 ///
-/// Counting models is only half of it, and the half that keeps passing while the app is wrong: two
-/// windows can host **one** `DocumentModel`, so `openDocuments.count == 1` says nothing about what
-/// is on screen. The window scenarios below count windows instead, on real `NSWindow`s, through the
-/// same ``DocumentCore/DocumentWindows`` rules the app runs at launch. Both layers are here rather
-/// than in two files because it was the gap *between* them that hid a window bug.
+/// Counting models is only part of it, and the part that keeps passing while the app is wrong: what
+/// is on screen is a different count. There are now two layers under this one and both are here.
+///
+/// **Tabs** are where "one of these per file" is enforced now — files are tabs in a single
+/// workspace window (§1.1), so the scenarios that used to say "one window per file" say "one tab
+/// per file" and run against ``DocumentCore/TabsModel``. **Windows** are the blunter rule that is
+/// left: one workspace, and a launcher only when the workspace is not open. Those run on real
+/// `NSWindow`s through the same ``DocumentCore/DocumentWindows`` rules the app runs at launch.
+///
+/// All three layers are in one file rather than three because it was the gap *between* them that
+/// hid a window bug: the model-level count stayed right while the screen was wrong.
 @Suite(.serialized)
 @MainActor
 struct OpenDocumentTests {
@@ -88,50 +94,28 @@ struct OpenDocumentTests {
         #expect(harness.app.openDocuments.isEmpty)
     }
 
-    // MARK: - One window per file (the layer no test used to reach)
+    // MARK: - One tab per file (what "one window per file" became)
 
-    /// A launch: macOS makes the `WindowGroup`'s default window — the launcher — and the file the
-    /// launch named arrives in a second one. One window should survive, and it should be the file's.
+    /// Opening a file that is already open must not add a tab — however it was asked for.
     ///
-    /// Measured, so the shape is the real one: the launcher is created first (lower `windowNumber`)
-    /// and the document window a beat later, both at the same frame. Looking like one window is
-    /// exactly why nothing caught this by looking.
-    @Test func aLaunchLeavesExactlyOneDocumentWindow() {
-        let stage = WindowStage()
-        defer { stage.tearDown() }
-        stage.launcher()
-        stage.document(at: "/files/budget.xlsx")
+    /// This is the same criterion `reopeningAnAlreadyOpenFileLeavesOneWindow` used to assert, moved
+    /// down a layer with the thing it is about: there is no per-file window left to find, so the
+    /// lookup that keeps "open the same file five times" honest is ``DocumentCore/TabsModel``'s.
+    @Test func reopeningAnAlreadyOpenFileLeavesOneTab() async throws {
+        let spy = try TabsModelTests.Spy()
+        let tabs = spy.makeTabs()
+        let url = URL(fileURLWithPath: "/files/budget.xlsx")
 
-        stage.tidy()
+        await tabs.open(url, consent: .fromOutsideTheApp)
+        await tabs.open(url, consent: .fromOutsideTheApp)
 
-        #expect(stage.documentWindowCount == 1, "the file's window is the one the launch asked for")
-        #expect(stage.launcherCount == 0, "a launcher belongs on screen only when nothing else is")
+        #expect(tabs.tabs.count == 1)
+        #expect(tabs.activeTabID == AppModel.documentKey(for: url))
+        #expect(spy.opened.count == 1, "and the second ask did not start a second open")
     }
 
-    /// Opening a file that is already open must not add a window — however macOS asked.
-    ///
-    /// The first half is the lookup the open path does: it finds the live window and fronts it. The
-    /// second half is the belt to that brace — if a window for the file appeared anyway, the tidy
-    /// pass takes it back off screen.
-    @Test func reopeningAnAlreadyOpenFileLeavesOneWindow() {
-        let stage = WindowStage()
-        defer { stage.tearDown() }
-        let first = stage.document(at: "/files/budget.xlsx")
-
-        #expect(
-            stage.window(for: "/files/budget.xlsx") === first,
-            "the open path has to find this window, or it opens a second one"
-        )
-
-        stage.document(at: "/files/budget.xlsx")
-        stage.tidy()
-
-        #expect(stage.documentWindowCount == 1)
-        #expect(first.isVisible, "and it is the window the user was already looking at")
-    }
-
-    /// Two spellings of one path are one document — so they are one window, too.
-    @Test func twoSpellingsOfOnePathAreOneWindow() throws {
+    /// Two spellings of one path are one document — so they are one tab, too.
+    @Test func twoSpellingsOfOnePathAreOneTab() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("opensheets-window-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -141,25 +125,67 @@ struct OpenDocumentTests {
         let link = directory.appendingPathComponent("alias.xlsx")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file)
 
-        let stage = WindowStage()
-        defer { stage.tearDown() }
-        stage.document(at: file.path)
-        stage.document(at: link.path)
+        let spy = try TabsModelTests.Spy()
+        let tabs = spy.makeTabs()
+        await tabs.open(file, consent: .fromOutsideTheApp)
+        await tabs.open(link, consent: .fromOutsideTheApp)
 
-        stage.tidy()
-        #expect(stage.documentWindowCount == 1)
+        #expect(tabs.tabs.count == 1, "the tab layer has to resolve paths the way the model layer does")
     }
 
-    /// One window *per file*, not one window in total. Tidying is not a licence to close the other
-    /// document the user has open.
-    @Test func twoFilesKeepTwoWindows() {
+    /// Everything a launch was handed becomes a tab, in the order it was given.
+    ///
+    /// `argumentOrderIsTheOrderWindowsOpenIn`, one layer down: two files on one command line used
+    /// to be two windows and are now two tabs, and the order is still the user's.
+    @Test func argumentOrderIsTheOrderTabsOpenIn() async throws {
+        let launch = LaunchArguments(["/A/OpenSheets", "/files/b.xlsx", "/files/a.xlsx"])
+        let spy = try TabsModelTests.Spy()
+        let tabs = spy.makeTabs()
+
+        for url in launch.files(existingAt: { _ in true }) {
+            await tabs.open(url, consent: .fromOutsideTheApp)
+        }
+
+        #expect(tabs.tabs.map(\.url.lastPathComponent) == ["b.xlsx", "a.xlsx"])
+        #expect(tabs.activeTabID == AppModel.documentKey(for: URL(fileURLWithPath: "/files/a.xlsx")))
+    }
+
+    // MARK: - One workspace window (the layer no test used to reach)
+
+    /// A launch: macOS makes the `WindowGroup`'s default window — the launcher — and the workspace
+    /// arrives in a second one. One window should survive, and it should be the workspace.
+    ///
+    /// Measured, so the shape is the real one: the launcher is created first (lower `windowNumber`)
+    /// and the workspace window a beat later, both at the same frame. Looking like one window is
+    /// exactly why nothing caught this by looking.
+    @Test func aLaunchLeavesExactlyOneWorkspaceWindow() {
         let stage = WindowStage()
         defer { stage.tearDown() }
-        stage.document(at: "/files/budget.xlsx")
-        stage.document(at: "/files/plan.xlsx")
+        stage.launcher()
+        stage.workspace()
 
         stage.tidy()
-        #expect(stage.documentWindowCount == 2)
+
+        #expect(stage.workspaceCount == 1, "the workspace is the window the launch asked for")
+        #expect(stage.launcherCount == 0, "a launcher belongs on screen only when nothing else is")
+    }
+
+    /// Two files, one window. This is `twoFilesKeepTwoWindows` inverted, and it is the whole shape
+    /// change: a second file is a second *tab*, so a second workspace window is a window nobody
+    /// asked for — two of them would mean two tab strips writing over each other's `workspace.tabs`.
+    @Test func twoFilesShareOneWorkspaceWindow() async throws {
+        let spy = try TabsModelTests.Spy()
+        let tabs = spy.makeTabs()
+        await tabs.open(URL(fileURLWithPath: "/files/budget.xlsx"), consent: .fromOutsideTheApp)
+        await tabs.open(URL(fileURLWithPath: "/files/plan.xlsx"), consent: .fromOutsideTheApp)
+
+        let stage = WindowStage()
+        defer { stage.tearDown() }
+        stage.workspace()
+        stage.tidy()
+
+        #expect(tabs.tabs.count == 2, "two files")
+        #expect(stage.workspaceCount == 1, "one window")
     }
 
     /// The duplicate that goes is the newer one, on every pass.
@@ -168,17 +194,17 @@ struct OpenDocumentTests {
     /// pass and window B on the next — closing both across two passes, which is how "one window"
     /// became "no windows". Two passes, one survivor, and it is the window the user has already
     /// seen.
-    @Test func theWindowTheUserAlreadySawIsTheOneThatSurvives() {
+    @Test func theWorkspaceTheUserAlreadySawIsTheOneThatSurvives() {
         let stage = WindowStage()
         defer { stage.tearDown() }
-        let first = stage.document(at: "/files/budget.xlsx")
-        stage.document(at: "/files/budget.xlsx")
+        let first = stage.workspace()
+        stage.workspace()
 
         stage.tidy()
         stage.tidy()
 
-        #expect(stage.documentWindowCount == 1)
-        #expect(stage.window(for: "/files/budget.xlsx") === first)
+        #expect(stage.workspaceCount == 1)
+        #expect(first.isVisible, "and it is the window the user was already looking at")
     }
 
     /// The launcher is not a window nobody asked for when it is the only one there is.
@@ -209,11 +235,11 @@ struct OpenDocumentTests {
         let stage = WindowStage()
         defer { stage.tearDown() }
         let stranger = stage.unmarked()
-        stage.document(at: "/files/budget.xlsx")
+        stage.workspace()
 
         stage.tidy()
         #expect(stranger.isVisible, "no marker, no opinion")
-        #expect(stage.documentWindowCount == 1)
+        #expect(stage.workspaceCount == 1)
     }
 
     // MARK: - Opening a file grants its folder (PLAN.md §1.1)
@@ -341,7 +367,7 @@ struct OpenDocumentTests {
             opens: ["/files/budget.xlsx"], owesAWindow: true
         ),
         LaunchScenario(
-            description: "two files in argv open two windows, in order",
+            description: "two files in argv open two tabs, in order",
             argv: ["/A/OpenSheets", "/files/budget.xlsx", "/files/plan.xlsx"],
             opens: ["/files/budget.xlsx", "/files/plan.xlsx"], owesAWindow: true
         ),
@@ -406,13 +432,6 @@ struct OpenDocumentTests {
         #expect(launch.bareArguments == ["real"])
     }
 
-    /// Everything a launch was handed is offered to the opener in the order it was given, so two
-    /// files on one command line become two windows rather than one and a shrug.
-    @Test func argumentOrderIsTheOrderWindowsOpenIn() {
-        let launch = LaunchArguments(["/A/OpenSheets", "/b.xlsx", "/a.xlsx"])
-        #expect(launch.files(existingAt: { _ in true }).map(\.path) == ["/b.xlsx", "/a.xlsx"])
-    }
-
     // MARK: - Scaffolding
 
     /// Real windows, marked the way the app marks them, so the assertions are about
@@ -429,10 +448,10 @@ struct OpenDocumentTests {
         init() { _ = NSApplication.shared }
 
         @discardableResult
-        func document(at path: String) -> NSWindow { window(marking: path) }
+        func workspace() -> NSWindow { window(marking: .workspace) }
 
         @discardableResult
-        func launcher() -> NSWindow { window(marking: nil) }
+        func launcher() -> NSWindow { window(marking: .launcher) }
 
         /// A window with no mark on it: something AppKit or a framework put on screen.
         @discardableResult
@@ -448,13 +467,9 @@ struct OpenDocumentTests {
             for window in DocumentWindows.extras(in: mine) { window.close() }
         }
 
-        var documentWindowCount: Int { DocumentWindows.documents(in: mine).count }
+        var workspaceCount: Int { DocumentWindows.workspaces(in: mine).count }
 
         var launcherCount: Int { DocumentWindows.launchers(in: mine).count }
-
-        func window(for path: String) -> NSWindow? {
-            DocumentWindows.window(for: DocumentWindows.identity(for: URL(fileURLWithPath: path)), in: mine)
-        }
 
         func tearDown() {
             for window in made { window.close() }
@@ -471,11 +486,11 @@ struct OpenDocumentTests {
         /// pass, which is the only way this suite can tell that they still do.
         private var mine: [NSWindow] { made.reversed() }
 
-        private func window(marking path: String?) -> NSWindow {
+        private func window(marking role: WindowRole) -> NSWindow {
             let window = bareWindow()
             let content = NSView(frame: .zero)
             content.addSubview(NSView(frame: .zero))
-            content.subviews[0].addSubview(WindowRoleView(path: path))
+            content.subviews[0].addSubview(WindowRoleView(role: role))
             window.contentView = content
             window.orderFront(nil)
             return window
