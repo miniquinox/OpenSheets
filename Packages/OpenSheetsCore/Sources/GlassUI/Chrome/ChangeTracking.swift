@@ -51,6 +51,32 @@ public struct ChangeTrackingPanelState: Sendable, Hashable {
 
     public var highlightsEnabled: Bool
 
+    /// Why the grid is not painting, when the app decided that for the user.
+    ///
+    /// `nil` covers both of the cases where there is nothing to explain: the tints are on and
+    /// drawing, or the user turned them off themselves — which is their choice and not news.
+    /// Anything else and the panel has to say it out loud, because the alternative is a chip
+    /// reading `+40,000 ~12,000` above a grid with no colour in it, which is the app telling two
+    /// stories at once and letting the user pick the wrong one.
+    public var highlightSuppression: HighlightSuppression?
+
+    /// Mirrors `DocumentCore.ChangeHighlightsMapping.Suppression`, which lives on the other side
+    /// of a dependency this module does not have. Two reasons rather than one flag because the
+    /// panel says different sentences for them: one is *"most of this sheet changed"*, the other
+    /// is *"we stopped counting"*.
+    public enum HighlightSuppression: Sendable, Hashable {
+        case density
+        case truncatedDiff
+
+        /// One sentence, in the same register as the truncation note the chip already carries.
+        public var sentence: String {
+            switch self {
+            case .density: "Most of this sheet changed — per-cell highlights are off."
+            case .truncatedDiff: "The comparison stopped at its budget, so the grid is not tinted."
+            }
+        }
+    }
+
     /// In offer order. `gitHEAD` is absent unless the file resolves inside a git work tree, which
     /// is why this is a list rather than "all of them, some disabled": an option that is never
     /// available on this machine is better not drawn than drawn greyed out forever.
@@ -127,6 +153,7 @@ public struct ChangeTrackingPanelState: Sendable, Hashable {
         baselineLabel: String,
         styleOnlyCount: Int = 0,
         highlightsEnabled: Bool = true,
+        highlightSuppression: HighlightSuppression? = nil,
         sources: [SourceChoice] = [.asOpened, .checkpoint],
         activeSource: SourceChoice = .asOpened,
         sections: [Section] = []
@@ -135,6 +162,7 @@ public struct ChangeTrackingPanelState: Sendable, Hashable {
         self.baselineLabel = baselineLabel
         self.styleOnlyCount = styleOnlyCount
         self.highlightsEnabled = highlightsEnabled
+        self.highlightSuppression = highlightSuppression
         self.sources = sources
         self.activeSource = activeSource
         self.sections = sections
@@ -390,16 +418,17 @@ public struct ChangeTrackingPanel: View {
         // The baseline is named in the header directly above, so this does not repeat it — and
         // must not: `baselineLabel` is composed by the app layer and carries its own preposition,
         // so any sentence built around it here would read "changed since since opened".
-        Text(
-            state.chip.isTruncated
-                ? "Too many changes to enumerate. The grid still tints the ones it found."
-                : "Nothing has changed."
-        )
-        .font(DS.Text.control)
-        .foregroundStyle(DS.Chrome.secondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, DS.Space.l)
-        .padding(.vertical, DS.Space.l)
+        //
+        // The counting half only. What the *grid* is doing is the footer's note, which says it
+        // once whatever the list length — this sentence used to promise "the grid still tints the
+        // ones it found", which stopped being true the moment a truncated diff started
+        // suppressing the tints wholesale.
+        Text(state.chip.isTruncated ? "Too many changes to enumerate." : "Nothing has changed.")
+            .font(DS.Text.control)
+            .foregroundStyle(DS.Chrome.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, DS.Space.l)
+            .padding(.vertical, DS.Space.l)
     }
 
     private func sectionHeader(_ section: ChangeTrackingPanelState.Section) -> some View {
@@ -415,6 +444,16 @@ public struct ChangeTrackingPanel: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .font(DS.Text.control)
+
+            // Directly under the switch, because that is where somebody looks when the grid is
+            // not painting and they are checking whether they turned it off. Never leave the grid
+            // unpainted while the chip reports thousands of changes (plan §1.3).
+            if state.highlightsEnabled, let suppression = state.highlightSuppression {
+                Label(suppression.sentence, systemImage: "eye.slash")
+                    .font(DS.Text.caption)
+                    .foregroundStyle(DS.Chrome.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if state.styleOnlyCount > 0 {
                 // Stated, not counted. Formatting is a change to how a number looks, not to what

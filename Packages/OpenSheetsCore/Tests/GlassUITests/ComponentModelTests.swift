@@ -437,6 +437,33 @@ struct ComponentModelTests {
         #expect(sections[0].rows.allSatisfy { $0.refA1 != nil })
     }
 
+    @Test("An unpainted grid always has a sentence to go with it")
+    func highlightSuppressionSaysWhy() {
+        // Nothing to explain by default: the tints are on and drawing, so the footer stays quiet.
+        let painting = ChangeTrackingPanelState(chip: .init(added: 3), baselineLabel: "Since opened")
+        #expect(painting.highlightSuppression == nil)
+
+        // The two reasons say different things. One flag would have collapsed them into one
+        // sentence, and "most of this sheet changed" is not what a truncated comparison means.
+        let reasons = [
+            ChangeTrackingPanelState.HighlightSuppression.density,
+            .truncatedDiff,
+        ]
+        for reason in reasons {
+            #expect(!reason.sentence.isEmpty)
+        }
+        #expect(reasons[0].sentence != reasons[1].sentence)
+
+        // The pairing the sentence exists for: a chip full of counts over a grid with no colour.
+        let suppressed = ChangeTrackingPanelState(
+            chip: .init(added: 4096, modified: 812),
+            baselineLabel: "Since opened",
+            highlightSuppression: .density
+        )
+        #expect(!suppressed.chip.isEmpty)
+        #expect(suppressed.highlightSuppression == .density)
+    }
+
     @Test("Every baseline source names itself")
     func baselineSourcesAreLabelled() {
         let sources: [ChangeTrackingPanelState.SourceChoice] = [.asOpened, .checkpoint, .gitHEAD]

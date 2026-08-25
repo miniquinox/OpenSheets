@@ -181,11 +181,16 @@ public enum SyncPresentation {
 }
 
 /// Formats a diffed cell the way the grid would show it.
-struct ValueFormatter {
+///
+/// Public because the diff panel is no longer the only surface that reports `120 → 129.6`: the
+/// changes panel (plan §1.2 step 7) does too, from the app target, which cannot see an `internal`
+/// type. It was briefly copied there instead, and two formatters for one question is how a
+/// currency cell ends up reading `$1,200` in one panel and `1200` in the other.
+public struct ValueFormatter {
     private let workbook: Workbook
     private let formatters: [SheetID: CellFormatter]
 
-    init(workbook: Workbook) {
+    public init(workbook: Workbook) {
         self.workbook = workbook
         var built: [SheetID: CellFormatter] = [:]
         for sheet in workbook.sheets {
@@ -200,7 +205,7 @@ struct ValueFormatter {
 
     /// The display text for a cell, or an empty string when there was no cell — which A5 renders
     /// as an em dash rather than as blank, so an added cell's "before" column is not a hole.
-    func text(_ cell: Cell?, sheet: SheetID, ref: CellRef) -> String {
+    public func text(_ cell: Cell?, sheet: SheetID, ref: CellRef) -> String {
         guard let cell else { return "" }
         guard let formatter = formatters[sheet] else { return cell.value.description }
         let styleID = workbook[sheet]?.effectiveStyleID(at: ref) ?? cell.styleID

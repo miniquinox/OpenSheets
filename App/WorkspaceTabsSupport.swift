@@ -133,10 +133,28 @@ enum WorkspaceState {
             baselineLabel: baselineLabel(for: model),
             styleOnlyCount: counts.styleOnly,
             highlightsEnabled: model.isChangeHighlightingEnabled,
+            highlightSuppression: suppression(for: model),
             sources: sources(for: model),
             activeSource: choice(model.baselineSource),
             sections: sections(for: model)
         )
+    }
+
+    /// Why the grid on screen is not tinted, when the app decided that rather than the user.
+    ///
+    /// Read off the sheet that is actually visible, because the decision is per sheet: an agent
+    /// that rewrote `Summary` and left `Data` alone gets tints on one tab of the workbook and a
+    /// sentence on the other, and a panel that averaged the two would be wrong on both.
+    ///
+    /// ``DocumentCore/ChangeHighlightsMapping`` already folds the user's own switch into `.none`
+    /// with no suppression, so the "they turned it off" case arrives here as `nil` and says
+    /// nothing — which is the whole point of the mapping carrying a reason rather than a flag.
+    static func suppression(for model: DocumentModel) -> ChangeTrackingPanelState.HighlightSuppression? {
+        switch model.activeChangeHighlights.suppression {
+        case .density: .density
+        case .truncatedDiff: .truncatedDiff
+        case nil: nil
+        }
     }
 
     /// *"Since opened · 09:41"*. Composed here because the app layer owns the clock and the
@@ -192,10 +210,11 @@ enum WorkspaceState {
 
     private static func sections(for model: DocumentModel) -> [ChangeTrackingPanelState.Section] {
         guard let diff = model.baselineDiff else { return [] }
-        let formatter = CellFormatter(
-            styles: model.workbook.styles,
-            dateSystem: model.workbook.meta.dateSystem
-        )
+        // The diff panel's formatter, not a second one. It resolves a cell's inherited style per
+        // sheet and formats through ``GridKit/CellFormatter``, which is what makes a currency cell
+        // read `$1,200` here and in the grid — the eight lines that used to do this inline agreed
+        // with it right up until one of them was changed.
+        let formatter = ValueFormatter(workbook: model.workbook)
         var sections: [ChangeTrackingPanelState.Section] = []
         var listed = 0
 
@@ -217,12 +236,7 @@ enum WorkspaceState {
                         id: "\(sheetDiff.sheetName)!\(ref)",
                         sheetName: sheetDiff.sheetName,
                         refA1: ref,
-                        summary: summary(
-                            of: change,
-                            on: sheetDiff.sheetID,
-                            in: model.workbook,
-                            formatter: formatter
-                        ),
+                        summary: summary(of: change, on: sheetDiff.sheetID, formatter: formatter),
                         kind: kind(change.kind)
                     )
                 )
@@ -257,18 +271,19 @@ enum WorkspaceState {
 
     /// *"120 → 129.6"*, in the workbook's own formats.
     ///
-    /// Through ``GridKit/CellFormatter`` rather than `CellValue.description`, so the panel says
-    /// what the grid says: a currency cell reads `$1,200` in both places, and a date reads as a
-    /// date rather than as a serial number. An absent side is an em dash, not a blank, so an
-    /// added cell's *before* is a statement rather than a hole.
+    /// Through ``DocumentCore/ValueFormatter`` rather than `CellValue.description`, so the panel
+    /// says what the grid says: a currency cell reads `$1,200` in both places, and a date reads as
+    /// a date rather than as a serial number. An absent side is an em dash, not a blank, so an
+    /// added cell's *before* is a statement rather than a hole — and an em dash rather than the
+    /// empty string the formatter returns, because a blank in a two-sided summary reads as a
+    /// rendering fault.
     private static func summary(
         of change: SheetModel.CellChange,
         on sheet: SheetID,
-        in workbook: Workbook,
-        formatter: CellFormatter
+        formatter: ValueFormatter
     ) -> String {
-        let before = text(change.before, on: sheet, at: change.ref, in: workbook, formatter: formatter)
-        let after = text(change.after, on: sheet, at: change.ref, in: workbook, formatter: formatter)
+        let before = text(change.before, on: sheet, at: change.ref, formatter: formatter)
+        let after = text(change.after, on: sheet, at: change.ref, formatter: formatter)
         return "\(before) \u{2192} \(after)"
     }
 
@@ -276,16 +291,10 @@ enum WorkspaceState {
         _ cell: Cell?,
         on sheet: SheetID,
         at ref: CellRef,
-        in workbook: Workbook,
-        formatter: CellFormatter
+        formatter: ValueFormatter
     ) -> String {
-        guard let cell else { return "\u{2014}" }
-        let inherited = workbook[sheet]?.effectiveStyleID(at: ref) ?? cell.styleID
-        let display = formatter.display(
-            of: cell,
-            styleID: cell.styleID == .default ? inherited : cell.styleID
-        )
-        return display.text.isEmpty ? "\u{2014}" : display.text
+        let text = formatter.text(cell, sheet: sheet, ref: ref)
+        return text.isEmpty ? "\u{2014}" : text
     }
 
     /// `SheetModel`'s five kinds as the panel's four. `styleChanged` never reaches here — it is

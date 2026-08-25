@@ -149,7 +149,17 @@ enum TabsMock {
 
     static let panelTruncated = ChangeTrackingPanelState(
         chip: truncatedCounts,
-        baselineLabel: "Since opened · 09:41"
+        baselineLabel: "Since opened · 09:41",
+        highlightSuppression: .truncatedDiff
+    )
+
+    /// An agent that rewrote the sheet. The counts are real and the grid is not painting them —
+    /// which is exactly the pairing the footer's sentence exists to explain.
+    static let panelSuppressedByDensity = ChangeTrackingPanelState(
+        chip: ChangeTrackingChipState(added: 4096, modified: 812, removed: 0),
+        baselineLabel: "Since opened · 09:41",
+        highlightSuppression: .density,
+        sections: panel.sections
     )
 }
 
@@ -276,6 +286,12 @@ enum TabsMock {
 #Preview("Changes panel · truncated") {
     PreviewStage(context: .light, height: 420) { context in
         ChangeTrackingPanel(state: TabsMock.panelTruncated, context: context) { _ in }
+    }
+}
+
+#Preview("Changes panel · highlights suppressed") {
+    PreviewStage(context: .light, height: 620) { context in
+        ChangeTrackingPanel(state: TabsMock.panelSuppressedByDensity, context: context) { _ in }
     }
 }
 
