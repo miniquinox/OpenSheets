@@ -919,7 +919,7 @@ private struct DocumentPane<TitleBar: View>: View {
             TerminalLauncher.open(at: model.workspaceURL)
         case .insertFunction:
             break
-        // The same three calls the menu bar and the changes panel make. Deliberately not a
+        // The same four calls the menu bar and the changes panel make. Deliberately not a
         // shortcut into some palette-only path: a command that behaves differently depending on
         // which surface invoked it is a command with two behaviours to keep in step.
         case .setCheckpoint:
