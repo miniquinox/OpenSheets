@@ -22,6 +22,7 @@ extension DocumentCore.Flags {
             ("formulaEngine", formulaEngineEnabled),
             ("snapshots", snapshotsEnabled),
             ("autoRefresh", autoRefreshEnabled),
+            ("changeTracking", changeTrackingEnabled),
             ("sheetStructure", sheetStructureEditing),
         ]
         return states.map { "\($0.0)=\($0.1 ? "on" : "off")" }.joined(separator: " ")

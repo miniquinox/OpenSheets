@@ -120,8 +120,14 @@ defaults write com.quino.opensheets OSFlagMCP            -bool YES
 defaults write com.quino.opensheets OSFlagFormulaEngine  -bool YES
 defaults write com.quino.opensheets OSFlagSnapshots      -bool YES
 defaults write com.quino.opensheets OSFlagAutoRefresh    -bool NO   # defaults to YES
+defaults write com.quino.opensheets OSFlagChangeTracking -bool NO   # defaults to YES
 defaults write com.quino.opensheets OSFlagSheetStructure -bool YES
 ```
+
+`OSFlagChangeTracking` gates the whole green/amber/red story — the changes chip, its panel, the
+grid tints and Set Checkpoint. Off, the app does none of the diffing either: the flag removes the
+cost, not just the controls. File tabs are deliberately **not** flagged; they replace the window
+architecture rather than adding to it, and a flag there would mean keeping two window models.
 
 ---
 

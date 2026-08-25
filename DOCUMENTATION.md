@@ -246,7 +246,12 @@ without a relaunch.
 | `OSFlagFormulaEngine` | **on** | evaluation and recalculation |
 | `OSFlagSnapshots` | **on** | restore points |
 | `OSFlagAutoRefresh` | **on** | refresh without asking when there are no local edits |
+| `OSFlagChangeTracking` | **on** | the changes chip and panel, the grid's standing tints, Set Checkpoint, and the baseline machinery behind all three. Off means no diffing happens at all — the flag removes the cost, not just the controls. |
 | `OSFlagSheetStructure` | **off** | adding/removing/reordering sheets — refused in v0.1 |
+
+File tabs are **not** flagged. They replace the one-window-per-file architecture rather than adding
+to it, and a flag would mean maintaining two window models; the project's flag philosophy is "ship
+unfinished work dark", not "keep finished work optional".
 
 *(Derived from `Sources/DocumentCore/AppModel.swift:339–349`. Note that `PLAN.md` §11 says
 "default off" and `README.md` lists an `OSFlagDiagnostics` that does not exist — both are stale;
@@ -415,6 +420,52 @@ With the file open in OpenSheets while any of the above happens:
 > ⌘R, and the conflict banner are tested at the model level against a real out-of-process `mv`, but
 > have never been driven through the UI, because the environment they were built in had no
 > assistive access. Treat steps 2–4 as implemented-and-model-tested, not as demonstrated.
+
+### 3.5 File tabs, and what has changed since you looked
+
+There is **one window**. Every file — from the menu, Finder, a drop, `argv`, a recent, or the tab
+set the last session left behind — opens as a tab in it, and the tab strip sits on the traffic-light
+line where it costs no vertical space. A tab owns a `DocumentModel` exactly as a window used to, so
+a background tab keeps its watcher, keeps auto-refreshing, and keeps its own undo stack.
+
+| | |
+| --- | --- |
+| **Disambiguation** | Two files called `data.csv` from different folders both show their parent folder — `data.csv — work`, `data.csv — models`. Hover for the full path; the sidebar's **Where** row says it without a gesture. |
+| **Status dot** | One dot per tab, worst news first: red for missing/locked/unreadable/failed, amber for a conflict, accent for "an agent touched this in the last six seconds", grey for unsaved edits. |
+| **Shortcuts** | ⌘W closes the tab (and the window when it was the last one), ⌥⌘W closes the window, ⇧⌘] / ⇧⌘[ move between tabs and wrap, ⌘1…⌘9 jump to one. All four verbs are in ⌘K too. |
+| **Restore** | The tab set lives in the `workspace.tabs` preference and is rewritten on every membership or activation change, so it survives a crash. It is restored **only** when the launch names no files. |
+
+Change tracking answers "what has moved since I last looked". The baseline is the workbook as
+opened, a checkpoint you set (⇧⌘K, backed by a byte snapshot so it survives relaunch), or the
+committed bytes at git HEAD when the file is inside a work tree. Against it the grid paints standing
+tints — green added, amber changed, red removed, a light band across an inserted row or column — and
+the title bar carries a chip reading `+12 ~5 −3`. Clicking the chip opens the list, with the
+baseline it is measured against named at the top and **Set Checkpoint** at the bottom.
+
+Two honesty rules are load-bearing, and both are things the app says out loud rather than does
+quietly:
+
+- **Style-only changes are counted, never tinted.** A recoloured cell is not a changed number, and
+  tinting it would mean a theme swap lights up the whole sheet. The panel reports them as a count.
+- **Above a density cap the tints are not drawn at all**, and the panel says so — *"Most of this
+  sheet changed — per-cell highlights are off"*. When every cell is green, green has stopped meaning
+  anything, and washing a translucent tint over a viewport costs about 8.3 ms a frame. The same
+  sentence appears when the comparison hit its budget, because tinting a *sample* of the changes
+  would let the user read an untinted cell as unchanged. The grid is never left silently unpainted
+  while the chip reports thousands of changes.
+
+A refresh does **not** move the baseline — that is the point. Tracking accumulates across many agent
+writes until you checkpoint.
+
+> **Partly unverified.** The whole loop is exercised end to end at the model level against a
+> workbook written by real `openpyxl`: the external write lands, the chip reads `+1 ~2 −0`, B2/B3
+> map to amber and D1 to green, D1 renders `369.6` rather than blank (the formula engine supplying
+> the cached value openpyxl never wrote), the checkpoint clears it all, and a fresh session restores
+> the checkpoint. Tabs, disambiguation and restore were observed in the built app through the window
+> list and the stored preference. **Nobody has looked at the strip, the dot, the chip, the panel or
+> the tints on a screen**, and no keystroke has ever been sent to them: the environment they were
+> built in had neither assistive access nor screen recording. Treat the pixels as
+> implemented-and-render-tested, not as demonstrated.
 
 ---
 
@@ -2062,6 +2113,11 @@ have never been seen working.
 | **`New Sheet` demands a save location up front** | An untitled workbook cannot be watched, snapshotted, or reached by Claude Code, so it is saved before it is opened. |
 | **The CLI cannot grant a folder** | By construction ([§9.2](#92-workspace-grants)). Deliberate and security-positive; a real UX consequence. |
 | **Printing, Quick Look, Services, window restoration** | Not built. Menus, shortcuts, Open Recent and drag-and-drop are. |
+| **A launch that names no file shows nothing** | Cold-launching the app with no file argument — `open -a OpenSheets`, or running the binary directly — leaves a running app with no window, whether or not `workspace.tabs` holds anything. A second `open -a` (which reaches the running process as a reopen) brings the workspace or the launcher up correctly. **Pre-existing**: A/B'd against the commit before file tabs were started, where it behaves identically. The launcher path and `OpenActions.provokeDefaultWindow()` are where to look. |
+| **A stray launcher window per external open** | Each `open -a OpenSheets <file>` against the running app leaves an extra empty launcher window behind; `DocumentWindows.extras(in:)` names it correctly and `OpenActions.tidyWindows()` never closes it. Also **pre-existing** and worse before tabs — the same A/B leaves seven windows where today's leaves four. Suspect the `Task { }` hop in `tidyWindows`/`dismiss`, or `NSWindow.isVisible` being false for the workspace at the moment the tidy runs. |
+| **The red close button does not ask about unsaved edits** | `NSWindow.delegate` belongs to SwiftUI, so there is nowhere to intercept the close. ⌥⌘W and ⌘W both ask. Unchanged from before tabs, where windows also closed without prompting. |
+| **A refused grant still leaves the file in `workspace.tabs`** | The tab is written down the moment it appears, before the open resolves, so declining the permission prompt leaves a path that will reopen into a `.failed` tab next session. That failure state is the designed one (§1.6 of the feature plan); the stored entry is the untidy part. |
+| **After a relaunch, a recalculated formula reads as changed against a checkpoint** | A checkpoint stores the *bytes on disk*. A formula cell whose cached value the app computed itself therefore differs from them, so it counts as one modified cell on the next launch. Correct, and noisier than it looks. |
 | **`format`'s key=value coercion silently drops string fields that parse as numbers** | See [§6.4](#64-formats-keyvalue-arguments-and-a-sharp-edge). Not diagnosed. |
 | **A wasted whole-file read before every save** | The document session reads the file to build `originalBytes`, which the writer ignores (it works from `workbook.passthrough`). Harmless, but it is a full read of a 100 MB workbook for nothing. |
 | **`maximumResultCharacters` is dead configuration** | Declared as 120,000 and never read. The only enforced size ceiling is the 32 MiB inbound frame cap; truncation in practice is per-tool. |

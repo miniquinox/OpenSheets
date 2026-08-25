@@ -343,9 +343,12 @@ public final class AppModel {
 
     /// The identity a file is known by.
     ///
-    /// Public because the window layer asks the same question — see
-    /// ``DocumentWindows/identity(for:)``. Two spellings of one path are one document, and a
-    /// window layer that disagreed would open a window this table then refuses to fill.
+    /// Public because the tab layer asks the same question — see ``TabsModel/open(_:consent:)``,
+    /// which keys a tab on exactly this. Two spellings of one path are one document, and a tab
+    /// strip that disagreed would open a tab this table then refuses to fill.
+    /// (It used to point at `DocumentWindows.identity(for:)`, which one-window-per-file took with
+    /// it; a symbol link only resolves when documentation is built, so a stale one is invisible
+    /// to every build that matters.)
     ///
     /// `nonisolated` because it is a pure function of its argument, and the things that key
     /// storage on it — a checkpoint preference, a snapshot directory — are reached from
