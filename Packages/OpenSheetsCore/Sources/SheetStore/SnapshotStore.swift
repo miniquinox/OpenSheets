@@ -13,6 +13,11 @@ public enum SnapshotReason: String, Sendable, Hashable, Codable, CaseIterable {
     case manual
     /// Before restoring a different snapshot — so "undo the undo" works.
     case preRestore
+    /// The user marked a baseline to track changes against (PLAN.md §1.3). Distinct from
+    /// ``manual`` because it is not a copy taken for safety: something still *points* at it —
+    /// the `checkpoint:<path>` preference — and the snapshot browser should say so rather than
+    /// showing it as one more anonymous manual copy.
+    case checkpoint
 
     /// One line for the snapshot list.
     public var label: String {
@@ -21,6 +26,7 @@ public enum SnapshotReason: String, Sendable, Hashable, Codable, CaseIterable {
         case .preSave: "before save"
         case .manual: "manual"
         case .preRestore: "before restore"
+        case .checkpoint: "checkpoint"
         }
     }
 }

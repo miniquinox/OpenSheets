@@ -224,6 +224,26 @@ public actor DocumentSession {
         return try await snapshots.snapshots(for: url)
     }
 
+    /// Takes a snapshot because somebody *asked*, rather than because the state machine named it.
+    ///
+    /// The one exception to "every side effect performed here is one the machine named", and it
+    /// earns it: a checkpoint (PLAN.md §1.3) is not a transition, it is a user marking a place.
+    /// There is no sync event that means "the user pressed ⇧⌘K", and inventing one would put a
+    /// node in the state machine that no state can reach.
+    ///
+    /// Returns `nil` when there is nothing to copy — the file does not exist, it is too large
+    /// for the store, or snapshots are switched off — which is the same "normal, not an error"
+    /// answer ``SnapshotStore/capture(url:reason:summary:)`` gives, and the caller treats it the
+    /// same way: the baseline still moves, it just will not survive a relaunch.
+    @discardableResult
+    public func captureSnapshot(
+        reason: SnapshotReason,
+        summary: String? = nil
+    ) async throws(SheetError) -> SnapshotRecord? {
+        guard options.snapshotsEnabled, let snapshots else { return nil }
+        return try await snapshots.capture(url: url, reason: reason, summary: summary)
+    }
+
     /// Puts a snapshot back. Atomic, fingerprinted, and therefore does **not** set off a
     /// refresh loop — the restore is one of our own writes as far as the watcher is concerned.
     @discardableResult
