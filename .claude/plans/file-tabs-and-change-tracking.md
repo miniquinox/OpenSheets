@@ -1106,6 +1106,22 @@ sequencing left it missing; import fixes; `DOCUMENTATION.md` (§ features + §12
    which T1 deleted. Not a build error (symbol links resolve only when building documentation).
 6. **`CellChange` is ambiguous** in any test importing both SheetModel and GlassUI —
    `GlassUI/Sync/SyncModels.swift:68` declares its own. Qualify as `SheetModel.CellChange`.
+7. ~~Active tab's status dot invisible (accent on accent)~~ — **fixed by the orchestrator**
+   before integration, with a regression test that also pins the statuses staying distinguishable
+   *off* the capsule. See `FileTabStrip.color(_:onAccent:)`.
+8. **Two redundant menu items.** AppKit's own shortcut-less `Close` and `Close All` still sit in
+   the File menu beneath our `Close Tab ⌘W` / `Close Window ⌥⌘W`. They work; they are clutter.
+   Removing them means editing `NSApp.mainMenu` at launch, which SwiftUI may rebuild — judgement
+   call: if it is not clean, leave them and say so.
+9. **`SyncPresentation.ValueFormatter` is `internal`**, so the app layer cannot format
+   `120 → 129.6` through it; T6 duplicated ~8 lines onto `GridKit.CellFormatter` in
+   `App/WorkspaceTabsSupport.swift`. Promoting `ValueFormatter` to public and deleting the
+   duplicate is the tidy fix — one formatter, one answer.
+10. **Unproven, do not paper over:** launching the built binary directly (`exec`, no arguments)
+    produces no window, with `workspace.tabs` both populated and empty. Every LaunchServices path
+    (`open -a`, Finder, dock, `open --args`) works. T6 could not A/B it against HEAD because
+    `App/` did not compile there. Establish whether it is pre-existing — it now can be A/B'd,
+    since HEAD compiles again — and report the answer either way.
 
 **Not T8's to fix, and deliberately so:** the repo does not pass `swiftformat --lint .` or
 `swiftlint lint --strict` at HEAD, because `.github/workflows/ci.yml:127-131` installs the tools
