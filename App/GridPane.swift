@@ -59,6 +59,14 @@ struct GridPane: View {
                         bottom: Double(floatingInset)
                     )
                 ),
+                // The standing green/amber/red tints against the document's baseline. Computed
+                // here rather than cached: the per-sheet change list is capped, so this walk is
+                // bounded by a constant, and `baselineDiff` is observed so a new answer repaints
+                // on its own. When the mapping suppresses the tints — most of the sheet changed,
+                // or the differ gave up — it says so through
+                // `activeChangeHighlights.isSuppressedByDensity`, which the changes panel reads.
+                // The grid is never left quietly unpainted while the chip counts thousands.
+                highlights: model.activeChangeHighlights.highlights,
                 controller: model.grid
             ) { event in
                 model.handle(event)

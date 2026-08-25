@@ -80,6 +80,17 @@ public enum GridThemeBridge {
             flashTint: color(theme.changeMarker),
             flashPeakOpacity: theme.changeFlashFill.alpha,
             flashDuration: theme.changeFlashDuration,
+            // The standing change tints (PLAN.md §1.3). A straight copy, and it has to stay one:
+            // these three hues are the app's whole vocabulary for added/modified/removed, and a
+            // grid that derived its own would let the chip and the cells disagree about what
+            // green means. A5 resolves them per scheme and already checks that cell text keeps
+            // 4.5:1 through the wash at these opacities (`GlassUI.GridTheme.contrastFailures`),
+            // so the opacities travel with the colours rather than being re-picked here.
+            changeAddedTint: color(theme.changeAddedTint),
+            changeModifiedTint: color(theme.changeModifiedTint),
+            changeRemovedTint: color(theme.changeRemovedTint),
+            changeTintOpacity: theme.changeTintOpacity,
+            changeBandOpacity: theme.changeBandOpacity,
             bodyFontName: theme.cellFontName ?? "",
             monospacedFontName: "SF Mono",
             defaultFontSize: Double(theme.cellFontSize),
