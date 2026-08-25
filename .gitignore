@@ -44,3 +44,6 @@ Demo/
 # Python build artefacts
 __pycache__/
 *.pyc
+
+# Agent worktrees; transient, never part of a commit.
+.claude/worktrees/
