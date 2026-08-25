@@ -160,6 +160,10 @@ public struct GridView: NSViewRepresentable {
     public var zoom: Double
     /// Behaviour switches.
     public var options: GridOptions
+    /// Which cells have changed since the document's baseline, tinted green/amber/red until the
+    /// baseline moves. Standing state, so it is a value on the view rather than a call on the
+    /// controller — the flash next door is the one that is an event.
+    public var highlights: ChangeHighlights
     /// Optional imperative handle.
     public var controller: GridController?
     /// Everything the grid asks the shell to do.
@@ -172,6 +176,7 @@ public struct GridView: NSViewRepresentable {
         theme: GridTheme = .light,
         zoom: Double = 1,
         options: GridOptions = .default,
+        highlights: ChangeHighlights = .none,
         controller: GridController? = nil,
         onEvent: GridEventHandler? = nil
     ) {
@@ -181,6 +186,7 @@ public struct GridView: NSViewRepresentable {
         self.theme = theme
         self.zoom = zoom
         self.options = options
+        self.highlights = highlights
         self.controller = controller
         self.onEvent = onEvent
     }
@@ -237,6 +243,7 @@ public struct GridView: NSViewRepresentable {
             geometry: GridGeometry(sheet: sheet, zoom: zoom),
             merges: MergeIndex(sheet.merges),
             selection: selection,
+            highlights: highlights,
             flashTime: 0
         )
     }

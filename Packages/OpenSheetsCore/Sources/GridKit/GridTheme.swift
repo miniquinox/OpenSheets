@@ -109,6 +109,30 @@ public struct GridTheme: Sendable, Equatable {
     /// How long a flash takes to decay. Six seconds.
     public var flashDuration: Double
 
+    // MARK: - Change tracking
+
+    /// The standing tint on a cell added since the baseline. Green, in the one mapping the whole
+    /// app uses (PLAN.md §3.1's signal tier; the master plan's §1.3).
+    ///
+    /// These three are full-strength hues, not the washes that reach the screen —
+    /// ``changeTintOpacity`` supplies the alpha. Storing them opaque is what lets the band and
+    /// the fill share a colour at two strengths without a second set of constants.
+    public var changeAddedTint: RGBAColor
+    /// A cell whose value or formula differs from the baseline. Amber.
+    public var changeModifiedTint: RGBAColor
+    /// A cell that existed at the baseline and does not now. Red.
+    public var changeRemovedTint: RGBAColor
+    /// Alpha of a per-cell change tint.
+    ///
+    /// Low on purpose. A change tint sits *under the text of the cell it marks*, so it has to
+    /// carry a signal without eating the 4.5:1 the text needs against the canvas
+    /// (PLAN.md §3.5). At 0.14 it moves the canvas by about thirty levels in one channel —
+    /// visible at a glance across a screenful, nearly free in contrast terms.
+    public var changeTintOpacity: Double
+    /// Alpha of an inserted-row or inserted-column band. Half the cell tint: a whole row of it
+    /// is a lot of colour, and the row is already the shape carrying the message.
+    public var changeBandOpacity: Double
+
     // MARK: - Typography
 
     /// Family used when a cell's own font is unavailable, and for `General` text.
@@ -174,6 +198,14 @@ public struct GridTheme: Sendable, Equatable {
         flashTint: RGBAColor,
         flashPeakOpacity: Double = 0.28,
         flashDuration: Double = 6,
+        // Defaulted so every existing call site — including ``light`` and ``dark`` below —
+        // compiles unchanged, and so a theme that says nothing about change tracking still
+        // draws it correctly. GlassUI overrides these per scheme through the bridge.
+        changeAddedTint: RGBAColor = RGBAColor(red: 51, green: 199, blue: 89),
+        changeModifiedTint: RGBAColor = RGBAColor(red: 255, green: 184, blue: 46),
+        changeRemovedTint: RGBAColor = RGBAColor(red: 255, green: 84, blue: 84),
+        changeTintOpacity: Double = 0.14,
+        changeBandOpacity: Double = 0.07,
         bodyFontName: String = "",
         monospacedFontName: String = "SF Mono",
         defaultFontSize: Double = 12,
@@ -215,6 +247,11 @@ public struct GridTheme: Sendable, Equatable {
         self.flashTint = flashTint
         self.flashPeakOpacity = flashPeakOpacity
         self.flashDuration = flashDuration
+        self.changeAddedTint = changeAddedTint
+        self.changeModifiedTint = changeModifiedTint
+        self.changeRemovedTint = changeRemovedTint
+        self.changeTintOpacity = changeTintOpacity
+        self.changeBandOpacity = changeBandOpacity
         self.bodyFontName = bodyFontName
         self.monospacedFontName = monospacedFontName
         self.defaultFontSize = defaultFontSize
@@ -300,7 +337,11 @@ public extension GridTheme {
     )
 
     /// A copy with the contrast adjustments PLAN.md §3.5 requires: stronger separators, a
-    /// heavier selection stroke, and no signal that is carried by tint alone.
+    /// heavier selection stroke, and no *chrome* signal that is carried by tint alone.
+    ///
+    /// The change tints are deliberately left where they are. They annotate content rather than
+    /// chrome, so darkening them would push the cell text they sit under below 4.5:1 — the low
+    /// default opacities are the contrast guarantee, and raising them to shout would break it.
     func increasingContrast() -> GridTheme {
         var theme = self
         theme.increaseContrast = true
