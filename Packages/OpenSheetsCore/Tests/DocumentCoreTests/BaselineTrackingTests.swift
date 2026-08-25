@@ -216,6 +216,37 @@ struct BaselineTrackingTests {
         #expect(second.model.baselineCounts == BaselineCounts(added: 1, modified: 1))
     }
 
+    /// …**including in a workbook full of formulas**, which is the case that lost one.
+    ///
+    /// The restore of a persisted checkpoint is asynchronous — a SQLite read, a gunzip and a
+    /// workbook parse — and it used to be discarded if anything had moved the baseline while it
+    /// was in flight. In a file with a formula whose cached value is missing, something always
+    /// has: recalculation on open lands, the as-opened baseline moves onto the corrected values,
+    /// and the checkpoint arriving a moment later was thrown away as stale. It was not stale, and
+    /// the user's checkpoint silently became *Since opened* on every relaunch. The fix counts the
+    /// user's own baseline *choices* rather than every baseline move; this test is the difference
+    /// between the two, so `lastOpenRecalculation` is asserted as well — without a recalculation
+    /// having actually run, the test would pass without exercising anything.
+    @Test func aCheckpointSurvivesTheRecalculationOnOpen() async throws {
+        let workspace = try BaselineWorkspace(seed: BaselineWorkspace.seedWithAnUncachedFormula())
+        defer { workspace.remove() }
+
+        do {
+            let first = try await workspace.open()
+            defer { first.close() }
+            await first.model.setCheckpoint()
+            #expect(first.model.baselineSource == .checkpoint)
+        }
+        #expect(workspace.storedCheckpointID() != nil)
+
+        let second = try await workspace.open()
+        defer { second.close() }
+        try await second.settle { $0.lastOpenRecalculation != nil }
+        #expect(second.model.lastOpenRecalculation?.changedAnything == true, "no recalculation ran")
+        try await second.settle { $0.baselineSource == .checkpoint }
+        #expect(second.model.baselineSource == .checkpoint)
+    }
+
     /// An evicted checkpoint falls back to *as opened*, quietly.
     ///
     /// Twenty snapshots per file is a real budget, so a checkpoint left alone through a busy
@@ -428,7 +459,7 @@ final class BaselineWorkspace {
     let url: URL
     let store: SheetStore
 
-    init(name: String = "budget.xlsx") throws {
+    init(name: String = "budget.xlsx", seed: Workbook? = nil) throws {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("opensheets-baseline-\(UUID().uuidString)")
         support = FileManager.default.temporaryDirectory
@@ -437,7 +468,7 @@ final class BaselineWorkspace {
         try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
         url = directory.appendingPathComponent(name)
 
-        let workbook = try BaselineWorkspace.seed()
+        let workbook = try seed ?? BaselineWorkspace.seed()
         var tracker = WorkbookEditTracker()
         if let sheet = workbook.sheets.first { tracker.noteSheetReplaced(sheet) }
         try XLSXWriter.data(for: workbook, edits: tracker).write(to: url)
@@ -511,6 +542,24 @@ final class BaselineWorkspace {
                 [.text("Travel"), .number(11), .number(13)],
                 [.text("Rent"), .number(20), .number(22)],
             ])
+            .build()
+    }
+
+    /// The same four rows with a **total whose cached value is missing**, which is what every
+    /// openpyxl and pandas write leaves behind — and the shape of file this whole product exists
+    /// for. Opening it makes ``DocumentCore/OpenRecalculation`` run, which is the event
+    /// ``aCheckpointSurvivesTheRecalculationOnOpen()`` needs to have happened.
+    static func seedWithAnUncachedFormula() throws -> Workbook {
+        try WorkbookBuilder()
+            .sheet("Q4")
+            .partPath("xl/worksheets/sheet1.xml", relationshipID: "rId1")
+            .rows("A1", [
+                [.text("Item"), .text("Q1"), .text("Q2")],
+                [.text("Salaries"), .number(101), .number(121)],
+                [.text("Travel"), .number(11), .number(13)],
+                [.text("Rent"), .number(20), .number(22)],
+            ])
+            .formula("B5", "SUM(B2:B4)")
             .build()
     }
 

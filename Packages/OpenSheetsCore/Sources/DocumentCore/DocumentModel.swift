@@ -1201,6 +1201,10 @@ public final class DocumentModel {
     /// silently saving because the user asked for a bookmark is the worse surprise.
     public func setCheckpoint() async {
         guard isChangeTrackingEnabled else { return }
+        // Before the `await`, not after: a restore still in flight has to see the user's choice
+        // land the moment they make it, or it can overwrite a fresh checkpoint with last
+        // session's while the snapshot is being written.
+        baselineChoiceGeneration &+= 1
         let record = try? await session.captureSnapshot(reason: .checkpoint, summary: "checkpoint")
         // Nothing to copy and no way to make a copy — an unreadable file we also cannot save.
         // There is no checkpoint to be had here, so claim none.
@@ -1218,6 +1222,7 @@ public final class DocumentModel {
     /// answer afterwards would spend a moment claiming a baseline it does not have.
     public func setBaselineSource(_ source: BaselineSource) async {
         guard isChangeTrackingEnabled else { return }
+        baselineChoiceGeneration &+= 1
         switch source {
         case .asOpened:
             setBaseline(openedWorkbook, source: .asOpened, date: openedAt)
@@ -1249,6 +1254,19 @@ public final class DocumentModel {
     /// Bumped whenever the baseline itself moves, so a diff computed against the previous one is
     /// discarded rather than shown against the new one.
     @ObservationIgnored private var baselineGeneration = 0
+    /// Bumped only when **the user picks a baseline** — ``setCheckpoint()`` or
+    /// ``setBaselineSource(_:)``. Nothing the app does to itself touches it.
+    ///
+    /// Separate from ``baselineGeneration`` because the two guard different things, and using the
+    /// one for the other lost people their checkpoints. The restore of a persisted checkpoint
+    /// (``restorePersistedCheckpoint()``) has to survive everything that moves the baseline
+    /// *automatically* while it is decompressing and parsing — and in a workbook with formulas one
+    /// of those always happens: recalculation on open lands, ``noteWorkbookRecalculated()`` moves
+    /// the as-opened baseline onto the corrected values, `baselineGeneration` goes up, and the
+    /// checkpoint arriving a moment later was discarded as stale. It was not stale; it was the
+    /// answer. A file full of formulas written by an agent is exactly this product's case, so the
+    /// bug hid in the one shape that matters most.
+    @ObservationIgnored private var baselineChoiceGeneration = 0
     /// The ``workbookGeneration`` the baseline was taken *from*, when it was taken from the live
     /// workbook rather than from bytes. `nil` otherwise. See ``noteWorkbookRecalculated()``.
     @ObservationIgnored private var baselineTakenFromWorkbookGeneration: Int?
@@ -1395,11 +1413,11 @@ public final class DocumentModel {
     /// main-actor job created there queues ahead of the session pump's first event.
     private func restorePersistedCheckpoint() {
         guard let checkpoints else { return }
-        let generation = baselineGeneration
+        let generation = baselineChoiceGeneration
         let target = url
         Task.detached(priority: .utility) { [weak self] in
             guard let restored = await checkpoints.checkpointBaseline(for: target) else { return }
-            await self?.adoptRestoredCheckpoint(restored, takenAtBaselineGeneration: generation)
+            await self?.adoptRestoredCheckpoint(restored, takenAtChoiceGeneration: generation)
         }
     }
 
@@ -1407,11 +1425,15 @@ public final class DocumentModel {
     ///
     /// The generation check is the point: the user may have set a fresh checkpoint, or switched
     /// source, in the time it took to decompress and parse the snapshot. Their choice wins.
+    ///
+    /// It counts *choices* rather than baseline moves — see ``baselineChoiceGeneration``. Anything
+    /// the app does to the baseline on its own (recalculation on open, most of all) is not a
+    /// reason to throw away the checkpoint the user asked for last session.
     private func adoptRestoredCheckpoint(
         _ restored: (workbook: Workbook, takenAt: Date),
-        takenAtBaselineGeneration generation: Int
+        takenAtChoiceGeneration generation: Int
     ) {
-        guard baselineGeneration == generation else { return }
+        guard baselineChoiceGeneration == generation else { return }
         isCheckpointAvailable = true
         setBaseline(restored.workbook, source: .checkpoint, date: restored.takenAt)
     }
