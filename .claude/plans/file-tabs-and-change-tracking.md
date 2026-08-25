@@ -133,6 +133,24 @@ the tab remains closable. Sync states (MISSING, LOCKED, …) render exactly as t
 - **Structural changes**: inserted rows/columns render as a light green band across the visible
   row/column; deleted rows/columns are **panel-only** in v1 (a marker between rows is fiddly and
   not worth the risk — note this in the panel row: "deleted 2 rows at 14").
+- **Density cap — added 2026-08-24 after T3 measured the cost.** Washing a translucent tint over
+  every visible cell costs ~8.3 ms a frame whatever the iteration strategy: it is
+  memory-bandwidth-bound alpha blending, and T3 confirmed one viewport-sized fill, 544 per-cell
+  fills, and a batched `fill([CGRect])` all land within 3% of each other. The same area filled
+  *opaquely* costs 0.44 ms, so the cost is the blend, not the geometry. That is fine when an
+  agent changed forty cells and fatal when it rewrote the sheet — which is a core scenario here,
+  not an edge case, and unlike the existing select-all wash (which already costs this) these
+  tints are **standing state the user scrolls through while reviewing**.
+  So: above a density threshold the per-cell wash is not drawn at all. This is a UX improvement
+  as much as a performance one — when every cell is green, green has stopped meaning anything,
+  and the honest statement is one sentence, not a million rectangles.
+  **The decision belongs in the mapping layer (T7), never in the renderer**: the renderer stays a
+  renderer, and the shell has to be able to *say* what it did. `ChangeHighlightsMapping` returns
+  `.none` plus a `isSuppressedByDensity` flag when highlighted cells exceed
+  `Limits`-style constant `maxHighlightDensity` (default **0.35**) of the sheet's used-range cell
+  count, or when the diff `wasTruncated`. The panel then reads *"Most of this sheet changed —
+  per-cell highlights are off"*, in the same register as the existing "500+ changes" truncation
+  note. Never leave the grid silently unpainted while the chip reports thousands of changes.
 - Checkpoint eviction: checkpoint snapshots live in the same 20-per-file budget
   (`SheetStore/SnapshotStore.swift:287`). If the checkpoint snapshot has been evicted or fails to
   parse at relaunch, the baseline silently falls back to `asOpened` and the chip label says so.
