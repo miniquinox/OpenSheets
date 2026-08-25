@@ -426,4 +426,40 @@ import Testing
         let undo = try #require(built.sections.flatMap(\.items).first { $0.id == "undo" })
         #expect(!undo.isEnabled)
     }
+
+    @Test func theCheckpointVerbsAreAbsentWhenTheFlagIsOff() throws {
+        let workbook = try Fixtures.workbook()
+        let off = CommandRegistry.sections(
+            query: "", workbook: workbook, definedNames: [],
+            canUndo: false, canRedo: false, canRefresh: true, canSave: false
+        )
+        #expect(off.commands.values.contains(.setCheckpoint) == false)
+        #expect(off.commands.values.contains(.toggleChangeHighlights) == false)
+
+        // Absent rather than disabled: the flag's promise is the exact pre-feature experience, and
+        // a greyed-out row named after a feature you switched off is still the feature.
+        let on = CommandRegistry.sections(
+            query: "", workbook: workbook, definedNames: [],
+            canUndo: false, canRedo: false, canRefresh: true, canSave: false,
+            isTrackingChanges: true
+        )
+        #expect(on.commands["checkpoint"] == .setCheckpoint)
+        #expect(on.commands["highlights"] == .toggleChangeHighlights)
+        #expect(on.commands.values.contains(.nextTab) == false, "one tab is nothing to move between")
+    }
+
+    @Test func theTabVerbsAppearOnlyWithSomewhereToGo() throws {
+        let workbook = try Fixtures.workbook()
+        let built = CommandRegistry.sections(
+            query: "tab", workbook: workbook, definedNames: [],
+            canUndo: false, canRedo: false, canRefresh: true, canSave: false,
+            hasTabs: true
+        )
+        #expect(built.commands["next-tab"] == .nextTab)
+        #expect(built.commands["previous-tab"] == .previousTab)
+        // The query has to reach them: the palette is how somebody who does not know ⇧⌘] finds it.
+        let matched = built.sections.flatMap(\.items).map(\.id)
+        #expect(matched.contains("next-tab"))
+        #expect(matched.contains("previous-tab"))
+    }
 }

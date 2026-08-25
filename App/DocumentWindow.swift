@@ -104,6 +104,11 @@ struct DocumentWindow: View {
             }
             .onDisappear { releaseWorkspace() }
             .task(id: newestRefreshAt) { await lapseAgentDot() }
+            // The git baseline's one call site (§1.4). `DocumentCore` ships the adapter but never
+            // installs it, so without this line `gitBaselineProvider` stays nil, the model's probe
+            // never runs, and *Since last commit* is a source the panel can never offer — the
+            // whole of T5 and the adapter dead on the branch.
+            .onChange(of: activeDocumentIdentity, initial: true) { installGitBaseline() }
             .alert(
                 closeRequest?.title ?? "",
                 isPresented: Binding(
@@ -127,7 +132,7 @@ struct DocumentWindow: View {
     private var content: some View {
         switch activeTab?.phase {
         case let .some(.ready(model)):
-            DocumentPane(model: model, app: app, context: context) { titleBar }
+            DocumentPane(model: model, app: app, tabs: tabs, context: context) { titleBar }
         case .some(.loading):
             plane {
                 ProgressView()
@@ -300,6 +305,30 @@ struct DocumentWindow: View {
             guard case let .ready(model) = tab.phase else { return nil }
             return model.lastRefreshAt
         }.max()
+    }
+
+    // MARK: - The git baseline
+
+    /// Which document the window is showing, as a value `onChange` can compare.
+    ///
+    /// The *object*, not the tab id: a tab activated while its file is still being read has no
+    /// document yet, and keying on the id would fire once against `nil` and never again. This flips
+    /// from `nil` to the model the moment the tab is ready, which is the event the install wants.
+    private var activeDocumentIdentity: ObjectIdentifier? {
+        tabs.activeDocument.map(ObjectIdentifier.init)
+    }
+
+    /// Gives the document on screen a way to read its own committed version.
+    ///
+    /// Only the active tab, and only once each. The git source is offered in the changes panel,
+    /// the changes panel belongs to the tab in front, and a background tab that nobody has asked
+    /// about does not need a `git rev-parse` spent on it — activating it runs this. The `nil`
+    /// check is what keeps a tab switch from re-probing: installing a provider re-fires
+    /// ``DocumentCore/DocumentModel``'s availability probe, which is a second `git show` and a
+    /// second workbook parse for an answer that has not changed.
+    private func installGitBaseline() {
+        guard let model = tabs.activeDocument, model.gitBaselineProvider == nil else { return }
+        GitBaselineAdapter.install(on: model)
     }
 
     private func lapseAgentDot() async {
@@ -533,6 +562,15 @@ struct DocumentWindow: View {
 private struct DocumentPane<TitleBar: View>: View {
     @Bindable var model: DocumentModel
     let app: AppModel
+    /// The window's tabs, for the two palette verbs that steer them.
+    ///
+    /// A pane that is *about* one document holding the whole tab set looks like a layering slip
+    /// and is not one: the ⌘K palette is a window-level command surface that happens to be drawn
+    /// inside the pane, and `Next tab` in the palette has to be the same call the menu bar makes.
+    /// The alternative was another `OpenActions` static, which is what that file's own doc comment
+    /// calls the last resort — statics are there for the callers that *cannot* be handed a value,
+    /// and this one is constructed two lines up from the tabs it needs.
+    let tabs: TabsModel
     let context: AppearanceContext
     @ViewBuilder var titleBar: () -> TitleBar
 
@@ -843,7 +881,9 @@ private struct DocumentPane<TitleBar: View>: View {
             canUndo: model.canUndo,
             canRedo: model.canRedo,
             canRefresh: model.syncState == .stale || model.syncState == .synced,
-            canSave: model.syncState.allowsSaving && model.hasUnsavedEdits
+            canSave: model.syncState.allowsSaving && model.hasUnsavedEdits,
+            isTrackingChanges: Flags.changeTrackingEnabled,
+            hasTabs: tabs.tabs.count > 1
         )
         paletteState.sections = built.sections
         paletteCommands = built.commands
@@ -879,6 +919,17 @@ private struct DocumentPane<TitleBar: View>: View {
             TerminalLauncher.open(at: model.workspaceURL)
         case .insertFunction:
             break
+        // The same three calls the menu bar and the changes panel make. Deliberately not a
+        // shortcut into some palette-only path: a command that behaves differently depending on
+        // which surface invoked it is a command with two behaviours to keep in step.
+        case .setCheckpoint:
+            Task { await model.setCheckpoint() }
+        case .toggleChangeHighlights:
+            model.isChangeHighlightingEnabled.toggle()
+        case .nextTab:
+            tabs.activateNext()
+        case .previousTab:
+            tabs.activatePrevious()
         }
     }
 

@@ -21,18 +21,34 @@ public enum PaletteCommand: Sendable, Hashable {
     case snapshots
     case openTerminal
     case insertFunction(String)
+    /// PLAN.md §1.2 step 8 — mark here, and measure everything from it.
+    case setCheckpoint
+    case toggleChangeHighlights
+    case nextTab
+    case previousTab
 }
 
 /// Builds the palette's sections for a query.
 public enum CommandRegistry {
     /// The static commands, in the order they appear when the query is empty.
+    ///
+    /// - Parameters:
+    ///   - isTrackingChanges: `Flags.changeTrackingEnabled`. The checkpoint and the highlight
+    ///     toggle are **absent** rather than disabled when the flag is off, because the flag's
+    ///     promise (§1.10) is the exact pre-feature experience — and a greyed-out row named after
+    ///     a feature you have switched off is still the feature, advertising itself.
+    ///   - hasTabs: whether there is more than one tab to move between. Same reasoning as the
+    ///     menu bar's `Next Tab`, which disables below two: a palette entry that reliably does
+    ///     nothing teaches people not to trust the palette.
     public static func actions(
         canUndo: Bool,
         canRedo: Bool,
         canRefresh: Bool,
-        canSave: Bool
+        canSave: Bool,
+        isTrackingChanges: Bool = false,
+        hasTabs: Bool = false
     ) -> [(item: CommandItem, command: PaletteCommand)] {
-        [
+        var built: [(item: CommandItem, command: PaletteCommand)] = [
             (
                 CommandItem(
                     id: "refresh", title: "Refresh from disk", symbol: "arrow.clockwise",
@@ -79,6 +95,46 @@ public enum CommandRegistry {
                 .openTerminal
             ),
         ]
+
+        if isTrackingChanges {
+            built.append(
+                (
+                    CommandItem(
+                        id: "checkpoint", title: "Set checkpoint", symbol: "flag",
+                        shortcut: "⇧⌘K"
+                    ),
+                    .setCheckpoint
+                )
+            )
+            built.append(
+                (
+                    CommandItem(
+                        id: "highlights", title: "Toggle change highlights",
+                        symbol: "square.on.square.dashed"
+                    ),
+                    .toggleChangeHighlights
+                )
+            )
+        }
+
+        if hasTabs {
+            built.append(
+                (
+                    CommandItem(id: "next-tab", title: "Next tab", symbol: "arrow.right", shortcut: "⇧⌘]"),
+                    .nextTab
+                )
+            )
+            built.append(
+                (
+                    CommandItem(
+                        id: "previous-tab", title: "Previous tab", symbol: "arrow.left", shortcut: "⇧⌘["
+                    ),
+                    .previousTab
+                )
+            )
+        }
+
+        return built
     }
 
     /// Everything the palette should show for `query`.
@@ -93,7 +149,9 @@ public enum CommandRegistry {
         canUndo: Bool,
         canRedo: Bool,
         canRefresh: Bool,
-        canSave: Bool
+        canSave: Bool,
+        isTrackingChanges: Bool = false,
+        hasTabs: Bool = false
     ) -> (sections: [CommandSection], commands: [String: PaletteCommand]) {
         var sections: [CommandSection] = []
         var commands: [String: PaletteCommand] = [:]
@@ -136,7 +194,8 @@ public enum CommandRegistry {
         }
 
         let actionPairs = actions(
-            canUndo: canUndo, canRedo: canRedo, canRefresh: canRefresh, canSave: canSave
+            canUndo: canUndo, canRedo: canRedo, canRefresh: canRefresh, canSave: canSave,
+            isTrackingChanges: isTrackingChanges, hasTabs: hasTabs
         )
         for pair in actionPairs { commands[pair.item.id] = pair.command }
         let rankedActions = CommandFuzzy.rank(actionPairs.map(\.item), query: query, by: \.title)
