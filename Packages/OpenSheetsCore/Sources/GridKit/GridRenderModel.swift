@@ -20,6 +20,9 @@ public struct GridRenderModel: Sendable {
     /// Prebuilt from ``Sheet/merges`` — see ``MergeIndex`` for why it is not looked up directly.
     public var merges: MergeIndex
     public var selection: GridSelection
+    /// Standing green/amber/red tints against the document's baseline. Does not decay — see
+    /// ``ChangeHighlights``. Empty by default, and empty costs a single check per pane.
+    public var highlights: ChangeHighlights
     /// The "Claude changed this" tints, and the moment to evaluate them at.
     public var flash: FlashState
     public var flashTime: Double
@@ -36,6 +39,7 @@ public struct GridRenderModel: Sendable {
         geometry: GridGeometry? = nil,
         merges: MergeIndex? = nil,
         selection: GridSelection = GridSelection(),
+        highlights: ChangeHighlights = .none,
         flash: FlashState = FlashState(),
         flashTime: Double = 0,
         isFocused: Bool = true
@@ -48,6 +52,7 @@ public struct GridRenderModel: Sendable {
         self.geometry = geometry ?? GridGeometry(sheet: sheet)
         self.merges = merges ?? MergeIndex(sheet.merges)
         self.selection = selection
+        self.highlights = highlights
         self.flash = flash
         self.flashTime = flashTime
         self.isFocused = isFocused
@@ -122,6 +127,14 @@ struct ResolvedPalette {
     let frozenShadow: CGColor
     let flashTint: CGColor
     let unfocusedSelection: CGColor
+    /// The three standing change tints and the inserted-row band, alpha already applied.
+    ///
+    /// Four constants rather than three: the band is the added hue at a second strength, and
+    /// blending it in the draw loop would be one `CGColor` allocation per banded row per frame.
+    let changeAdded: CGColor
+    let changeModified: CGColor
+    let changeRemoved: CGColor
+    let changeBand: CGColor
 
     init(_ theme: GridTheme) {
         canvas = theme.canvasBackground.cgColor
@@ -147,5 +160,9 @@ struct ResolvedPalette {
         flashTint = theme.flashTint.cgColor
         // A background selection is grey rather than accent, matching every other list on macOS.
         unfocusedSelection = RGBAColor(red: 128, green: 128, blue: 128, alpha: 150).cgColor
+        changeAdded = theme.changeAddedTint.withOpacity(theme.changeTintOpacity).cgColor
+        changeModified = theme.changeModifiedTint.withOpacity(theme.changeTintOpacity).cgColor
+        changeRemoved = theme.changeRemovedTint.withOpacity(theme.changeTintOpacity).cgColor
+        changeBand = theme.changeAddedTint.withOpacity(theme.changeBandOpacity).cgColor
     }
 }

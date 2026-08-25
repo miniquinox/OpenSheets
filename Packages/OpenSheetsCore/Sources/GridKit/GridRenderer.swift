@@ -276,7 +276,79 @@ public final class GridRenderer {
                 context.fill(rect(of: ref, model: model, offset: offset))
             }
         }
+        // Standing state first, transient news second: a fresh flash has to read on top of a
+        // tint that was already there, or an agent's latest write is invisible on a cell that
+        // has been amber since this morning.
+        drawChangeTints(visible, model: model, context: context, offset: offset)
         drawFlashTints(visible, model: model, context: context, offset: offset)
+    }
+
+    /// The green/amber/red tints for changes against the document's baseline.
+    ///
+    /// # Why this costs what the screen costs
+    ///
+    /// A baseline diff can name half a million cells. Three things keep the frame flat anyway:
+    /// an empty ``ChangeHighlights`` returns on the first line; the cell loop runs over the
+    /// intersection of ``ChangeHighlights/cellBounds`` with the visible rect, so a three-cell
+    /// diff visits three cells and a sheet-wide one visits a screenful; and every colour was
+    /// resolved once in ``ResolvedPalette``, so nothing inside the loop allocates.
+    ///
+    /// Bands go first. An inserted row is one rectangle across the visible columns rather than
+    /// a tint per cell, and drawing it underneath means a modified cell *inside* an inserted
+    /// row still shows its own colour.
+    private func drawChangeTints(
+        _ visible: CellRange,
+        model: GridRenderModel,
+        context: CGContext,
+        offset: CGPoint
+    ) {
+        let highlights = model.highlights
+        guard !highlights.isEmpty else { return }
+
+        if !highlights.insertedRows.isEmpty {
+            context.setFillColor(palette.changeBand)
+            for row in visible.rows where highlights.insertedRows.contains(row) {
+                context.fill(rowRect(row, columns: visible.columns, model: model, offset: offset))
+            }
+        }
+        let hasColumnBands = !highlights.insertedColumns.isEmpty
+        if hasColumnBands {
+            context.setFillColor(palette.changeBand)
+            for column in visible.columns where highlights.insertedColumns.contains(column) {
+                context.fill(bandRect(
+                    rows: visible.rows, columns: column ... column, model: model, offset: offset
+                ))
+            }
+        }
+
+        guard let bounds = highlights.cellBounds, let overlap = bounds.intersection(visible) else { return }
+        for row in overlap.rows {
+            let bandedRow = highlights.insertedRows.contains(row)
+            for column in overlap.columns {
+                let ref = CellRef(row: row, column: column)
+                let banded = bandedRow || (hasColumnBands && highlights.insertedColumns.contains(column))
+                guard let tint = changeTint(at: ref, in: highlights, isBanded: banded) else { continue }
+                // A merged region is drawn once, from its anchor — the same rule the flash uses,
+                // and the reason a merged title does not get tinted in four overlapping pieces.
+                let span = model.merges.merge(containing: ref) ?? CellRange(ref)
+                guard span.start == ref || span.isSingleCell else { continue }
+                context.setFillColor(tint)
+                context.fill(rect(of: span, model: model, offset: offset))
+            }
+        }
+    }
+
+    /// Which standing tint a cell carries, or `nil` for none.
+    ///
+    /// Precedence is added, then modified, then removed — one colour per cell, decided the same
+    /// way in every pass so the merge repaint below cannot disagree with the cell loop above.
+    /// A cell that is *added inside an inserted row* returns `nil`: the band already says it,
+    /// and painting both stacks two greens into a darker one that reads as a different state.
+    private func changeTint(at ref: CellRef, in highlights: ChangeHighlights, isBanded: Bool) -> CGColor? {
+        if highlights.added.contains(ref) { return isBanded ? nil : palette.changeAdded }
+        if highlights.modified.contains(ref) { return palette.changeModified }
+        if highlights.removed.contains(ref) { return palette.changeRemoved }
+        return nil
     }
 
     private func drawFlashTints(
@@ -363,6 +435,19 @@ public final class GridRenderer {
             let styleID = model.effectiveStyleID(at: merge.start, cell: cell)
             context.setFillColor(resolved(styleID, model: model).fill ?? palette.canvas)
             context.fill(box)
+            // That fill just erased everything drawn under the merge, tints included, so the
+            // standing tint and the flash are both re-laid here in the same order as before.
+            if !model.highlights.isEmpty {
+                let banded = model.highlights.isBanded(merge.start)
+                if banded {
+                    context.setFillColor(palette.changeBand)
+                    context.fill(box)
+                }
+                if let tint = changeTint(at: merge.start, in: model.highlights, isBanded: banded) {
+                    context.setFillColor(tint)
+                    context.fill(box)
+                }
+            }
             let intensity = model.flash.intensity(of: merge.start, at: model.flashTime)
             if intensity > 0.001 {
                 context.setFillColor(

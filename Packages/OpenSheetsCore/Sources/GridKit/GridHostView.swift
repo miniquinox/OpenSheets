@@ -246,6 +246,15 @@ public final class GridHostView: NSView {
     ///
     /// Cheap when only the selection changed: the sheet is a value type, so the comparison that
     /// decides whether to rebuild the data index is a pointer comparison in the common case.
+    ///
+    /// ``GridRenderModel/highlights`` rides along untouched, which is the difference between it
+    /// and the flash below. The flash is owned here, so the shell's model is overwritten with the
+    /// controller's state; the change tints are owned by the shell's baseline, so replacing the
+    /// model *is* how they change. ``ChangeHighlights`` is ``Equatable``, so a caller that keeps
+    /// its own render model can compare before calling; this method itself invalidates
+    /// unconditionally, as it always has, and a highlight change therefore repaints the whole
+    /// viewport. That is deliberate rather than sloppy — a baseline recompute lands on a refresh
+    /// or an edit, never on a frame, so a targeted rectangle would buy nothing real.
     public func update(model newModel: GridRenderModel) {
         let cellsChanged = model.sheet.cells != newModel.sheet.cells
         let geometryChanged = model.geometry != newModel.geometry
