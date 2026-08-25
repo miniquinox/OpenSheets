@@ -324,11 +324,45 @@ struct ComponentModelTests {
         #expect(Set(expected.map(\.1)).count == expected.count)
 
         for context in AppearanceContext.snapshotMatrix {
-            #expect(FileTabDot.absent.color(context) == nil, "an absent dot has no colour to draw")
-            #expect(FileTabDot.progress.color(context) == nil, "loading draws a spinner, not a dot")
+            #expect(
+                FileTabDot.absent.color(context, onAccent: false) == nil,
+                "an absent dot has no colour to draw"
+            )
+            #expect(
+                FileTabDot.progress.color(context, onAccent: false) == nil,
+                "loading draws a spinner, not a dot"
+            )
             for dot in [FileTabDot.unsaved, .agent, .conflict, .problem] {
-                #expect(dot.color(context) != nil, "\(dot) has no colour in \(context.snapshotName)")
+                #expect(
+                    dot.color(context, onAccent: false) != nil,
+                    "\(dot) has no colour in \(context.snapshotName)"
+                )
             }
+        }
+    }
+
+    /// The active tab is a filled accent capsule and the agent dot is accent, so before this the
+    /// dot was accent on accent and vanished — on the one tab the user is most likely to be
+    /// looking at, carrying the one signal the strip exists for.
+    @Test("No dot is drawn in the colour of the capsule underneath it")
+    func theActiveTabsDotStaysVisible() {
+        for context in AppearanceContext.snapshotMatrix {
+            for dot in [FileTabDot.unsaved, .agent, .conflict, .problem] {
+                let onAccent = dot.color(context, onAccent: true)
+                #expect(onAccent != nil, "\(dot) draws nothing on the active tab")
+                #expect(
+                    onAccent != DS.Chrome.accent,
+                    "\(dot) is accent on an accent capsule in \(context.snapshotName) — invisible"
+                )
+            }
+            // Off the capsule the statuses still have to be told apart by colour, which is the
+            // half that would be easy to lose while fixing the half above.
+            let offAccent = [FileTabDot.unsaved, .agent, .conflict, .problem]
+                .map { $0.color(context, onAccent: false) }
+            #expect(
+                Set(offAccent.map { $0.map(String.init(describing:)) ?? "nil" }).count == offAccent.count,
+                "two statuses share a colour off the capsule in \(context.snapshotName)"
+            )
         }
     }
 

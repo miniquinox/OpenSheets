@@ -121,8 +121,24 @@ enum FileTabDot: Sendable, Hashable {
 
     /// `nil` for ``absent`` and ``progress``: nothing is drawn for the first, and the second draws
     /// a spinner rather than a dot.
-    func color(_ context: AppearanceContext) -> Color? {
-        switch self {
+    ///
+    /// # Why the active tab is a separate case
+    ///
+    /// The active tab is a filled accent capsule, and the agent dot is `DS.Chrome.accent` — so on
+    /// the active tab it was accent on accent and simply disappeared. That is the one signal this
+    /// strip exists to carry (*which file did Claude just touch*), and it went missing on the tab
+    /// the user is most likely to be looking at.
+    ///
+    /// So on the active capsule every dot is drawn in `onAccent`, exactly as the title text beside
+    /// it already is. The colour stops encoding *which* status it is there — but the shape is
+    /// still "something is up with this file", the tooltip and the VoiceOver label still name it,
+    /// and the sync chip a few points to the right carries the detail in full. A dot you can see
+    /// that says less beats a correctly-coloured dot you cannot see at all.
+    func color(_ context: AppearanceContext, onAccent: Bool) -> Color? {
+        if onAccent {
+            return self == .absent || self == .progress ? nil : DS.Chrome.onAccent
+        }
+        return switch self {
         case .absent, .progress: nil
         case .unsaved: DS.Chrome.secondary
         case .agent: DS.Chrome.accent
@@ -242,7 +258,7 @@ public struct FileTabStrip: View {
         let showsClose = isActive || hoveredID == tab.id
 
         HStack(spacing: DS.Space.xs) {
-            statusIndicator(tab.status)
+            statusIndicator(tab.status, onAccent: isActive)
 
             Text(tab.title)
                 .font(isActive ? DS.Text.controlEmphasis : DS.Text.control)
@@ -287,7 +303,7 @@ public struct FileTabStrip: View {
     }
 
     @ViewBuilder
-    private func statusIndicator(_ status: FileTabItem.Status) -> some View {
+    private func statusIndicator(_ status: FileTabItem.Status, onAccent: Bool) -> some View {
         let dot = FileTabDot(status)
         switch dot {
         case .absent:
@@ -300,7 +316,7 @@ public struct FileTabStrip: View {
                 .accessibilityHidden(true)
         default:
             Circle()
-                .fill(dot.color(context) ?? Color.clear)
+                .fill(dot.color(context, onAccent: onAccent) ?? Color.clear)
                 .frame(width: Self.dotDiameter, height: Self.dotDiameter)
                 .accessibilityHidden(true)
         }
