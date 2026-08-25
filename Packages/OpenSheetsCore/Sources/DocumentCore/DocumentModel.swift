@@ -137,7 +137,8 @@ public final class DocumentModel {
         session: DocumentSession,
         reader: DocumentWorkbookReader,
         writer: DocumentWorkbookWriter?,
-        autoRefresh: Bool = true
+        autoRefresh: Bool = true,
+        changeTracking: ChangeTracking = ChangeTracking(isEnabled: Flags.changeTrackingEnabled)
     ) {
         self.url = url
         self.workspaceURL = workspaceURL
@@ -145,6 +146,16 @@ public final class DocumentModel {
         self.session = session
         self.reader = reader
         self.writer = writer
+        openedWorkbook = workbook
+        openedAt = Date()
+        baselineDate = openedAt
+        isChangeTrackingEnabled = changeTracking.isEnabled
+        checkpoints = changeTracking.isEnabled ? changeTracking.checkpoints : nil
+        // Read once at init and written back on every set: the switch is global on purpose
+        // (PLAN.md §1.3 — one switch, not one per document), and a document that re-read the
+        // default on every access would make a hundred `UserDefaults` calls a frame.
+        isChangeHighlightingEnabled = UserDefaults.standard
+            .object(forKey: DocumentModel.highlightsDefaultsKey) as? Bool ?? true
         engine = FormulaEngine(workbook: workbook)
         activeSheetID = workbook.visibleSheets.first?.id ?? workbook.sheets.first?.id ?? SheetID(1)
         isWatching = autoRefresh
@@ -165,6 +176,7 @@ public final class DocumentModel {
         refreshSelectionDerived()
         startPump()
         scheduleOpenRecalculation()
+        adoptOpenedWorkbookAsBaseline()
     }
 
     /// Stops the watcher and releases the session.
@@ -177,6 +189,8 @@ public final class DocumentModel {
     public func close() {
         pump?.cancel()
         pump = nil
+        baselineTask?.cancel()
+        baselineTask = nil
         let session = session
         let reader = reader
         let writer = writer
@@ -192,6 +206,7 @@ public final class DocumentModel {
 
     isolated deinit {
         pump?.cancel()
+        baselineTask?.cancel()
         let session = session
         Task.detached { await session.stop() }
     }
@@ -228,6 +243,10 @@ public final class DocumentModel {
             edits.reset()
             writer?.clearStage(for: url)
             lastError = nil
+            // A save does not move the baseline — that is the whole point of a baseline — but it
+            // does mean the last debounced recompute may still be pending over a value the user
+            // has now committed. Settle it so the chip is right just after ⌘S lands.
+            scheduleBaselineRecompute(after: DocumentModel.refreshDebounce)
         case let .diffAvailable(diff):
             present(diff)
         case let .failed(error):
@@ -268,8 +287,19 @@ public final class DocumentModel {
         // than it was on open — and `workbook` has just been replaced by what is on disk, which
         // is true whether or not the diff had anything in it.
         scheduleOpenRecalculation()
+        // A refresh does **not** reset the baseline (PLAN.md §1.3): tracking accumulates across
+        // as many agent writes as it takes until the user checkpoints. What it does do is make
+        // the last answer wrong, so a fresh one is asked for — after a pause, because an agent
+        // rewriting a file two hundred times a second (§1.9) arrives here as a stream of
+        // refreshes and each one would otherwise start a pass the next one invalidates. It also
+        // keeps this off the tail of the refresh itself, which is a frame the user is watching.
+        scheduleBaselineRecompute(after: DocumentModel.refreshDebounce)
 
         guard !diff.isEmpty else { return }
+        // §1.5's "refreshed in the last 6 s", which is what turns a background tab's dot accent
+        // coloured. An empty diff is a file that was touched rather than changed, and it is not
+        // news.
+        lastRefreshAt = Date()
         feedCounter += 1
         var entry = SyncPresentation.feedEntry(
             for: diff, at: Date(), id: "refresh-\(feedCounter)", formatter: timestampFormatter
@@ -540,6 +570,9 @@ public final class DocumentModel {
     private func markEdited() {
         // Memory has moved on, so any background pass started against the old value is void.
         workbookGeneration &+= 1
+        // Debounced, because this is called once per keystroke-sized edit and a diff per
+        // keystroke is a diff nobody sees the result of. See ``scheduleBaselineRecompute(after:)``.
+        scheduleBaselineRecompute(after: DocumentModel.localEditDebounce)
         enqueue { await $0.edit(DocumentModel.noopEdit) }
     }
 
@@ -992,7 +1025,12 @@ public final class DocumentModel {
 
     /// Bumped whenever ``workbook`` is replaced by an edit or a reload, so a background pass that
     /// started against an older value knows to throw its answer away.
-    @ObservationIgnored private var workbookGeneration = 0
+    ///
+    /// Public so a view that caches something derived from the workbook — the grid's change
+    /// tints, say — has a cheap key to cache it against. `@ObservationIgnored` on purpose: it is
+    /// an identity, not a fact worth redrawing for, and the values it guards (``workbook``,
+    /// ``baselineDiff``) are observed in their own right.
+    @ObservationIgnored public private(set) var workbookGeneration = 0
 
     /// What the last open recalculation did. `nil` until one has run. Tests read it; nothing in
     /// the app branches on it.
@@ -1036,6 +1074,7 @@ public final class DocumentModel {
         guard outcome.changedAnything || outcome.keptCachedCount > 0 else { return }
         result.apply(to: &workbook)
         refreshSelectionDerived()
+        noteWorkbookRecalculated()
         guard outcome.changedAnything else { return }
 
         // Said in the session feed rather than in a banner: it is a fact about the file worth
@@ -1080,6 +1119,345 @@ public final class DocumentModel {
             cellCount: 0,
             id: "grant"
         )
+    }
+
+    // MARK: - Baseline and change tracking
+
+    /// Where the *before* side of ``baselineDiff`` comes from. Starts at
+    /// ``BaselineSource/asOpened`` and only ever moves because the user asked (PLAN.md §1.3).
+    public private(set) var baselineSource: BaselineSource = .asOpened
+
+    /// When the baseline was taken — the chip's *"Since opened · 09:41"*.
+    public private(set) var baselineDate: Date
+
+    /// What has changed since the baseline.
+    ///
+    /// `nil` means *no answer yet*: change tracking is off, or the first pass has not landed.
+    /// ``WorkbookDiff/empty`` means *nothing has changed*, which is a different thing and the
+    /// chip renders it differently (it hides). A view that conflated the two would flash the
+    /// chip on for a frame at every open.
+    public private(set) var baselineDiff: WorkbookDiff?
+
+    /// Whether the grid paints the standing tints.
+    ///
+    /// Global rather than per document, and deliberately: this is one switch for "show me what
+    /// changed", and a user who turns it off in one window means it in all of them. Mirrored
+    /// into `OSChangeHighlights` so the answer survives a relaunch.
+    public var isChangeHighlightingEnabled: Bool {
+        didSet {
+            guard isChangeHighlightingEnabled != oldValue else { return }
+            UserDefaults.standard.set(
+                isChangeHighlightingEnabled, forKey: DocumentModel.highlightsDefaultsKey
+            )
+        }
+    }
+
+    /// When a refresh last brought a **non-empty** change in from disk.
+    ///
+    /// PLAN.md §1.5 uses it for one thing: a file tab shows the accent dot for six seconds after
+    /// an agent wrote to the file, so a background tab can say "something happened here" without
+    /// the window having to keep a second history.
+    public private(set) var lastRefreshAt: Date?
+
+    /// Whether ``BaselineSource/checkpoint`` is a baseline this document can actually produce.
+    ///
+    /// The panel offers the source list, and offering a checkpoint that does not exist is how a
+    /// menu item becomes a no-op the user blames themselves for.
+    public private(set) var isCheckpointAvailable = false
+
+    /// Reads the committed version of this file, for ``BaselineSource/gitHEAD``.
+    ///
+    /// Injected rather than built in, because `DocumentCore` has no business knowing what git
+    /// is: the adapter that runs the subprocess lives one layer up and installs itself here.
+    /// `nil` — the wave-1 state — leaves the whole git path dormant.
+    @ObservationIgnored public var gitBaselineProvider: (@Sendable (URL) async -> Workbook?)? {
+        didSet { probeGitBaseline() }
+    }
+
+    /// Whether the git source is worth offering. Answered asynchronously, once, by probing
+    /// ``gitBaselineProvider`` when one is installed; `false` until then and whenever the probe
+    /// comes back empty (no repository, untracked file, no `git`).
+    public private(set) var isGitBaselineAvailable = false
+
+    /// How many baseline diffs have actually been computed.
+    ///
+    /// Tests read it — it is the only way to *observe* a debounce, as opposed to hoping for one.
+    /// Nothing in the app branches on it, exactly like ``lastOpenRecalculation``.
+    public private(set) var baselineComputeCount = 0
+
+    /// Aggregate counts for the title-bar chip. Zero-filled while there is no diff.
+    public var baselineCounts: BaselineCounts { BaselineTracker.counts(for: baselineDiff) }
+
+    /// PLAN.md §1.2 step 8. Marks here as the new *before*.
+    ///
+    /// Order matters and is the order below: the snapshot is taken **first**, because a baseline
+    /// that has moved with no bytes behind it is a baseline that silently degrades to
+    /// ``BaselineSource/asOpened`` at the next launch, and the user would have no way to tell.
+    ///
+    /// The in-memory baseline is the workbook *on screen*, per contract C2, while the snapshot
+    /// is the bytes *on disk*. With unsaved edits those differ, so a checkpoint set over unsaved
+    /// work reads slightly differently after a relaunch (the edits show as changes, because from
+    /// the file's point of view they are). Forcing a save first would be the alternative, and
+    /// silently saving because the user asked for a bookmark is the worse surprise.
+    public func setCheckpoint() async {
+        guard isChangeTrackingEnabled else { return }
+        let record = try? await session.captureSnapshot(reason: .checkpoint, summary: "checkpoint")
+        // Nothing to copy and no way to make a copy — an unreadable file we also cannot save.
+        // There is no checkpoint to be had here, so claim none.
+        guard record != nil || syncState.allowsSaving else { return }
+        checkpoints?.store(record?.id, for: url)
+        isCheckpointAvailable = record != nil
+        adoptCurrentWorkbookAsBaseline(source: .checkpoint, date: record?.takenAt ?? Date())
+    }
+
+    /// Switches which question the chip is answering.
+    ///
+    /// A source that cannot produce a baseline leaves the current one alone. That rule is the
+    /// whole reason this is `async`: finding out whether git has a committed version of this
+    /// file means asking git, and a model that flipped its source first and discovered the
+    /// answer afterwards would spend a moment claiming a baseline it does not have.
+    public func setBaselineSource(_ source: BaselineSource) async {
+        guard isChangeTrackingEnabled else { return }
+        switch source {
+        case .asOpened:
+            setBaseline(openedWorkbook, source: .asOpened, date: openedAt)
+        case .checkpoint:
+            guard let checkpoints, let restored = await checkpointBaseline(from: checkpoints) else {
+                isCheckpointAvailable = false
+                return
+            }
+            isCheckpointAvailable = true
+            setBaseline(restored.workbook, source: .checkpoint, date: restored.takenAt)
+        case .gitHEAD:
+            guard let committed = await gitBaselineWorkbook() else {
+                isGitBaselineAvailable = false
+                return
+            }
+            setBaseline(committed, source: .gitHEAD, date: Date())
+        }
+    }
+
+    // MARK: - Baseline machinery
+
+    @ObservationIgnored private let isChangeTrackingEnabled: Bool
+    @ObservationIgnored private let checkpoints: CheckpointStore?
+    /// The value the file had when this document opened — the ``BaselineSource/asOpened``
+    /// baseline, kept so switching *back* to it is possible after a checkpoint.
+    @ObservationIgnored private let openedWorkbook: Workbook
+    @ObservationIgnored private let openedAt: Date
+    @ObservationIgnored private var baselineWorkbook: Workbook?
+    /// Bumped whenever the baseline itself moves, so a diff computed against the previous one is
+    /// discarded rather than shown against the new one.
+    @ObservationIgnored private var baselineGeneration = 0
+    /// The ``workbookGeneration`` the baseline was taken *from*, when it was taken from the live
+    /// workbook rather than from bytes. `nil` otherwise. See ``noteWorkbookRecalculated()``.
+    @ObservationIgnored private var baselineTakenFromWorkbookGeneration: Int?
+    @ObservationIgnored private var baselineTask: Task<Void, Never>?
+    @ObservationIgnored private var isRecomputingBaseline = false
+    @ObservationIgnored private var baselineRecomputeQueued = false
+    /// The workbook the availability probe already fetched, kept so the first switch to
+    /// ``BaselineSource/gitHEAD`` does not pay for the same subprocess and parse twice. Consumed
+    /// on use: a second switch asks git again, because by then there may be a new commit.
+    @ObservationIgnored private var probedGitBaseline: Workbook?
+
+    private static let highlightsDefaultsKey = "OSChangeHighlights"
+    /// Long enough that a burst of typing is one pass, short enough that the chip feels live.
+    private static let localEditDebounce = Duration.milliseconds(500)
+    /// The watcher's own coalescing window (`FileWatcher.Configuration`), which is the natural
+    /// granularity for news arriving from disk: anything closer together than that reached us as
+    /// one event anyway.
+    private static let refreshDebounce = Duration.milliseconds(150)
+
+    private func adoptOpenedWorkbookAsBaseline() {
+        guard isChangeTrackingEnabled else { return }
+        adoptCurrentWorkbookAsBaseline(source: .asOpened, date: openedAt)
+        restorePersistedCheckpoint()
+    }
+
+    /// Takes the workbook on screen as the new baseline.
+    ///
+    /// The diff is set to ``WorkbookDiff/empty`` rather than recomputed, because the two sides
+    /// are the same value: spending a pass over a million cells to prove that nothing differs
+    /// from itself would be the most expensive way to learn the least.
+    private func adoptCurrentWorkbookAsBaseline(source: BaselineSource, date: Date) {
+        cancelBaselineWork()
+        baselineGeneration &+= 1
+        baselineWorkbook = workbook
+        baselineTakenFromWorkbookGeneration = workbookGeneration
+        baselineSource = source
+        baselineDate = date
+        baselineDiff = .empty
+    }
+
+    /// Takes a workbook from somewhere else — a snapshot's bytes, git's — as the baseline.
+    private func setBaseline(_ candidate: Workbook, source: BaselineSource, date: Date) {
+        cancelBaselineWork()
+        baselineGeneration &+= 1
+        baselineWorkbook = candidate
+        baselineTakenFromWorkbookGeneration = nil
+        baselineSource = source
+        baselineDate = date
+        baselineDiff = nil
+        scheduleBaselineRecompute()
+    }
+
+    private func cancelBaselineWork() {
+        baselineTask?.cancel()
+        baselineTask = nil
+        baselineRecomputeQueued = false
+    }
+
+    /// Asks for a fresh answer, eventually.
+    ///
+    /// Two mechanisms, and they do different jobs. `after` debounces the *request*, so ten
+    /// keystrokes in half a second are one pass. ``isRecomputingBaseline`` serialises the
+    /// *work*, so a request that arrives while a pass is running is remembered rather than
+    /// started — which is what stops an agent writing two hundred times a second (PLAN.md §1.9)
+    /// from turning into two hundred concurrent walks of the workbook. At most one diff runs at
+    /// a time, whatever the burst looks like.
+    private func scheduleBaselineRecompute(after delay: Duration = .zero) {
+        guard isChangeTrackingEnabled, baselineWorkbook != nil else { return }
+        guard !isRecomputingBaseline else {
+            baselineRecomputeQueued = true
+            return
+        }
+        baselineTask?.cancel()
+        // **Detached, so the wait does not queue behind — or ahead of — anything on the main
+        // actor.** A plain `Task` here inherits this actor, which means asking for a recompute
+        // enqueues a main-actor job at the very moment `applyRefresh` is finishing; the pump's
+        // next event (the one that moves the document out of `RELOADING`) then waits behind it.
+        // That is a real, measurable widening of a window the app already has, and it showed up
+        // as `CoreLoopTests.autoRefreshAppliesWithoutBeingAsked` failing under load. Nothing
+        // here needs the main actor until the answer comes back.
+        baselineTask = Task.detached(priority: .utility) { [weak self] in
+            if delay > .zero {
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled else { return }
+            }
+            await self?.recomputeBaselineDiff()
+        }
+    }
+
+    private func recomputeBaselineDiff() async {
+        guard let baseline = baselineWorkbook else { return }
+        let current = workbook
+        let startedAtWorkbook = workbookGeneration
+        let startedAtBaseline = baselineGeneration
+        isRecomputingBaseline = true
+        let result = await BaselineTracker.diff(baseline: baseline, current: current)
+        isRecomputingBaseline = false
+        baselineComputeCount &+= 1
+
+        // The guard the whole design turns on: a pass that started against a workbook, or a
+        // baseline, that has since moved has computed the answer to a question nobody is asking
+        // any more. Landing it would show the user the state before their last edit — and it
+        // would do so intermittently, which is the worst kind of wrong.
+        if startedAtWorkbook == workbookGeneration, startedAtBaseline == baselineGeneration {
+            // Normalised, so `baselineDiff == .empty` means "nothing changed" wherever a caller
+            // asks. The differ reports one `SheetDiff` per matched sheet whether or not anything
+            // in it moved, so an unchanged workbook comes back as a diff that *is* empty without
+            // *equalling* ``WorkbookDiff/empty`` — a distinction that would make every consumer
+            // remember to write `isEmpty`, and eventually one of them would not.
+            baselineDiff = result.isEmpty ? .empty : result
+        }
+        if baselineRecomputeQueued {
+            baselineRecomputeQueued = false
+            scheduleBaselineRecompute()
+        }
+    }
+
+    /// The open recalculation moved cells the *producer* left uncomputed — not cells anyone
+    /// edited (see ``scheduleOpenRecalculation()``).
+    ///
+    /// When the baseline is still the value this document opened with, it has to move with
+    /// them. Otherwise the chip greets the user with *"+0 ~500 −0"* for arithmetic the app did
+    /// to itself, before they have touched anything. Any other baseline — a checkpoint, git
+    /// HEAD, or an as-opened baseline the file has already moved past — keeps its ground, and
+    /// the corrected values show up as the changes they are.
+    private func noteWorkbookRecalculated() {
+        guard isChangeTrackingEnabled else { return }
+        guard baselineSource == .asOpened,
+              baselineTakenFromWorkbookGeneration == workbookGeneration
+        else {
+            scheduleBaselineRecompute()
+            return
+        }
+        adoptCurrentWorkbookAsBaseline(source: .asOpened, date: baselineDate)
+    }
+
+    /// Puts back the checkpoint the last session left behind (PLAN.md §1.7).
+    ///
+    /// Fire and forget, and silent about every way it can fail: an evicted snapshot, a corrupt
+    /// archive, bytes that no longer parse. All of them leave the document on the as-opened
+    /// baseline it already has, which is the honest fallback — and none of them is a failure the
+    /// user caused, so none of them touches ``lastError``.
+    /// Detached, like every other piece of baseline work: this runs during `init`, and a
+    /// main-actor job created there queues ahead of the session pump's first event.
+    private func restorePersistedCheckpoint() {
+        guard let checkpoints else { return }
+        let generation = baselineGeneration
+        let target = url
+        Task.detached(priority: .utility) { [weak self] in
+            guard let restored = await checkpoints.checkpointBaseline(for: target) else { return }
+            await self?.adoptRestoredCheckpoint(restored, takenAtBaselineGeneration: generation)
+        }
+    }
+
+    /// The main-actor half of ``restorePersistedCheckpoint()``.
+    ///
+    /// The generation check is the point: the user may have set a fresh checkpoint, or switched
+    /// source, in the time it took to decompress and parse the snapshot. Their choice wins.
+    private func adoptRestoredCheckpoint(
+        _ restored: (workbook: Workbook, takenAt: Date),
+        takenAtBaselineGeneration generation: Int
+    ) {
+        guard baselineGeneration == generation else { return }
+        isCheckpointAvailable = true
+        setBaseline(restored.workbook, source: .checkpoint, date: restored.takenAt)
+    }
+
+    /// Hops the checkpoint read off the main actor.
+    ///
+    /// `nonisolated` is what does it: a `nonisolated async` method called from the main actor
+    /// runs on the generic executor, so the SQLite read, the gunzip and the parse all happen
+    /// away from the frame. Calling the store's method directly from a `@MainActor` context
+    /// would inherit this actor and block the grid for the length of a workbook parse.
+    private nonisolated func checkpointBaseline(
+        from store: CheckpointStore
+    ) async -> (workbook: Workbook, takenAt: Date)? {
+        await store.checkpointBaseline(for: url)
+    }
+
+    private func gitBaselineWorkbook() async -> Workbook? {
+        if let probed = probedGitBaseline {
+            probedGitBaseline = nil
+            return probed
+        }
+        guard let provider = gitBaselineProvider else { return nil }
+        return await provider(url)
+    }
+
+    /// Finds out whether git has a committed version of this file, once, in the background.
+    ///
+    /// Runs when a provider is installed rather than at init, because the provider arrives after
+    /// init — the app layer builds it and hands it over on the tab-ready path. The answer is
+    /// kept (see ``probedGitBaseline``) so choosing the source costs nothing the second time.
+    private func probeGitBaseline() {
+        guard isChangeTrackingEnabled, let provider = gitBaselineProvider else {
+            isGitBaselineAvailable = false
+            return
+        }
+        let target = url
+        Task.detached(priority: .utility) { [weak self] in
+            let committed = await provider(target)
+            await self?.noteGitBaseline(committed)
+        }
+    }
+
+    /// The main-actor half of ``probeGitBaseline()``.
+    private func noteGitBaseline(_ committed: Workbook?) {
+        probedGitBaseline = committed
+        isGitBaselineAvailable = committed != nil
     }
 
     // MARK: - Derived state

@@ -109,6 +109,17 @@ public final class AppModel {
     /// A per-instance value cannot be raced by a suite that does not share the instance.
     @ObservationIgnored public var autoRefreshForNewDocuments: Bool?
 
+    /// Whether documents opened from here track changes against a baseline. `nil` asks
+    /// ``Flags``, which is what the app wants.
+    ///
+    /// Here for the same reason as ``autoRefreshForNewDocuments``, and it is worth repeating
+    /// rather than cross-referencing: `OSFlagChangeTracking` is process-wide, so a suite that
+    /// wrote `false` to prove the flag removes the cost could have another suite write `true`
+    /// back underneath it, and the assertion "no diff was ever computed" would fail somewhere
+    /// else entirely. A per-instance value cannot be raced by a suite that does not share the
+    /// instance.
+    @ObservationIgnored public var changeTrackingForNewDocuments: Bool?
+
     public init(store: SheetStore) {
         self.store = store
         reloadRecents()
@@ -205,6 +216,10 @@ public final class AppModel {
         try await session.start()
         try? store.database.noteOpened(path: url.path(percentEncoded: false), bookmark: nil, cursor: nil)
 
+        // PLAN.md §1.3. The store is handed over only when tracking is on, so the flag being
+        // off leaves the document with nothing to persist a checkpoint *to* — the cost is
+        // removed rather than the button hidden.
+        let changeTracking = changeTrackingForNewDocuments ?? Flags.changeTrackingEnabled
         let model = DocumentModel(
             url: url,
             workspaceURL: workspace,
@@ -212,7 +227,13 @@ public final class AppModel {
             session: session,
             reader: reader,
             writer: workbook.meta.readOnlyReason == nil ? writer : nil,
-            autoRefresh: autoRefresh
+            autoRefresh: autoRefresh,
+            changeTracking: ChangeTracking(
+                isEnabled: changeTracking,
+                checkpoints: changeTracking
+                    ? CheckpointStore(database: store.database, snapshots: store.snapshots)
+                    : nil
+            )
         )
         open[key] = WeakDocument(model: model)
         reloadRecents()
@@ -325,7 +346,11 @@ public final class AppModel {
     /// Public because the window layer asks the same question — see
     /// ``DocumentWindows/identity(for:)``. Two spellings of one path are one document, and a
     /// window layer that disagreed would open a window this table then refuses to fill.
-    public static func documentKey(for url: URL) -> String {
+    ///
+    /// `nonisolated` because it is a pure function of its argument, and the things that key
+    /// storage on it — a checkpoint preference, a snapshot directory — are reached from
+    /// background tasks that have no business hopping to the main actor to spell a path.
+    public nonisolated static func documentKey(for url: URL) -> String {
         url.resolvingSymlinksInPath().standardized.path(percentEncoded: false)
     }
 }
@@ -341,6 +366,11 @@ public enum Flags {
     public static var formulaEngineEnabled: Bool { bool("OSFlagFormulaEngine", default: true) }
     public static var snapshotsEnabled: Bool { bool("OSFlagSnapshots", default: true) }
     public static var autoRefreshEnabled: Bool { bool("OSFlagAutoRefresh", default: true) }
+
+    /// PLAN.md §1.3's green/amber/red tracking against a baseline: the chip, the panel, the grid
+    /// tints and the checkpoint command. **On**, and switching it off has to remove the cost as
+    /// well as the controls — no diffing, no snapshots, no background passes.
+    public static var changeTrackingEnabled: Bool { bool("OSFlagChangeTracking", default: true) }
 
     /// Sheet add, remove and reorder. **Off**, and it must stay off in v0.1: A2's writer throws
     /// `SheetError.notImplemented` for all three rather than producing a package whose

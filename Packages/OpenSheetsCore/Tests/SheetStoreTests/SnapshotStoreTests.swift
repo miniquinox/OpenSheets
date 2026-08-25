@@ -208,6 +208,48 @@ import Testing
         }
     }
 
+    /// A checkpoint (PLAN.md §1.3) is an ordinary snapshot wearing its own reason.
+    ///
+    /// Which is the point: the baseline machinery gets persistence, eviction and byte-identical
+    /// restore for free, and nothing about the store had to learn what a baseline is. What the
+    /// new reason buys is that the copy is *self-describing* — a user recovering by hand, or the
+    /// snapshot browser, can tell the deliberate mark from the twenty automatic copies around it.
+    @Test func checkpointsAreOrdinarySnapshotsWithTheirOwnName() async throws {
+        let scratch = TemporaryDirectory("checkpoint")
+        let store = store(scratch)
+        let file = scratch.file("book.xlsx", contents: "at the checkpoint")
+
+        let record = try #require(await store.capture(url: file, reason: .checkpoint, summary: "checkpoint"))
+        #expect(record.reason == .checkpoint)
+        #expect(record.summary == "checkpoint")
+        #expect(SnapshotStore.fileName(id: record.id, reason: .checkpoint) == "\(record.id.rawValue).checkpoint.gz")
+
+        let directory = scratch.url
+            .appendingPathComponent("Snapshots")
+            .appendingPathComponent(SnapshotStore.digest(Data(SnapshotStore.canonicalPath(file).utf8)))
+        let entries = try FileManager.default.contentsOfDirectory(atPath: directory.path(percentEncoded: false))
+        #expect(entries == ["\(record.id.rawValue).checkpoint.gz"])
+
+        let history = try await store.snapshots(for: file)
+        #expect(history.map(\.reason) == [.checkpoint])
+
+        try Data("moved on since".utf8).write(to: file)
+        _ = try await store.restore(record.id, to: file, suppressor: SelfWriteSuppressor())
+        #expect(bytes(of: file) == Data("at the checkpoint".utf8))
+    }
+
+    /// The filename is the fallback index, so it has to parse both ways — and a reason a future
+    /// build invents must degrade to `.manual` rather than making the snapshot invisible.
+    @Test func checkpointFilenamesRoundTripAndUnknownReasonsDegrade() throws {
+        let id = ULID()
+        let parsed = try #require(SnapshotStore.parse(fileName: "\(id.rawValue).checkpoint.gz"))
+        #expect(parsed.id == id)
+        #expect(parsed.reason == .checkpoint)
+
+        let future = try #require(SnapshotStore.parse(fileName: "\(id.rawValue).timeTravel.gz"))
+        #expect(future.reason == .manual, "an unknown reason must not lose the snapshot")
+    }
+
     /// Closing a document's history removes both halves.
     @Test func forgetRemovesEverything() async throws {
         let scratch = TemporaryDirectory("forget-snapshots")
