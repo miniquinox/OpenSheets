@@ -1117,8 +1117,18 @@ worktree matches the intended file set across all tasks.
 | Wave | Agents | Parallel-safe? | Why the boundary exists |
 | --- | --- | --- | --- |
 | 1 | T1 (tabs core) · T2 (baseline core) · T3 (GridKit tints) · T4 (GlassUI components) · T5 (git provider) | Yes — zero shared files (ownership table below) | Wave 2 compiles against every wave-1 contract (C1–C6) |
-| 2 | T6 (app shell) · T7 (wiring/adapters) | Yes — disjoint files; **merge T7's `CommandRegistry.swift` before T6's palette wiring** (noted in both tasks) | T8 needs the whole feature assembled |
+| 2 | T6 (app shell) · T7 (wiring/adapters) | Yes — fully disjoint, see the palette reassignment below | T8 needs the whole feature assembled |
 | 3 | T8 (integration) | Solo | Final reconciliation must see everything |
+
+**Palette commands reassigned to T8 — decided 2026-08-24, before wave 2 launched.** The plan
+originally had T7 adding cases to `PaletteCommand` while T6 owned the `run(_:)` switch that has
+to handle them. That is not a merge-order problem, it is a mutual compile dependency: T7's new
+cases make T6's switch non-exhaustive, and T6 cannot write the handling in its own worktree
+because the cases do not exist there yet. Neither agent can build alone. So **T7 does not touch
+`CommandRegistry.swift` at all**, and T8 adds both halves — the four cases
+(`.setCheckpoint`, `.toggleChangeHighlights`, `.nextTab`, `.previousTab`) and their switch arms —
+in one commit once both wave-2 branches are in. The menu bar already carries these commands from
+T6, so nothing is user-visibly missing in the interim; the palette simply gains them last.
 
 Critical path: T2 → T7 → T8 (baseline core is the largest wave-1 task).
 Strictly sequential pairs: none within a wave except the T7-registry/T6-palette merge-order note.
