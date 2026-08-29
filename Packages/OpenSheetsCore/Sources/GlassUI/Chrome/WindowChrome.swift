@@ -164,6 +164,20 @@ public enum WindowChrome {
         window.backgroundColor = .clear
         window.standardWindowButton(.zoomButton)?.isHidden = true
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        // The launcher shares its `WindowGroup` with the document windows, so it arrives at their
+        // `.defaultSize` — 1280×820 of window around a 720×520 card. With a clear background that
+        // surplus is invisible and still solid: it swallows every click meant for the desktop
+        // behind it, and drags the whole window when the user tries to select an icon.
+        //
+        // Guarded on the size actually being wrong, because this runs again whenever the hosting
+        // view is reattached to the window, and an unguarded `center()` there would teleport a
+        // window the user had deliberately dragged somewhere.
+        let sized = window.frameRect(
+            forContentRect: NSRect(origin: .zero, size: LauncherWindow.panelSize)
+        )
+        guard window.frame.size != sized.size else { return }
+        window.setContentSize(LauncherWindow.panelSize)
+        window.center()
     }
 }
 #endif

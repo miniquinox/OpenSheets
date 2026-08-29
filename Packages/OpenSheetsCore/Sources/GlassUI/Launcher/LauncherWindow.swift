@@ -115,21 +115,33 @@ public struct LauncherWindow: View {
         self.perform = perform
     }
 
+    /// The window's content size. ``WindowChrome/configureLauncherWindow(_:)`` is what applies it.
+    ///
+    /// The *card* does not use this — it fills whatever it is given. That asymmetry is the point:
+    /// there used to be two sizes that disagreed, a 640×460 card inside a window the scene asked
+    /// to be 720×520, and every pixel of the difference was transparent, invisible and still
+    /// solid to the mouse. One of them has to be the authority and it has to be the window, since
+    /// the window is what the titlebar's height gets added to.
+    public static let panelSize = CGSize(width: 720, height: 520)
+
     public var body: some View {
-        VStack(alignment: .leading, spacing: DS.Space.xl) {
+        VStack(alignment: .leading, spacing: DS.Space.l) {
             header
-            if state.recents.isEmpty {
-                emptyRecents
-            } else {
-                recentsGrid
-            }
-            Spacer(minLength: 0)
-            footer
+            contents
+            actions
         }
         .padding(DS.Space.xxl)
-        .frame(width: 640, height: 460)
+        // Fills the window rather than sizing itself. A fixed card in a window sized from the same
+        // constant still leaves the titlebar's height over: the content area is that much taller
+        // than the number both of them were given, and the leftover strip is clear glass over the
+        // desktop with the close button sitting in it.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // `flush`, not `card`, and for the reason ``DS/Radius/flush`` gives: this fills the window,
+        // so a 24pt radius here is a second curve inside the window's own, with a crescent of
+        // desktop showing between them at all four corners. One curve, and it is the system's.
         .glassCard(
             context: context,
+            radius: DS.Radius.flush,
             signal: state.isDropTargeted ? .agent : .neutral
         )
         .animation(DS.Motion.standard, value: state.isDropTargeted)
@@ -246,50 +258,81 @@ public struct LauncherWindow: View {
         }
     }
 
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: DS.Space.m) {
-            if !state.grants.isEmpty {
-                VStack(alignment: .leading, spacing: DS.Space.xs) {
-                    SectionHeader("Folders Claude can reach", trailing: "\(state.grants.count)")
-                    ForEach(state.grants) { grant in
-                        HStack(spacing: DS.Space.s) {
-                            Image(systemName: "folder")
-                                .font(.system(size: 10))
-                                .foregroundStyle(DS.Chrome.secondary)
-                            Text(grant.path)
-                                .font(DS.Text.path)
-                                .foregroundStyle(DS.Chrome.primary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Spacer(minLength: DS.Space.s)
-                            Text("\(grant.fileCount)")
-                                .dsNumeric(DS.Text.numericCaption)
-                                .foregroundStyle(DS.Chrome.tertiary)
-                            Button("Revoke") { perform(.revokeGrant(grant.id)) }
-                                .buttonStyle(.plain)
-                                .font(DS.Text.caption)
-                                .foregroundStyle(DS.Chrome.accent)
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("\(grant.path), granted \(grant.grantedAt)")
-                    }
+    /// Everything that grows with use: the recents, and the folders that have been granted.
+    ///
+    /// In a scroll view, which is the whole of the fix. The panel is a fixed size on purpose — a
+    /// launcher that is a different shape every morning depending on how much you opened last week
+    /// is not a window anybody learns the position of — but `.frame(width:height:)` does not clip.
+    /// It stops *reporting* a larger size while still laying the content out, so a thirteenth
+    /// recent was placed beyond the card's own edge and drawn directly onto the desktop, with the
+    /// glass ending somewhere in the middle of the grid and the granted folders floating below it
+    /// on nothing at all. Scrolling is what turns the fixed height into a real boundary instead of
+    /// a claim.
+    private var contents: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: DS.Space.xl) {
+                if state.recents.isEmpty {
+                    emptyRecents
+                } else {
+                    recentsGrid
+                }
+                if !state.grants.isEmpty {
+                    grants
                 }
             }
-
-            HStack(spacing: DS.Space.s) {
-                Button("New sheet") { perform(.newSheet) }
-                    .buttonStyle(.bordered)
-                Button("Open…") { perform(.openFile) }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut("o", modifiers: .command)
-                Spacer(minLength: 0)
-                Button("Grant a folder…") { perform(.grantFolder) }
-                    .buttonStyle(.plain)
-                    .font(DS.Text.control)
-                    .foregroundStyle(DS.Chrome.accent)
-                    .help("Lets Claude Code read and write spreadsheets inside a folder you pick.")
-            }
-            .font(DS.Text.control)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var grants: some View {
+        VStack(alignment: .leading, spacing: DS.Space.xs) {
+            SectionHeader("Folders Claude can reach", trailing: "\(state.grants.count)")
+            ForEach(state.grants) { grant in
+                HStack(spacing: DS.Space.s) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 10))
+                        .foregroundStyle(DS.Chrome.secondary)
+                    Text(grant.path)
+                        .font(DS.Text.path)
+                        .foregroundStyle(DS.Chrome.primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: DS.Space.s)
+                    Text("\(grant.fileCount)")
+                        .dsNumeric(DS.Text.numericCaption)
+                        .foregroundStyle(DS.Chrome.tertiary)
+                    Button("Revoke") { perform(.revokeGrant(grant.id)) }
+                        .buttonStyle(.plain)
+                        .font(DS.Text.caption)
+                        .foregroundStyle(DS.Chrome.accent)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(grant.path), granted \(grant.grantedAt)")
+            }
+        }
+    }
+
+    /// Pinned under the scroll view rather than carried along at the bottom of it.
+    ///
+    /// `Open…` is the reason the window exists. A primary action that scrolls out of reach once
+    /// the user has opened enough files is one that gets less reachable the longer they use the
+    /// app, which is exactly backwards.
+    private var actions: some View {
+        HStack(spacing: DS.Space.s) {
+            Button("New sheet") { perform(.newSheet) }
+                .buttonStyle(.bordered)
+            Button("Open…") { perform(.openFile) }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut("o", modifiers: .command)
+            Spacer(minLength: 0)
+            Button("Grant a folder…") { perform(.grantFolder) }
+                .buttonStyle(.plain)
+                .font(DS.Text.control)
+                .foregroundStyle(DS.Chrome.accent)
+                .help("Lets Claude Code read and write spreadsheets inside a folder you pick.")
+        }
+        .font(DS.Text.control)
     }
 }

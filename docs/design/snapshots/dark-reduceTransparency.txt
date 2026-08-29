@@ -9,7 +9,7 @@
   SelectionStatsPill     capsule    solid #323236 border #FFFFFF2E @ 1.0pt
   CommandPalette         card       solid #323236 border #FFFFFF2E @ 1.0pt
   SnapshotBrowser        card       solid #323236 border #FFFFFF2E @ 1.0pt
-  LauncherWindow         card       solid #323236 border #FFFFFF2E @ 1.0pt
+  LauncherWindow         none       solid #323236 border #FFFFFF2E @ 1.0pt
   RefreshPill            capsule    solid #2A3E56 border #FFFFFF2E @ 1.0pt
   RefreshPill/conflict   capsule    solid #534536 border #FFFFFF2E @ 1.0pt
   RefreshPill/failure    capsule    solid #53393B border #FFFFFF2E @ 1.0pt

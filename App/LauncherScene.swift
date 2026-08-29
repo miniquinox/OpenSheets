@@ -23,7 +23,13 @@ struct LauncherScene: View {
         LauncherWindow(state: state, context: context) { action in
             perform(action)
         }
-        .frame(minWidth: 720, minHeight: 520)
+        .frame(minWidth: LauncherWindow.panelSize.width, minHeight: LauncherWindow.panelSize.height)
+        // The titlebar is a safe-area inset even with `.fullSizeContentView` and a hidden title,
+        // so a card asked to fill the window filled everything *below* it and left a 28pt band of
+        // clear glass across the top with the close button floating in it. Applied here rather
+        // than inside the component: a window's titlebar is not something a reusable card should
+        // know about, and the gallery renders the same view with no window at all.
+        .ignoresSafeArea()
         .background(LauncherWindowConfigurator())
         .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             OpenActions.handleDrop(providers)
