@@ -202,7 +202,7 @@ struct DocumentWindow: View {
         HStack(spacing: DS.Space.s) {
             Color.clear.frame(width: titleBarMetrics.leadingInset, height: DS.Stroke.hairline(context))
 
-            paneToggle(
+            titleBarToggle(
                 systemImage: "sidebar.left",
                 help: "Show or hide the sidebar",
                 label: "Toggle sidebar"
@@ -216,10 +216,10 @@ struct DocumentWindow: View {
             // has changed since your baseline" and "where this file stands against disk" — and
             // they must not be merged into one lens. Neither draws glass of its own; both are
             // text on the band, exactly like `SyncStateChip` has always been.
-            changesChip
+            changesControls
             syncChip
 
-            paneToggle(
+            titleBarToggle(
                 systemImage: "sidebar.right",
                 help: "Show or hide the inspector",
                 label: "Toggle inspector"
@@ -232,7 +232,13 @@ struct DocumentWindow: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func paneToggle(
+    /// One glyph on the band that flips one switch on the front document.
+    ///
+    /// Was `paneToggle` while the sidebar and the inspector were the only two. The change
+    /// highlights switch has the same shape and the same job — a display state, one tap, no
+    /// confirmation — and giving it a second, near-identical helper is how a row of four buttons
+    /// ends up with three different hit areas.
+    private func titleBarToggle(
         systemImage: String,
         help: String,
         label: String,
@@ -254,8 +260,19 @@ struct DocumentWindow: View {
         .disabled(tabs.activeDocument == nil)
     }
 
+    /// The counts, and the switch that turns their colour off.
+    ///
+    /// One `if let` and one call to ``WorkspaceState/chip(for:)`` for both, because producing the
+    /// counts walks the diff: asking a second time so the button could decide its own visibility
+    /// would put a second walk on every body evaluation of the title bar to learn something the
+    /// first one already knew.
+    ///
+    /// They appear and leave together by construction, which is the intent. A switch for tints
+    /// that cannot be on is a switch with nothing to do, and this row runs out of width long
+    /// before it runs out of controls. When the chip is away the same switch is still in the View
+    /// menu and in ⌘K — all three flip the one stored default.
     @ViewBuilder
-    private var changesChip: some View {
+    private var changesControls: some View {
         if let model = tabs.activeDocument, let chip = WorkspaceState.chip(for: model) {
             ChangeTrackingChip(state: chip, context: context) { isPresentingChanges = true }
                 .popover(isPresented: $isPresentingChanges, arrowEdge: .bottom) {
@@ -264,7 +281,35 @@ struct DocumentWindow: View {
                     }
                     .glassAppearance(context)
                 }
+            highlightToggle(for: model)
         }
+    }
+
+    /// Keep the number, drop the paint.
+    ///
+    /// The counts and the tints are the same fact at two volumes, and people do not want them in
+    /// the same amounts: `+12 ~5 −3` in the title bar is a thing you glance at, while a sheet
+    /// stippled green and amber is a thing that will not stop talking while you are trying to read
+    /// the numbers underneath it. So this turns off the drawing and leaves the chip, rather than
+    /// turning off change tracking — which would make the one obvious button in the row quietly do
+    /// two things, and cost the user their baseline for wanting a quieter grid.
+    ///
+    /// The glyph carries the state and the tooltip carries the action, because the glyph is the
+    /// only part a person sees before they commit: one that looked the same either way would leave
+    /// the button and the grid disagreeing about whether anything is switched on.
+    ///
+    /// A cell with a tint in it and the same cell empty. Not an eye — ``SyncStateChip`` is sitting
+    /// two glyphs away drawing one for *Watching*, and two eyes in one row is a row where neither
+    /// means anything. The dashed square is the thing being tinted, which is a narrower promise
+    /// than "visibility" and happens to be the true one: this switch changes the grid's paint and
+    /// nothing else about what is shown.
+    private func highlightToggle(for model: DocumentModel) -> some View {
+        let isOn = model.isChangeHighlightingEnabled
+        return titleBarToggle(
+            systemImage: isOn ? "square.dashed.inset.filled" : "square.dashed",
+            help: isOn ? "Stop tinting changed cells in the grid" : "Tint changed cells in the grid",
+            label: isOn ? "Hide change highlights" : "Show change highlights"
+        ) { model in model.isChangeHighlightingEnabled.toggle() }
     }
 
     @ViewBuilder

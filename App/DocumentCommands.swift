@@ -136,6 +136,13 @@ struct DocumentCommands: Commands {
             Button("Show Formulas") { document?.showsFormulas.toggle() }
                 .keyboardShortcut("`", modifiers: .control)
                 .disabled(document == nil)
+            // Under View with the other switches that change what the window draws, and
+            // deliberately not beside Set Checkpoint: that one moves the baseline and so changes
+            // every number the chip reports, while this changes none of them. The counts stay in
+            // the title bar; the grid stops painting them.
+            Button(highlightsTitle) { document?.isChangeHighlightingEnabled.toggle() }
+                .keyboardShortcut("h", modifiers: [.command, .shift])
+                .disabled(document == nil || !Flags.changeTrackingEnabled)
             Divider()
             Button("Actual Size") { document?.zoom = 1 }
                 .keyboardShortcut("0", modifiers: [.command, .option])
@@ -176,6 +183,16 @@ struct DocumentCommands: Commands {
                 NSWorkspace.shared.open(URL(string: "https://github.com/quino/OpenSheets")!)
             }
         }
+    }
+
+    /// Named for what it will do, like Pause Watching above it and unlike Show Sidebar, whose
+    /// title never changes. A toggle with a fixed title has to signal its state some other way —
+    /// a checkmark — and a checkmark next to "Show Change Highlights" says the same thing twice
+    /// while leaving the unchecked state ambiguous about whether it is a state or an offer.
+    private var highlightsTitle: String {
+        document?.isChangeHighlightingEnabled == true
+            ? "Hide Change Highlights"
+            : "Show Change Highlights"
     }
 
     /// ⌘1…⌘9. Nine because ⌘0 is Show Sidebar and because nobody counts tabs past nine by eye.

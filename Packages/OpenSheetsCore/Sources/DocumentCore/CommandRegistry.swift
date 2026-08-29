@@ -110,7 +110,7 @@ public enum CommandRegistry {
                 (
                     CommandItem(
                         id: "highlights", title: "Toggle change highlights",
-                        symbol: "square.on.square.dashed"
+                        symbol: "square.dashed.inset.filled"
                     ),
                     .toggleChangeHighlights
                 )
