@@ -80,4 +80,44 @@ struct PagingArgumentBoundsTests {
         let atTheBound = ToolArguments(tool: "filter", values: ["limit": .number(1)])
         #expect(try atTheBound.integer("limit", default: 100, atLeast: 1) == 1)
     }
+
+    /// The one that would have caught the shipped bug: the server is still answering afterwards.
+    ///
+    /// Every test above reads the accessor directly, which proves the bound exists but *cannot*
+    /// prove the fix, because the failure being pinned was a process death — `opensheets filter …
+    /// --limit -1` exited **133** with no output, and over MCP that ended the session rather than
+    /// the call. A trap in the handler would have taken this test process down too, so the claim
+    /// has to be made from the far side of the bad call: run `filter` with `limit: -1` through the
+    /// real dispatch path, then run a *second* filter on the same harness. If the first one
+    /// trapped, there is no second one to assert on.
+    @Test("A negative limit is refused instead of trapping, and the server answers the next call")
+    @MainActor
+    func aNegativeLimitIsRefusedInsteadOfTrapping() async throws {
+        let harness = try Harness.make("filter-negative-limit")
+        let path = try harness.install(try Fixtures.mixedTypes(), as: "imported.xlsx")
+        let condition = JSONValue.array([.object([
+            "column": .string("amount"), "op": .string("gt"), "value": .number(5),
+        ])])
+
+        let refused = await harness.call("filter", [
+            "path": .string(path),
+            "where": condition,
+            "limit": .integer(-1),
+        ])
+        #expect(refused.isError, "a negative `limit` is refused, not obeyed: \(refused.text)")
+        #expect(
+            refused.text.contains("tool.invalidArguments"),
+            "and refused as a classifiable tool-argument failure: \(refused.text)"
+        )
+        #expect(refused.text.contains("limit"), "which names the argument at fault: \(refused.text)")
+
+        // The whole point: something is still alive to answer this.
+        let afterwards = await harness.call("filter", [
+            "path": .string(path),
+            "where": condition,
+            "limit": .integer(5),
+        ])
+        #expect(!afterwards.isError, "the server outlived the bad call: \(afterwards.text)")
+        #expect(afterwards.text.contains("rows matched"), "\(afterwards.text)")
+    }
 }
