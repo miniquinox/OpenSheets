@@ -31,10 +31,13 @@ public actor MCPServer {
     /// twentieth tool description it skims.
     public static let instructions = """
     OpenSheets edits spreadsheets structurally — cell by cell, formula by formula — instead of \
-    rewriting the file. Start with `describe`: it summarises every sheet, its header row and its \
-    column types in a few hundred tokens, and usually answers the question without reading any \
-    data. Use `find` and `filter` to locate things (they return cell references, not contents) \
-    and `read_range` only when you need the actual values.
+    rewriting the file. No path yet? Start with `list_workspace`: it names the user's folders \
+    and the files open in the app. Every tool requires an explicit absolute `path` — there is \
+    no "current file", not even for the workbook on screen. Then `describe`: it summarises \
+    every sheet, its header row and its column types in a few hundred tokens, and usually \
+    answers the question without reading any data. Use `find` and `filter` to locate things \
+    (they return cell references, not contents) and `read_range` only when you need the actual \
+    values.
 
     Two rules that matter. **Preview destructive edits**: every writing tool takes \
     `preview: true` and reports exactly what would change without touching the file. **Cell \
