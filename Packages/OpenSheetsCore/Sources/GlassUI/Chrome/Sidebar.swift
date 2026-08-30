@@ -97,7 +97,7 @@ public struct ClaudePanelState: Sendable, Hashable {
         switch mcpStatus {
         case .connected: "Claude Code can read and write this workbook."
         case .idle: "Registered. Nothing has called it yet."
-        case .notConfigured: "Run `claude mcp add opensheets` in this folder."
+        case .notConfigured: "Connect in Settings ▸ Claude (⌘,)."
         case let .failing(reason): reason
         }
     }
