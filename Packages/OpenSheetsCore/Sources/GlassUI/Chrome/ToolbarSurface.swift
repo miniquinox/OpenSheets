@@ -313,16 +313,6 @@ public struct ToolbarSurface: View {
         }
     }
 
-    /// A colour control: the toolbar's own menu button, with the swatches inside it.
-    ///
-    /// ``ToolbarMenuButton``, not a `Menu` dressed to look like one. That was the first attempt and
-    /// it is the mistake the type's own doc comment already warns about: a `Menu` with
-    /// `.buttonStyle(.glass)` does not give its label vibrancy, so the glyph keeps one colour while
-    /// the lens takes the grid's — and over a white column the control disappears. It also read as
-    /// two loose glyphs beside a row of buttons, which is what made it obvious.
-    ///
-    /// The grid is built out of plain menu rows rather than a `LazyVGrid`, because a grid inside
-    /// an AppKit menu does not lay out — it collapses to nothing and the menu opens empty.
     private func colorMenu(
         symbol: String,
         label: String,
@@ -330,24 +320,15 @@ public struct ToolbarSurface: View {
         resetTitle: String,
         perform apply: @escaping (CellSwatches.Swatch?) -> Void
     ) -> some View {
-        ToolbarMenuButton(symbol: symbol, label: label, isEnabled: enabled, bar: bar, context: context) {
-            Button(resetTitle) { apply(nil) }
-            Divider()
-            ForEach(Array(CellSwatches.all.enumerated()), id: \.offset) { _, row in
-                ForEach(row) { swatch in
-                    Button {
-                        apply(swatch)
-                    } label: {
-                        Label {
-                            Text(swatch.name)
-                        } icon: {
-                            Image(systemName: "square.fill").foregroundStyle(swatch.display)
-                        }
-                    }
-                }
-                Divider()
-            }
-        }
+        ColorToolbarControl(
+            symbol: symbol,
+            label: label,
+            bar: bar,
+            resetTitle: resetTitle,
+            isEnabled: enabled,
+            context: context,
+            apply: apply
+        )
     }
 
     private var alignment: some View {
@@ -555,11 +536,17 @@ public struct ToolbarMenuButton<Content: View>: View {
                 Menu {
                     content
                 } label: {
+                    // Fills the button. `.borderlessButton` sizes its label to the label's own
+                    // intrinsic content, and a `Rectangle` has none — so this laid out at 11×14
+                    // inside a 46×26 control and only the middle of the glyph took a click.
+                    // Measured, in `ToolbarHitAreaTests`, which is why the numbers are here.
                     Rectangle()
                         .fill(Color.clear)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
                 }
                 .menuStyle(.borderlessButton)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .menuIndicator(.hidden)
                 .disabled(!isEnabled)
                 .accessibilityHidden(true)

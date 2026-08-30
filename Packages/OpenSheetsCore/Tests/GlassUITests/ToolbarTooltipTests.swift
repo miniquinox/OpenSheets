@@ -133,3 +133,69 @@ struct HoverTitleTimingTests {
         #expect(persisted == nil)
     }
 }
+
+/// How much of a menu button you can actually click.
+///
+/// The control is a ``GlassIconButton`` with an invisible `Menu` over it, and the `Menu` is what
+/// takes the click — so the clickable area is the *overlay's* size, not the button's. If the
+/// overlay lays out at its own intrinsic size the pointer only works over the glyph, which is what
+/// a user reported: "the clickable area should be the tool, not just the letter".
+@Suite(.serialized)
+@MainActor
+struct ToolbarHitAreaTests {
+    private enum Kept {
+        nonisolated(unsafe) static var windows: [NSWindow] = []
+    }
+
+    /// Every leaf view's frame in window space, largest first.
+    private func frames(of view: some View, size: CGSize) -> [CGRect] {
+        let hosting = NSHostingView(rootView: AnyView(view))
+        let window = NSWindow(
+            contentRect: CGRect(origin: .zero, size: size),
+            styleMask: [.titled], backing: .buffered, defer: false
+        )
+        window.contentView = hosting
+        hosting.frame = CGRect(origin: .zero, size: size)
+        hosting.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        Kept.windows.append(window)
+
+        func walk(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(walk) }
+        return walk(hosting).map { $0.convert($0.bounds, to: nil) }
+    }
+
+    /// Every leaf view's class name, for finding the thing that takes the click.
+    private func classNames(of view: some View, size: CGSize) -> [String] {
+        let hosting = NSHostingView(rootView: AnyView(view))
+        let window = NSWindow(
+            contentRect: CGRect(origin: .zero, size: size),
+            styleMask: [.titled], backing: .buffered, defer: false
+        )
+        window.contentView = hosting
+        hosting.frame = CGRect(origin: .zero, size: size)
+        hosting.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        Kept.windows.append(window)
+
+        func walk(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(walk) }
+        return walk(hosting).map { "\(type(of: $0))" }
+    }
+
+    /// The colour controls take a click anywhere on the button.
+    ///
+    /// Asserted by absence, which is the honest way round here: a `Menu` overlay shows up as a
+    /// `SwiftUIPopupButton`, and *that view* is the click target — it laid out at 11×14 inside a
+    /// 46×26 control, so only the middle of the glyph worked. No popup button means no shrunken
+    /// target: the control is a plain `GlassIconButton` and the whole of it is live, exactly like
+    /// Bold beside it.
+    @Test("A colour control has no shrunken menu target inside it")
+    func colourControlIsAWholeButton() {
+        let control = ColorToolbarControl(
+            symbol: "paintbrush.fill", label: "Fill colour", bar: nil,
+            resetTitle: "No Fill", isEnabled: true, context: .light
+        ) { _ in }
+        let names = classNames(of: control, size: CGSize(width: 120, height: 60))
+        #expect(!names.contains { $0.contains("PopupButton") })
+        #expect(names.contains { $0.contains("FocusRing") }, "and it really is a button")
+    }
+}
