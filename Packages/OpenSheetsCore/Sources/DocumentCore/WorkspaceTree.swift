@@ -836,75 +836,18 @@ private enum WorkspaceSearch {
     }
 }
 
-/// Everything the explorer remembers between launches: which folders were open, and which ones
-/// the user had deliberately opened as workspaces.
+/// Everything the explorer remembers between launches — see ``SheetStore/PersistedWorkspaceTree``,
+/// which owns the fields, the three-shape decoder and the exact bytes.
 ///
-/// # Why it decodes three shapes and writes one
+/// # Why the payload moved and the name stayed
 ///
-/// `workspace.explorer` shipped as a bare JSON array of paths, then as an object with a single
-/// `pinnedRoot` beside the expansion set, and now as an object with a `pinnedRoots` list. There
-/// are databases holding each of the first two right now — the developer's had `["/tmp/x"]` in it
-/// before it had the object. A decoder that only knew the newest shape would read every older row
-/// as "nothing expanded, nothing open" on the launch that upgraded it: a preference silently
-/// discarded, on the one launch where the user is least likely to connect the two.
-///
-/// So all three are read and only the newest is written. The array is tried first, then
-/// `pinnedRoots`, then `pinnedRoot` — which becomes a one-element list, because one open folder is
-/// what that session actually had. Migration runs in the direction it has to and no further; there
-/// is no version number, because "list or dictionary, and which key" already answers the only
-/// question there is.
-///
-/// The pins are a key beside the paths rather than marked elements inside them. A sentinel in a
-/// list of paths is a path, and a path is something somebody eventually grants.
-public struct WorkspaceTreeState: Sendable, Equatable, Codable {
-    /// Folders that were open, canonical.
-    public var expanded: [String]
-
-    /// The folders that were open as workspaces, in the order they were opened. Empty for a
-    /// session that never opened one.
-    public var pinnedRoots: [String]
-
-    public init(expanded: [String] = [], pinnedRoots: [String] = []) {
-        self.expanded = expanded
-        self.pinnedRoots = pinnedRoots
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case expanded
-        case pinnedRoots
-        /// The single pin the object form shipped with. Read, never written.
-        case pinnedRoot
-    }
-
-    public init(from decoder: any Decoder) throws {
-        if let legacy = try? [String](from: decoder) {
-            expanded = legacy
-            pinnedRoots = []
-            return
-        }
-        // `decodeIfPresent` throughout, so an object that is merely *not this* — the shape the
-        // corrupt-preference test writes — lands on the same empty state a missing row does.
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        expanded = try container.decodeIfPresent([String].self, forKey: .expanded) ?? []
-        if let roots = try container.decodeIfPresent([String].self, forKey: .pinnedRoots) {
-            pinnedRoots = roots
-            return
-        }
-        pinnedRoots = try container.decodeIfPresent(String.self, forKey: .pinnedRoot).map { [$0] } ?? []
-    }
-
-    /// Written by hand rather than synthesised, because ``CodingKeys`` carries a case for the
-    /// legacy key that no property matches.
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(expanded, forKey: .expanded)
-        // Omitted rather than written as `[]`, matching what the optional `pinnedRoot` used to
-        // encode to: a row for somebody who has never opened a folder should say nothing about
-        // folders, since the documented way to inspect this preference is to read it in `sqlite3`.
-        guard !pinnedRoots.isEmpty else { return }
-        try container.encode(pinnedRoots, forKey: .pinnedRoots)
-    }
-}
+/// The MCP server has to answer "which folders are in the user's Files panel" without the app
+/// running, which means reading this preference out of the shared SQLite file. `SheetMCP` cannot
+/// import `DocumentCore` — the dependency runs the other way — so the payload lives in
+/// `SheetStore`, the lowest target both of them see. A typealias rather than a wrapper because a
+/// wrapper is a second place for the shape to be written down, and two spellings of one preference
+/// is the exact failure this move exists to prevent.
+public typealias WorkspaceTreeState = PersistedWorkspaceTree
 
 /// Storage that can also remember ``WorkspaceTree/pinnedRoots``.
 ///
@@ -927,7 +870,10 @@ public protocol WorkspaceTreePinStorage: WorkspaceTreeStorage {
 /// of these is a failure the user caused, and neither has a recovery worth putting on screen —
 /// the fix for a corrupt row is to turn a triangle.
 public struct DatabaseWorkspaceTreeStorage: WorkspaceTreePinStorage {
-    public static let preferenceKey = "workspace.explorer"
+    /// Forwarded rather than spelled again: ``SheetStore/WorkspacePreferenceKey`` is where the app
+    /// and the MCP server agree on which row this is. Kept as a static on this type because the
+    /// rollback instructions name it here.
+    public static let preferenceKey = WorkspacePreferenceKey.explorer
 
     private let database: Database
 
@@ -948,32 +894,14 @@ public struct DatabaseWorkspaceTreeStorage: WorkspaceTreePinStorage {
         setTreeState(state)
     }
 
+    /// A missing row, an unreadable database and a row that will not decode all mean the same
+    /// thing here — nothing expanded — and ``SheetStore/PersistedWorkspaceTree/read(from:)``
+    /// flattens all three into one `nil` for exactly that reason.
     public func treeState() -> WorkspaceTreeState {
-        guard let stored = storedValue(),
-              let data = stored.data(using: .utf8),
-              let state = try? JSONDecoder().decode(WorkspaceTreeState.self, from: data)
-        else { return WorkspaceTreeState() }
-        return state
+        PersistedWorkspaceTree.read(from: database) ?? WorkspaceTreeState()
     }
 
     public func setTreeState(_ state: WorkspaceTreeState) {
-        let encoder = JSONEncoder()
-        // Sorted keys for the reason the paths themselves are sorted before they get here: the
-        // stored text has to be a function of the state and nothing else. Unescaped slashes
-        // because the documented way to reset the explorer is to read this row in `sqlite3`, and
-        // `["\/Users\/x"]` is a path nobody can grep for.
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        guard let data = try? encoder.encode(state),
-              let text = String(data: data, encoding: .utf8)
-        else { return }
-        try? database.setPreference(Self.preferenceKey, to: text)
-    }
-
-    /// The raw preference, or `nil` for either of the two ways there is not one: the read failed,
-    /// or the row does not exist. Written as a method because the read is doubly optional and
-    /// flattening it inline reads as an accident.
-    private func storedValue() -> String? {
-        guard let value = try? database.preference(Self.preferenceKey) else { return nil }
-        return value
+        state.write(to: database)
     }
 }
