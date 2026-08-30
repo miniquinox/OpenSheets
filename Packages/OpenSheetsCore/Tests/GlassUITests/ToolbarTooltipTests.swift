@@ -90,3 +90,46 @@ struct ToolbarTooltipTests {
         #expect(tooltips(of: button).contains("Cut  ⌘X"))
     }
 }
+
+/// How long the pointer waits.
+@Suite(.serialized)
+@MainActor
+struct HoverTitleTimingTests {
+    /// Laid out in a real window, not merely constructed: an `NSViewRepresentable`'s view is not
+    /// made until something asks for layout, so a hosting view on its own installs nothing. That
+    /// is the difference between this test passing and it proving nothing.
+    @Test("A laid-out control sets AppKit's tooltip delay to half a second")
+    func delayIsInstalledOnLayout() {
+        let hosting = NSHostingView(rootView: AnyView(
+            GlassIconButton(symbol: "bold", label: "Bold", context: .light) {}
+        ))
+        let window = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 200, height: 60),
+            styleMask: [.titled], backing: .buffered, defer: false
+        )
+        window.contentView = hosting
+        hosting.frame = CGRect(x: 0, y: 0, width: 200, height: 60)
+        hosting.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        Kept.windows.append(window)
+
+        #expect(
+            UserDefaults.standard.integer(forKey: HoverTitleTiming.defaultsKey) == 500,
+            "AppKit reads this key, in milliseconds, from the app's own domain"
+        )
+    }
+
+    private enum Kept {
+        nonisolated(unsafe) static var windows: [NSWindow] = []
+    }
+
+    @Test("It is registered rather than written, so a user's own setting survives")
+    func registrationDoesNotOverwrite() {
+        HoverTitleTiming.install()
+        // A registered default is invisible to the persistent domain; anything found there was
+        // put there by somebody, and registration must not have been what put it there.
+        let persisted = UserDefaults.standard
+            .persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?[HoverTitleTiming.defaultsKey]
+        #expect(persisted == nil)
+    }
+}

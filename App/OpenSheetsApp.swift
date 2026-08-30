@@ -60,6 +60,13 @@ struct OpenSheetsApp: App {
     @State private var app = AppModel.standard()
     @State private var appearance = AccessibilityAppearance()
 
+    init() {
+        // Before any window exists. The attachment installs this too, on the first control that
+        // lays out — but that is first *hover-able* control, and doing it here means the delay is
+        // right for whatever appears first rather than for whatever appears second.
+        HoverTitleTiming.install()
+    }
+
     var body: some Scene {
         WindowGroup(id: OpenActions.sceneID, for: DocumentWindowRequest.self) { request in
             RootView(request: request.wrappedValue, app: app, appearance: appearance)

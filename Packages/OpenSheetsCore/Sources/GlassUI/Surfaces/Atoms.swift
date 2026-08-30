@@ -181,6 +181,30 @@ enum ToolbarHelp {
 /// view is a zero-content sibling of the label inside the control's container; the container is
 /// the thing with the button's bounds and the thing the pointer is over, so it is the thing that
 /// has to carry the tip. Setting it here instead would mean a tooltip on a view with no size.
+/// How long the pointer has to rest before a hover title appears.
+///
+/// AppKit's own wait is around three seconds, which is tuned for a tooltip that explains a
+/// surprise. These are not that: a toolbar of glyphs has no words on it, so the tip is the label,
+/// and a label you have to wait three seconds for is a label you go and look up in a menu instead.
+/// Half a second is long enough that dragging the pointer across a row does not set off nine of
+/// them in a wave.
+///
+/// `NSInitialToolTipDelay` is an AppKit default, in milliseconds, read from the app's own domain.
+/// **Registered, not written**: registration provides a fallback without touching the user's
+/// stored preferences, so somebody who has deliberately set their own value keeps it.
+public enum HoverTitleTiming {
+    public static let defaultsKey = "NSInitialToolTipDelay"
+    public static let milliseconds = 500
+
+    /// Idempotent. `Void` in a `static let` so the work happens exactly once, on first use,
+    /// whichever control gets there first.
+    public static func install() { _ = installed }
+
+    private static let installed: Void = {
+        UserDefaults.standard.register(defaults: [defaultsKey: milliseconds])
+    }()
+}
+
 private struct ToolTipAttachment: NSViewRepresentable {
     let text: String
 
@@ -196,6 +220,8 @@ private struct ToolTipAttachment: NSViewRepresentable {
         init(text: String) {
             self.text = text
             super.init(frame: .zero)
+            // First tooltip in the process sets the delay for all of them.
+            HoverTitleTiming.install()
         }
 
         @available(*, unavailable)
