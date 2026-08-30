@@ -114,7 +114,8 @@ public struct ToolRegistry: Sendable {
     }
 
     /// The full surface, in the order an agent should meet it: find the files, then understand
-    /// one, then read, then write, then restructure, then undo.
+    /// one, then read, then write, then restructure, then undo — and last, the file's own
+    /// lifecycle: create a workbook, delete one, and put one on the user's screen.
     ///
     /// Discovery comes first because it is what a session with no prior knowledge needs first:
     /// every other tool takes an absolute path, and until `list_workspace` existed there was no
@@ -142,5 +143,8 @@ public struct ToolRegistry: Sendable {
         SnapshotTools.restore,
         HandshakeTools.getSelection,
         HandshakeTools.revealRange,
+        FileLifecycleTools.newWorkbook,
+        FileLifecycleTools.deleteFile,
+        FileLifecycleTools.openInApp,
     ])
 }

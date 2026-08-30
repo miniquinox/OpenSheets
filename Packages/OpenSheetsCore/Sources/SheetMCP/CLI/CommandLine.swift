@@ -368,7 +368,7 @@ public enum OpenSheetsCLI {
         }
     }
 
-    /// Restore points, and the two tools that talk to the running app.
+    /// Restore points, and the tools that talk to the app.
     private static func snapshotCommands(
         _ command: String,
         _ arguments: [String],
@@ -412,6 +412,16 @@ public enum OpenSheetsCLI {
             ]
             payload.merge(options.sheetArgument) { _, new in new }
             return await invoke("reveal_range", arguments: payload, console: console, options: options, context: context)
+
+        case "open":
+            guard let path = arguments.first else { return missing("open <file> [range]", console) }
+            var payload: [String: JSONValue] = [
+                "path": .string(path),
+                "preview": .bool(options.preview),
+            ]
+            if arguments.count > 1 { payload["range"] = .string(arguments[1]) }
+            payload.merge(options.sheetArgument) { _, new in new }
+            return await invoke("open_in_app", arguments: payload, console: console, options: options, context: context)
         default: return nil
         }
     }
@@ -447,6 +457,23 @@ public enum OpenSheetsCLI {
             return await invoke(
                 "list_files", arguments: payload, console: console, options: options, context: context
             )
+
+        case "new":
+            guard let path = arguments.first else { return missing("new <file> [sheet ...]", console) }
+            var payload: [String: JSONValue] = [
+                "path": .string(path),
+                "preview": .bool(options.preview),
+            ]
+            let names = arguments.dropFirst()
+            if !names.isEmpty { payload["sheets"] = .array(names.map { .string($0) }) }
+            return await invoke("new_workbook", arguments: payload, console: console, options: options, context: context)
+
+        case "delete-file":
+            guard let path = arguments.first else { return missing("delete-file <file>", console) }
+            return await invoke("delete_file", arguments: [
+                "path": .string(path),
+                "preview": .bool(options.preview),
+            ], console: console, options: options, context: context)
 
         case "convert":
             guard arguments.count >= 2 else { return missing("convert <in> <out>", console) }

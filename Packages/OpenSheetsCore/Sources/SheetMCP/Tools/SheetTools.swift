@@ -21,8 +21,9 @@ public enum SheetTools {
             **Not supported in v0.1 — this tool always refuses.** Adding a sheet to an existing \
             workbook means rewriting the package's part structure, and a partial job produces a \
             file Excel reports as damaged, so OpenSheets refuses rather than risking it. To add \
-            data to a workbook, write to an existing sheet, or have the user add the sheet in \
-            Excel or in the OpenSheets app first.
+            data to a workbook, write to an existing sheet; to start from scratch with exactly \
+            the sheets you need, create a fresh file with new_workbook; or have the user add \
+            the sheet in Excel or in the OpenSheets app first.
             """,
             properties: [
                 ToolSchema.pathProperty,
@@ -41,7 +42,8 @@ public enum SheetTools {
             return ResultFormatter.refusal(
                 "adding a sheet to an existing workbook",
                 alternative:
-                "Write to a sheet that already exists, or ask the user to add the sheet in Excel "
+                "Write to a sheet that already exists, create a fresh workbook with the sheets "
+                    + "you need using new_workbook, or ask the user to add the sheet in Excel "
                     + "or the OpenSheets app and then call this server again."
             )
         }
@@ -55,7 +57,8 @@ public enum SheetTools {
             **Not supported in v0.1 — this tool always refuses.** Removing a sheet means \
             rewriting the package's part structure and every reference to it; OpenSheets refuses \
             rather than producing a workbook Excel calls damaged. To empty a sheet instead, use \
-            `delete_rows` over its used range.
+            `delete_rows` over its used range; to start over with a different sheet list, \
+            create a fresh file with new_workbook.
             """,
             properties: [
                 ToolSchema.pathProperty,
@@ -72,7 +75,9 @@ public enum SheetTools {
             return ResultFormatter.refusal(
                 "deleting a sheet from an existing workbook",
                 alternative:
-                "To clear its contents instead, call delete_rows over the sheet's used range."
+                "To clear its contents instead, call delete_rows over the sheet's used range. "
+                    + "To start over with a different sheet list, create a fresh workbook with "
+                    + "new_workbook."
             )
         }
     )
