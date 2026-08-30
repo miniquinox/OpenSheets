@@ -352,6 +352,9 @@ enum OpenActions {
         guard tabs !== model else { return }
         tabs = model
         workspaceRequested = true
+        // The window arrived, so the watchdog's one retry is spent on nothing and available again
+        // if this workspace is later closed and a new one asked for.
+        workspaceRetried = false
         let restore = pendingRestore
         pendingRestore = nil
         let pending = queued
@@ -499,6 +502,7 @@ enum OpenActions {
         }
         workspaceRequested = true
         openWindow(value: DocumentWindowRequest(path: url.path(percentEncoded: false)))
+        confirmWorkspaceArrives()
     }
 
     /// How `url` was asked for, for the grant decision. Defaults to the careful answer.
@@ -526,6 +530,53 @@ enum OpenActions {
     }
 
     private static var launcherWindows: [NSWindow] { DocumentWindows.launchers(in: NSApp.windows) }
+
+    private static var workspaceWindows: [NSWindow] { DocumentWindows.workspaces(in: NSApp.windows) }
+
+    /// How long a requested workspace window has to actually appear.
+    ///
+    /// Generous on purpose: this is a deadlock breaker, not a progress bar. A window that is
+    /// merely slow must never trip it, and nothing the user can see depends on the delay.
+    private static let workspaceArrivalGrace = Duration.seconds(3)
+
+    /// Makes sure the window we just asked for actually arrived, and un-latches if it did not.
+    ///
+    /// ``workspaceRequested`` exists so that five files opening at launch produce one window
+    /// rather than five. It is set the moment `openWindow(value:)` is *called*, and it was only
+    /// ever cleared by ``workspaceClosed(_:)`` — that is, by a workspace window that existed going
+    /// away. So a request that never produced a window left it latched on with ``tabs`` still
+    /// `nil`, and from then on every ``open(_:consent:)`` appended to ``queued`` and returned.
+    /// Process alive, no window, no path back, and nothing on screen to act on: the app was
+    /// running and invisible until it was killed.
+    ///
+    /// Observed once and never reproduced in thirty launches, which is the argument *for* this
+    /// rather than against it — a state that strands the whole app and cannot be recovered from
+    /// does not need to be likely to be worth a way out. The check is cheap, runs once per
+    /// request, and does nothing at all in the case where the window turned up.
+    /// One retry, then stop asking. Measured, not assumed: an unbounded version re-requested
+    /// every three seconds forever against a window request that could not succeed.
+    private static var workspaceRetried = false
+
+    private static func confirmWorkspaceArrives() {
+        Task { @MainActor in
+            try? await Task.sleep(for: workspaceArrivalGrace)
+            // Three ways this is a false alarm, and all of them mean the same thing: something
+            // came back, so leave it alone. `tabs` is the strongest — the window not only opened
+            // but installed its model.
+            guard workspaceRequested, tabs == nil, workspaceWindows.isEmpty else { return }
+            workspaceRequested = false
+            guard !workspaceRetried else {
+                // Asked twice, got nothing twice. Stop, and make sure there is a window: a
+                // launcher the user can open a file from beats a correct, empty screen.
+                _ = showLauncher()
+                return
+            }
+            workspaceRetried = true
+            // The queue still holds what was asked for, so this re-latches and tries once more.
+            if queued.isEmpty { _ = showLauncher() } else { drainQueue() }
+        }
+    }
+
 
     /// Brings the workspace forward, because an open the user asked for should land somewhere they
     /// can see. A miniaturized window is not in this list (``DocumentCore/DocumentWindows``
@@ -568,6 +619,7 @@ enum OpenActions {
         }
         workspaceRequested = true
         openWindow(value: DocumentWindowRequest(folder: folder.path(percentEncoded: false)))
+        confirmWorkspaceArrives()
     }
 
     /// A folder asked for before there was a window to put it in.
