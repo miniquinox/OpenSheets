@@ -66,7 +66,7 @@ struct OpenSheetsApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
-        .defaultSize(width: 1280, height: 820)
+        .defaultSize(width: DS.Metrics.documentWindowSize.width, height: DS.Metrics.documentWindowSize.height)
         // SwiftUI restores a `WindowGroup(for:)`'s presented values at launch: it re-creates a
         // window per value it remembers *and* hands remembered values to windows that were
         // already on screen. That is what turned one launch into several document windows with a
@@ -140,9 +140,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// through ``DocumentCore/TabsModel`` without SwiftUI hearing about it. `nil` is the launcher, as
 /// before.
 struct DocumentWindowRequest: Codable, Hashable, Sendable {
-    var path: String
+    /// The file to open, or empty when the window is being opened on a *folder* and has nothing
+    /// in it yet.
+    ///
+    /// Empty string rather than `String?` because this is the `WindowGroup`'s presented value:
+    /// SwiftUI keys windows on it, and two spellings of "no file" — `nil` and `""` — would be two
+    /// window identities for one state.
+    var path: String = ""
 
-    var url: URL { URL(fileURLWithPath: path) }
+    /// A folder to open as the workspace and reveal in the tree. Independent of `path`: a file
+    /// open carries none, a folder open carries only this.
+    var folder: String?
+
+    var url: URL? { path.isEmpty ? nil : URL(fileURLWithPath: path) }
+    var folderURL: URL? { folder.map { URL(fileURLWithPath: $0) } }
 }
 
 /// The launcher, or the workspace and its tabs.
@@ -216,6 +227,11 @@ struct RootView: View {
         )
         tabs = model
         OpenActions.installTabs(model, seed: request.url)
+        // The folder half. Pinned after the tabs model is installed so the window exists to show
+        // it, and pinned rather than merely granted: the folder the user just opened has to be a
+        // root even when it sits inside one they granted months ago, or it lands forty rows down
+        // somebody else's subtree and reads as nothing having happened.
+        if let folder = request.folderURL { app.explorer.pin(folder) }
     }
 }
 
@@ -317,6 +333,14 @@ enum OpenActions {
     static func install(openWindow action: OpenWindowAction) {
         openWindow = action
         drainQueue()
+        // A folder asked for before there was anything to open a window with. Parked by
+        // `openWorkspace(folder:)` rather than dropped, because the alternative is a grant that
+        // works or does nothing depending on how far SwiftUI had got — which is precisely the
+        // class of silent nothing this feature was built to remove.
+        if let folder = pendingFolder {
+            pendingFolder = nil
+            openWorkspace(folder: folder)
+        }
     }
 
     /// The workspace window has appeared and brought its tab set.
@@ -523,6 +547,32 @@ enum OpenActions {
         Task { window.close() }
     }
 
+    /// Open a folder as the workspace: the window comes up with the tree on the left and nothing
+    /// in it, which is what "I granted a folder" should look like.
+    ///
+    /// Distinct from ``open(_:consent:)`` because a folder is not a document. It never becomes a
+    /// tab, never touches recents, and the window it opens is legitimately empty — the state the
+    /// tabless branch of `DocumentWindow` used to treat as one frame on the way out.
+    static func openWorkspace(folder: URL) {
+        guard let app else { return }
+        // Already have a workspace window? Then this is a reveal, not a new window. Opening a
+        // second one would split the tabs across two windows, which §1.1 exists to prevent.
+        if tabs != nil {
+            app.explorer.pin(folder)
+            frontWorkspace()
+            return
+        }
+        guard let openWindow, !workspaceRequested else {
+            pendingFolder = folder
+            return
+        }
+        workspaceRequested = true
+        openWindow(value: DocumentWindowRequest(folder: folder.path(percentEncoded: false)))
+    }
+
+    /// A folder asked for before there was a window to put it in.
+    static var pendingFolder: URL?
+
     static func showOpenPanel() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = OpenActions.readableTypes
@@ -613,4 +663,3 @@ enum OpenActions {
         return response == .alertFirstButtonReturn
     }
 }
-

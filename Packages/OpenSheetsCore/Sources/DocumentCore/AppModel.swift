@@ -56,6 +56,15 @@ public final class AppModel {
 
     public private(set) var recents: [RecentItem] = []
     public private(set) var grants: [WorkspaceGrant] = []
+
+    /// The granted folders as a browsable tree. One per process, so the launcher and every
+    /// document window's sidebar are looking at the same expansion state rather than at two
+    /// copies that drift apart the moment one of them lists a folder.
+    ///
+    /// `@ObservationIgnored` because the tree is `@Observable` in its own right: a view that
+    /// reads `explorer.nodes` depends on `nodes`, and re-rendering it whenever anything else on
+    /// `AppModel` changes would be a dependency on the wrong thing.
+    @ObservationIgnored public let explorer: WorkspaceTree
     public private(set) var mcpStatus: MCPStatus = .notConfigured
     public private(set) var lastError: SheetError?
 
@@ -99,14 +108,16 @@ public final class AppModel {
     /// See ``WorkspaceConsent``.
     @ObservationIgnored public var confirmWorkspaceGrant: (@MainActor (URL) async -> Bool)?
 
-    /// Whether documents opened from here watch their file. `nil` asks ``Flags``, which is what
-    /// the app wants.
+    /// Whether documents opened from here watch their file. `nil` means yes, which is what the
+    /// app always wants — **this is a test seam, not a preference.**
     ///
-    /// It exists so a **test** never has to write `OSFlagAutoRefresh`. That key is process-wide,
-    /// so a suite that set it to `false` and then suspended could have another suite set it back
-    /// to `true` underneath — and the document under test would quietly auto-refresh out of the
-    /// `STALE` state the test was waiting for. The failure read as a watcher bug and was not one.
-    /// A per-instance value cannot be raced by a suite that does not share the instance.
+    /// The user-facing switch is gone: watching is the reason the app is open, so a control for
+    /// turning it off was a control for not using the product. What remains is the ability for a
+    /// suite to hold a document in `STALE` and assert on it. It is per-instance rather than a
+    /// `UserDefaults` key on purpose — that key was process-wide, so a suite that set it to
+    /// `false` and then suspended could have another set it back underneath, and the document
+    /// under test would auto-refresh out of the state the test was waiting for. That failure read
+    /// as a watcher bug and was not one.
     @ObservationIgnored public var autoRefreshForNewDocuments: Bool?
 
     /// Whether documents opened from here track changes against a baseline. `nil` asks
@@ -122,6 +133,21 @@ public final class AppModel {
 
     public init(store: SheetStore) {
         self.store = store
+        // Before the reloads, because `reloadGrants()` is what hands the tree its roots. The
+        // extension set is the reader's, not the Open panel's four types: a folder listing that
+        // hid the `.csv` next to the `.xlsx` would be hiding a file this app can open.
+        // `storage: nil` with the flag off, and it is not a detail: the storage is what restores
+        // last session's expanded folders, and restoring an expansion is what starts a directory
+        // listing. Handing the tree its storage anyway would make "off" mean "the UI is hidden
+        // while the work still happens", which is the one thing the flag promises it does not.
+        explorer = WorkspaceTree(
+            source: store.directories,
+            fileExtensions: DocumentWorkbookReader.workbookExtensions
+                .union(DocumentWorkbookReader.delimitedExtensions),
+            storage: Flags.explorerEnabled
+                ? DatabaseWorkspaceTreeStorage(database: store.database)
+                : nil
+        )
         reloadRecents()
         reloadGrants()
     }
@@ -194,7 +220,9 @@ public final class AppModel {
         }
         try store.grants.check(url)
 
-        let autoRefresh = autoRefreshForNewDocuments ?? Flags.autoRefreshEnabled
+        // Always, unless a test says otherwise. There is no user-facing switch and no flag: a
+        // document that does not watch its file is a document this app has no reason to be showing.
+        let autoRefresh = autoRefreshForNewDocuments ?? true
         let workbook = try await DocumentWorkbookReader.read(url)
         reader.prime(workbook, for: url)
 
@@ -278,6 +306,22 @@ public final class AppModel {
     public func reloadGrants() {
         grants = store.grants.activeGrants()
         store.grants.invalidateCache()
+        // Rootless is the tree's zero-cost state: no roots, no rows, and nothing that could
+        // begin a listing. Read fresh rather than cached at init, like every other flag here.
+        guard Flags.explorerEnabled else { return }
+        explorer.setRoots(grants.map(\.path))
+    }
+
+    /// The grant a root row in the explorer stands for, or `nil` when none does.
+    ///
+    /// **Not `grants.first { $0.path == id }`.** A grant is stored the way the open panel spelled
+    /// it; a node id is canonical, and `resolvingSymlinksInPath` rewrites `/private/tmp/x` as
+    /// `/tmp/x`. Two of the seven grants on the machine this was written on differ exactly that
+    /// way, so the equality match found nothing and Remove from List did nothing — silently, on a
+    /// control whose entire purpose is to undo a grant. That is the failure this feature exists to
+    /// delete, so it does not get to survive inside it.
+    public func grant(forRootID id: String) -> WorkspaceGrant? {
+        grants.first { WorkspaceTree.canonicalPath($0.path) == id }
     }
 
     @discardableResult
@@ -292,6 +336,21 @@ public final class AppModel {
             return false
         }
     }
+
+    /// Whether `url` is inside a live grant — read through ``grants`` on purpose.
+    ///
+    /// ``store`` is `@ObservationIgnored` and ``SheetStore/WorkspaceGrants`` is not
+    /// `@Observable`, so a view that calls `store.grants.isAllowed` alone registers no dependency
+    /// and never re-renders when a grant is added. Touching ``grants`` first is what makes the
+    /// answer live; the check is what makes it correct.
+    public func isGranted(_ url: URL) -> Bool {
+        _ = grants.count
+        return store.grants.isAllowed(url)
+    }
+
+    /// Clears the last error once a view has shown it. Without this the launcher's rejection line
+    /// would be permanent.
+    public func clearLastError() { lastError = nil }
 
     public func revokeGrant(_ grant: WorkspaceGrant) {
         guard let id = grant.id else { return }
@@ -368,12 +427,19 @@ public enum Flags {
     public static var mcpEnabled: Bool { bool("OSFlagMCP", default: true) }
     public static var formulaEngineEnabled: Bool { bool("OSFlagFormulaEngine", default: true) }
     public static var snapshotsEnabled: Bool { bool("OSFlagSnapshots", default: true) }
-    public static var autoRefreshEnabled: Bool { bool("OSFlagAutoRefresh", default: true) }
 
     /// PLAN.md §1.3's green/amber/red tracking against a baseline: the chip, the panel, the grid
     /// tints and the checkpoint command. **On**, and switching it off has to remove the cost as
     /// well as the controls — no diffing, no snapshots, no background passes.
     public static var changeTrackingEnabled: Bool { bool("OSFlagChangeTracking", default: true) }
+
+    /// The workspace file explorer. **On.**
+    ///
+    /// Off costs nothing, and that is enforced rather than asserted: ``AppModel`` withholds both
+    /// the tree's storage and its roots, so it holds no nodes and can start no listing. The object
+    /// itself still exists — both hosts take a non-optional reference and an empty `@Observable`
+    /// costs a pointer — but it does no work, which is the part that would have been a lie.
+    public static var explorerEnabled: Bool { bool("OSFlagExplorer", default: true) }
 
     /// Sheet add, remove and reorder. **Off**, and it must stay off in v0.1: A2's writer throws
     /// `SheetError.notImplemented` for all three rather than producing a package whose

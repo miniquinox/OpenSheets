@@ -163,6 +163,37 @@ enum TabsMock {
     )
 }
 
+/// Explorer states that ``Mock/fileExplorer`` cannot also be in.
+///
+/// The tree and the search results are alternatives, not layers: when a search is running the rows
+/// *are* the results, so one value cannot show both. Same for the rail before anything has been
+/// granted, which is the first thing a new user sees and therefore the state most worth looking at.
+enum ExplorerMock {
+    /// A bounded walk that ran out of budget. The footer is the honest half of the feature.
+    static let searchStopped = FileExplorerState(
+        rows: [
+            FileExplorerRow(
+                id: "~/work/finance/Outreach/q4-budget.xlsx", name: "q4-budget.xlsx",
+                detail: "412 KB", depth: 0, kind: .workbook
+            ),
+            FileExplorerRow(
+                id: "~/work/people/budget-2026.xlsx", name: "budget-2026.xlsx", detail: "88 KB",
+                depth: 0, kind: .workbook
+            ),
+            FileExplorerRow(
+                id: "~/Downloads/budget export.csv", name: "budget export.csv", detail: "3.1 MB",
+                depth: 0, kind: .delimited
+            ),
+        ],
+        search: "budget",
+        searchNote: "Stopped after 20,000 files — narrow the search or open a subfolder."
+    )
+
+    /// Nothing granted yet. The `+` stays in the header: the empty state explains, it does not
+    /// become the only way to act.
+    static let noFolders = FileExplorerState(emptyMessage: "No folders yet.")
+}
+
 #Preview("Toolbar · light") {
     PreviewStage(context: .light, height: 200) { context in
         ToolbarSurface(state: Mock.toolbar, context: context) { _ in }
@@ -310,6 +341,44 @@ enum TabsMock {
             Sidebar(state: Mock.sidebar, context: context) { _ in }
             Spacer(minLength: 0)
         }
+    }
+}
+
+#Preview("File explorer · light") {
+    // On a card, because the explorer draws no surface of its own and reviewing it on bare glass
+    // would be reviewing something the app never shows.
+    PreviewStage(context: .light, width: 520, height: 560) { context in
+        FileExplorer(state: Mock.fileExplorer, context: context) { _ in }
+            .frame(width: DS.Metrics.sidebarWidth)
+            .padding(.vertical, DS.Space.s)
+            .glassCard(context: context, radius: DS.Radius.panel)
+    }
+}
+
+#Preview("File explorer · dark") {
+    PreviewStage(context: .dark, width: 520, height: 560) { context in
+        FileExplorer(state: Mock.fileExplorer, context: context) { _ in }
+            .frame(width: DS.Metrics.sidebarWidth)
+            .padding(.vertical, DS.Space.s)
+            .glassCard(context: context, radius: DS.Radius.panel)
+    }
+}
+
+#Preview("File explorer · search stopped early") {
+    PreviewStage(context: .dark, width: 520, height: 400) { context in
+        FileExplorer(state: ExplorerMock.searchStopped, context: context) { _ in }
+            .frame(width: DS.Metrics.sidebarWidth)
+            .padding(.vertical, DS.Space.s)
+            .glassCard(context: context, radius: DS.Radius.panel)
+    }
+}
+
+#Preview("File explorer · nothing granted") {
+    PreviewStage(context: .light, width: 520, height: 320) { context in
+        FileExplorer(state: ExplorerMock.noFolders, context: context) { _ in }
+            .frame(width: DS.Metrics.sidebarWidth)
+            .padding(.vertical, DS.Space.s)
+            .glassCard(context: context, radius: DS.Radius.panel)
     }
 }
 

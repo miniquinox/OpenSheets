@@ -21,10 +21,17 @@ struct WindowConfigurator: NSViewRepresentable {
 }
 
 /// The launcher's variant: no title, no toolbar, not resizable.
+///
+/// Carries the explorer flag because the launcher is two different windows — 880×560 with the
+/// folder rail, 720×520 without it — and `GlassUI` is not allowed to read a flag. The app layer is
+/// the only place that knows, so it is the app layer that says.
 struct LauncherWindowConfigurator: NSViewRepresentable {
+    let explorerEnabled: Bool
+
     func makeNSView(context: Context) -> NSView {
         let view = ConfiguringView()
-        view.configure = { WindowChrome.configureLauncherWindow($0) }
+        let explorerEnabled = explorerEnabled
+        view.configure = { WindowChrome.configureLauncherWindow($0, explorerEnabled: explorerEnabled) }
         return view
     }
 

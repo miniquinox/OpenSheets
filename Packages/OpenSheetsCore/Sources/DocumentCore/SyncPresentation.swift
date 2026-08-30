@@ -110,11 +110,10 @@ public enum SyncPresentation {
         for state: DocumentSyncState,
         pendingCellCount: Int,
         localEditCount: Int,
-        isWatching: Bool,
         readOnlyReason: ReadOnlyReason?
     ) -> GlassUI.SyncState {
         switch state {
-        case .synced: isWatching ? .watching : .watchingPaused
+        case .synced: .watching
         case .stale: .stale(cellCount: pendingCellCount)
         case .reloading: .watching
         case .dirty: .dirty(localEdits: localEditCount)

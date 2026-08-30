@@ -200,7 +200,7 @@ struct ComponentModelTests {
     @Test("Every sync state names itself and says what to do")
     func syncStatesAreComplete() {
         let states: [SyncState] = [
-            .synced, .watching, .watchingPaused, .stale(cellCount: 42), .conflict(localEdits: 3),
+            .synced, .watching, .stale(cellCount: 42), .conflict(localEdits: 3),
             .dirty(localEdits: 1), .readOnly(reason: "On a read-only volume."), .missing,
             .locked(holder: "Excel"), .locked(holder: nil),
         ]

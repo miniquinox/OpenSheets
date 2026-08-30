@@ -70,7 +70,6 @@ public enum Mock {
         sheetCount: 0,
         cellCount: 0,
         shortcut: nil,
-        isWatching: false
     )
 
     /// A believable diff: a new projected column, one rounding change, one deleted note.
@@ -374,9 +373,57 @@ public enum Mock {
                 lastOpened: "2w ago", sheetCount: 11, exists: false
             ),
         ],
-        grants: [
-            WorkspaceGrantItem(id: "g1", path: "~/work/finance", grantedAt: "3d ago", fileCount: 14),
-            WorkspaceGrantItem(id: "g2", path: "~/work/people", grantedAt: "1w ago", fileCount: 6),
+        explorer: fileExplorer
+    )
+
+    // MARK: File explorer
+
+    /// The tree, mid-story: `~/work/finance` open, one folder listed and truncated, one still
+    /// listing, one we are not allowed to read, and a second grant whose folder has gone.
+    ///
+    /// Six of the eight states in plan §4.4 are in this one value on purpose. They are states of
+    /// *rows*, so they coexist in real life — a rail with a spinner in it and a greyed-out root
+    /// below it is a Tuesday, not a contrived screenshot — and reviewing them one at a time is how
+    /// you end up with four different ways of saying "this did not work".
+    public static let fileExplorer = FileExplorerState(
+        rows: [
+            FileExplorerRow(
+                id: "\(workspacePath)", name: "finance", depth: 0, kind: .root, isExpanded: true
+            ),
+            FileExplorerRow(
+                id: "\(workspacePath)/Outreach", name: "Outreach", depth: 1, kind: .folder,
+                isExpanded: true
+            ),
+            FileExplorerRow(
+                id: "\(workspacePath)/Outreach/\(fileName)", name: fileName, detail: "412 KB",
+                depth: 2, kind: .workbook, isSelected: true
+            ),
+            FileExplorerRow(
+                id: "\(workspacePath)/Outreach/headcount-2026.xlsx", name: "headcount-2026.xlsx",
+                detail: "96 KB", depth: 2, kind: .workbook
+            ),
+            FileExplorerRow(
+                id: "\(workspacePath)/Outreach/exports.csv", name: "exports.csv", detail: "1.4 MB",
+                depth: 2, kind: .delimited
+            ),
+            FileExplorerRow(
+                id: "note:\(workspacePath)/Outreach", name: "+ 2,609 more", depth: 2, kind: .note
+            ),
+            FileExplorerRow(
+                id: "\(workspacePath)/Models", name: "Models", depth: 1, kind: .folder
+            ),
+            FileExplorerRow(
+                id: "\(workspacePath)/Archive", name: "Archive", depth: 1, kind: .folder,
+                isExpanded: true, load: .loading
+            ),
+            FileExplorerRow(
+                id: "\(workspacePath)/.credentials", name: ".credentials", depth: 1, kind: .folder,
+                load: .unreadable
+            ),
+            FileExplorerRow(
+                id: "~/Volumes/archive-2019", name: "archive-2019", depth: 0, kind: .root,
+                load: .missing
+            ),
         ]
     )
 
@@ -388,7 +435,6 @@ public enum Mock {
         .stale(cellCount: 42),
         .conflict(localEdits: 3),
         .dirty(localEdits: 3),
-        .watchingPaused,
         .readOnly(reason: "This workbook uses a feature we cannot write back safely."),
         .locked(holder: "Microsoft Excel"),
         .missing,

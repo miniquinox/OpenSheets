@@ -90,6 +90,24 @@ Restated here because agents do not inherit context:
 9. **Report at the end**: what you built, what you deliberately left out, what surprised you, and
    what a downstream agent will trip on.
 
+### Three traps specific to this repo
+
+**`swift test --filter` takes a regex over test *IDs*, never a `@Suite` display name.**
+`--filter "Glass discipline"` matches nothing, runs zero tests and **exits 0** — a green that
+proves nothing. Filter on the type name: `--filter GlassLintTests`, `--filter AppearanceSnapshotTests`,
+`--filter DirectoryListerTests`. Confirmed by running both forms; the display-name form printed
+`Test run with 0 tests in 0 suites passed`.
+
+**The locally installed formatters are ahead of the versions CI pins** — swiftformat 0.62.1 against
+a pinned 0.58.6, swiftlint 0.65.1 against 0.61.0. A bare `swiftformat --lint .` reports ~4,552
+errors repo-wide from rules that are not in `.swiftformat` at all (`wrapIfStatementBodies`,
+`wrapPropertyBodies`, `wrapFunctionBodies`, `wrapLoopBodies`, `sortImports`,
+`blankLinesBetweenImports`), firing on canonical files like `FileTabStrip.swift` and
+`WorkspaceGrants.swift`. Two consequences, both binding:
+- **Never run bare `swiftformat .`** — it would rewrite ~4,500 lines across files you do not own.
+- Use `--lint` only, and **grep the output for your own filenames**. A finding on your file from
+  one of the rules listed above is noise; anything else is yours to fix.
+
 ### Two traps specific to this repo
 
 - **`.claude/worktrees/agent-*/` contains complete stale copies of the repo**, including `App/`
@@ -564,7 +582,7 @@ types, not a surface.
 3. `swift test --filter WorkspaceNodeTests` passes and asserts `WorkspaceNode.Load.loaded(omitted:)`
    round-trips through `Hashable` and that two nodes with the same `id` and different `depth` are
    not equal.
-4. `swift test --filter "Glass discipline"` passes — no new lint violations.
+4. `swift test --filter GlassLintTests` passes — no new lint violations.
 5. `swiftformat --lint .` reports no error in any of the five new files; `swiftlint lint --strict`
    is clean for them.
 6. No file outside the five listed above differs from `git HEAD` plus the pre-existing dirty set.
@@ -575,7 +593,7 @@ cd /Users/quino/Documents/GitHub/OpenSheets/Packages/OpenSheetsCore
 swift build -Xswiftc -warnings-as-errors
 swift test -Xswiftc -warnings-as-errors --filter FileExplorerModelTests
 swift test -Xswiftc -warnings-as-errors --filter WorkspaceNodeTests
-swift test -Xswiftc -warnings-as-errors --filter "Glass discipline"
+swift test -Xswiftc -warnings-as-errors --filter GlassLintTests
 cd /Users/quino/Documents/GitHub/OpenSheets && swiftformat --lint . ; swiftlint lint --strict
 ```
 
@@ -765,11 +783,11 @@ see below.
 
 **Acceptance criteria:**
 1. `swift build -Xswiftc -warnings-as-errors` exits 0.
-2. `swift test --filter "Glass discipline"` passes — this is the one that catches a stray
+2. `swift test --filter GlassLintTests` passes — this is the one that catches a stray
    `.padding(12)`, a `Color.blue`, or a `.shadow(`.
 3. `grep -c "glassCard\|glassPill\|glassChrome\|vibrantChrome\|glassEffect" Sources/GlassUI/Chrome/FileExplorer.swift`
    returns `0`.
-4. `swift test --filter "Appearance snapshots"` passes **with the six goldens unmodified** —
+4. `swift test --filter AppearanceSnapshotTests` passes **with the six goldens unmodified** —
    `git diff --stat docs/design/snapshots/` shows no new changes attributable to this task.
 5. `swift test --filter FileExplorerTests` passes and asserts: clicking an openable row emits
    `.select` then `.open` with the right id; clicking an expandable row emits `.toggle` only;
@@ -1069,7 +1087,11 @@ folder makes it appear, expanded, immediately; a refused grant says why.
           rejection = app?.lastError?.errorDescription ?? "That folder could not be granted."
           return
       }
-      app?.explorer.toggle(AppModel.documentKey(for: url))   // land expanded
+      // Land expanded. NOT `AppModel.documentKey(for: url)`: its `path(percentEncoded:)`
+      // keeps the trailing slash on a directory, so it yields `/Users/q/Reports/` while every
+      // node id the tree mints is `/Users/q/Reports`. `toggle` ignores an id it does not know,
+      // so that spelling would silently do nothing — this bug, inside its own fix. Verified.
+      app?.explorer.expandNewRoot(url)
   ```
   `rejection` is the `@State` at `App/LauncherScene.swift:18` that nothing currently assigns; the
   view already renders it at `LauncherWindow.swift:170-175`.
@@ -1096,7 +1118,7 @@ folder makes it appear, expanded, immediately; a refused grant says why.
 
 **Acceptance criteria:**
 1. `Scripts/build.sh` exits 0 (`** BUILD SUCCEEDED **`), including the app target.
-2. `swift test -Xswiftc -warnings-as-errors` passes in full, including `"Glass discipline"` — this
+2. `swift test -Xswiftc -warnings-as-errors` passes in full, including `GlassLintTests` — this
    is what catches a spacing literal in `App/LauncherScene.swift`.
 3. `grep -n "fileCount" App/LauncherScene.swift Packages/OpenSheetsCore/Sources/GlassUI/Launcher/LauncherWindow.swift`
    returns nothing.
@@ -1177,8 +1199,8 @@ click opens a new tab — and the sidebar's "Grant this folder" button finally u
 
 **Acceptance criteria:**
 1. `Scripts/build.sh` exits 0.
-2. `swift test -Xswiftc -warnings-as-errors` passes in full, including `"Glass discipline"` and
-   `"Appearance snapshots"` — the latter must pass **with the six goldens unmodified**, because
+2. `swift test -Xswiftc -warnings-as-errors` passes in full, including `GlassLintTests` and
+   `AppearanceSnapshotTests` — the latter must pass **with the six goldens unmodified**, because
    `Sidebar` already has a `ComponentCatalog` entry (`AppearanceSnapshotTests.swift:300-304`,
    `vibrantChrome`, `shape: .none`) and adding a section must not change its surface.
 3. `grep -n "app.store.grants.isAllowed" App/SidebarColumn.swift` returns nothing.

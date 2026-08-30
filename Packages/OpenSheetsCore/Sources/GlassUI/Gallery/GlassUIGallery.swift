@@ -30,6 +30,7 @@ public struct GlassUIGallery: View {
         case formulaBar
         case sheetTabBar
         case sidebar
+        case fileExplorer
         case inspector
         case selectionStats
         case commandPalette
@@ -52,6 +53,7 @@ public struct GlassUIGallery: View {
             case .formulaBar: "Formula bar"
             case .sheetTabBar: "Sheet tabs"
             case .sidebar: "Sidebar"
+            case .fileExplorer: "File explorer"
             case .inspector: "Inspector"
             case .selectionStats: "Selection stats"
             case .commandPalette: "Command palette"
@@ -74,6 +76,7 @@ public struct GlassUIGallery: View {
             case .formulaBar: "function"
             case .sheetTabBar: "rectangle.split.3x1"
             case .sidebar: "sidebar.left"
+            case .fileExplorer: "folder"
             case .inspector: "paintbrush"
             case .selectionStats: "sum"
             case .commandPalette: "command"
@@ -339,6 +342,8 @@ public struct GlassUIGallery: View {
                 Sidebar(state: Mock.sidebar, context: context) { _ in }
                 Spacer(minLength: 0)
             }
+        case .fileExplorer:
+            fileExplorerGallery
         case .inspector:
             HStack {
                 Spacer(minLength: 0)
@@ -395,6 +400,17 @@ public struct GlassUIGallery: View {
             .buttonStyle(.bordered)
             .font(DS.Text.control)
         }
+    }
+
+    /// The explorer brings no surface of its own — it is content, and in the app it is hosted
+    /// inside the launcher's card or the sidebar's vibrant chrome. So the gallery has to supply the
+    /// host, or this page would be a review of a file list floating directly on a spreadsheet,
+    /// which is a picture of the bug rather than of the component.
+    private var fileExplorerGallery: some View {
+        FileExplorer(state: Mock.fileExplorer, context: context) { _ in }
+            .frame(width: DS.Metrics.sidebarWidth, height: 420)
+            .padding(.vertical, DS.Space.s)
+            .glassCard(context: context, radius: DS.Radius.panel)
     }
 
     private var chipGallery: some View {

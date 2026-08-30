@@ -91,6 +91,11 @@ public enum FileTabAction: Sendable, Hashable {
     case closeOthers(String)
     case revealInFinder(String)
     case copyPath(String)
+    /// The `+` after the last tab. Two verbs rather than one, because a file and a folder do
+    /// different things here — a file becomes a tab, a folder joins the tree beside whatever is
+    /// already open — and a single "add" the host has to disambiguate is a question asked twice.
+    case openFile
+    case openFolder
 }
 
 /// How a status is drawn, as a value.
@@ -219,12 +224,42 @@ public struct FileTabStrip: View {
         }
     }
 
+    /// The `+` at the end of the row.
+    ///
+    /// A `Menu`, not a button: the two things it can add are genuinely different and neither is
+    /// the obvious default, so picking one for the user and hiding the other behind a modifier
+    /// key would make the second unreachable for anybody who does not know it is there.
+    ///
+    /// Inside the scroller with the tabs rather than pinned beside it, so it sits immediately
+    /// after the last tab instead of at a fixed right edge with a gap in between — and so it
+    /// scrolls out of the way when there are more tabs than room, which is when the row has
+    /// better uses for the width.
+    private var addButton: some View {
+        Menu {
+            Button("Open File…") { perform(.openFile) }
+            Button("Open Folder…") { perform(.openFolder) }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: Self.addGlyphSize, weight: .semibold))
+                .foregroundStyle(DS.Chrome.secondary)
+                .frame(width: Self.addHitTarget, height: Self.addHitTarget)
+                .contentShape(Capsule(style: .continuous))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Open a file or a folder")
+        .accessibilityLabel("Open file or folder")
+    }
+
     private var strip: some View {
         ScrollView(.horizontal) {
             HStack(spacing: DS.Space.xs) {
                 ForEach(state.tabs) { tab in
                     tabView(tab)
                 }
+                addButton
             }
             .padding(.horizontal, DS.Space.hair)
             // Take the ideal width, then report it: this is the pair that makes the strip hug.
@@ -362,4 +397,9 @@ public struct FileTabStrip: View {
     /// which is what keeps a small ✕ clickable without enlarging the tab.
     private static let closeHitTarget: CGFloat = 16
     private static let closeGlyphSize: CGFloat = 9
+
+    /// The `+`. Matched to the close glyph rather than to the tab text: both are chrome on a tab
+    /// row, and a plus that reads as a heading makes the row look like it has two title weights.
+    private static let addGlyphSize: CGFloat = 11
+    private static let addHitTarget: CGFloat = 22
 }

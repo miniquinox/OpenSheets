@@ -53,11 +53,6 @@ struct DocumentCommands: Commands {
             Button("Refresh from Disk") { Task { await document?.refresh() } }
                 .keyboardShortcut("r")
                 .disabled(document == nil)
-            Button(document?.isWatching == true ? "Pause Watching" : "Resume Watching") {
-                guard let document else { return }
-                Task { await document.setAutoRefresh(!document.isWatching) }
-            }
-            .disabled(document == nil)
             // PLAN.md §1.2 step 8: mark here. Everything the chip reports is measured against
             // whatever this last captured, so it sits with the other file-versus-disk commands
             // rather than under View — it is a statement about the file, not about the display.
@@ -185,7 +180,7 @@ struct DocumentCommands: Commands {
         }
     }
 
-    /// Named for what it will do, like Pause Watching above it and unlike Show Sidebar, whose
+    /// Named for what it will do, like Refresh from Disk above it and unlike Show Sidebar, whose
     /// title never changes. A toggle with a fixed title has to signal its state some other way —
     /// a checkmark — and a checkmark next to "Show Change Highlights" says the same thing twice
     /// while leaving the unchecked state ambiguous about whether it is a state or an offer.

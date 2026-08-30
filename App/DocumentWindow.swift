@@ -144,14 +144,58 @@ struct DocumentWindow: View {
                 EmptyStateView(
                     model: .unreadable(detail: "\(error.code): \(error.message)"),
                     context: context
-                ) { _ in }
+                ) { action in
+                    // Was `{ _ in }`. The state has offered two buttons since it was written and
+                    // neither did anything — the failure mode this whole surface exists to avoid,
+                    // sitting inside the screen that apologises for a failure.
+                    switch action {
+                    case .primary:
+                        guard let url = activeTab?.url else { return }
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    case .secondary:
+                        OpenActions.showOpenPanel()
+                    case .showTechnicalDetail:
+                        break
+                    }
+                }
             }
         case .none:
-            // Closing the last tab closes the window (§1.2 step 9), so this is one frame on the
-            // way out rather than a state anybody sits in. It still has to draw the plane: an
-            // unpainted window is a hole onto the desktop, not an empty window.
-            plane { Color.clear }
+            // A window with no tab used to be one frame on the way out — closing the last tab
+            // closed the window, so nobody sat here. Opening a *folder* made it somewhere you
+            // arrive: the tree is on the left, nothing is open yet, and picking a file is the
+            // next thing you do. So it draws the sidebar and says so, rather than a blank plane.
+            emptyWorkspace
         }
+    }
+
+    /// A workspace with a folder open and no workbook in it.
+    ///
+    /// The sidebar is the point. Every other tabless state this window can be in is transient —
+    /// loading, or a failed open — and draws a bare plane; this one is a place the user meant to
+    /// get to, so the half of the column that works without a document is exactly what it shows.
+    ///
+    /// `SidebarColumn(model: nil, …)` is the whole of the difference: the sheets, named ranges,
+    /// file and Claude sections need a workbook and are simply absent, while the file tree does
+    /// not and is not.
+    private var emptyWorkspace: some View {
+        HStack(spacing: 0) {
+            SidebarColumn(model: nil, app: app, context: context, topInset: titleBarMetrics.centreFromTop * 2)
+            VStack(spacing: 0) {
+                titleBar
+                EmptyStateView(model: .noDocument, context: context) { action in
+                    switch action {
+                    // Both go to the open panel, which is what the launcher's own New sheet
+                    // does (`LauncherScene.perform`): creating a workbook needs somewhere to put
+                    // it, so the panel is the first step either way.
+                    case .primary, .secondary: OpenActions.showOpenPanel()
+                    case .showTechnicalDetail: break
+                    }
+                }
+            }
+        }
+        .gridPlane(context)
+        // As `plane`: the row belongs on the traffic-light line, not below the titlebar.
+        .ignoresSafeArea(.container, edges: .top)
     }
 
     /// The title row over the opaque plane, for the states that have no document to build a
@@ -162,6 +206,11 @@ struct DocumentWindow: View {
             content()
         }
         .gridPlane(context)
+        // Same reason as `DocumentPane`'s band: the row starts at the window's **top edge**, not
+        // below the titlebar's safe area. Without it the title row sits a titlebar's height too
+        // low and AppKit's transparent titlebar renders a blurred sample of it above — which
+        // reads as the tab strip drawn twice, once ghosted, and is exactly what it is.
+        .ignoresSafeArea(.container, edges: .top)
     }
 
     private var activeTab: TabsModel.Tab? {
@@ -320,7 +369,9 @@ struct DocumentWindow: View {
                 case .stale: Task { await model.refresh() }
                 case .conflict: model.showDiffPanel()
                 case .dirty: Task { await model.save() }
-                default: Task { await model.setAutoRefresh(!model.isWatching) }
+                // Watching is the only resting state, and it needs no action: the file is
+                // already being followed. Nothing to toggle, so nothing happens.
+                default: break
                 }
             }
         }
@@ -335,7 +386,6 @@ struct DocumentWindow: View {
             for: model.syncState,
             pendingCellCount: model.changeSet?.notice.cellCount ?? 0,
             localEditCount: model.localEditCount,
-            isWatching: model.isWatching,
             readOnlyReason: model.workbook.meta.readOnlyReason
         )
     }
@@ -402,7 +452,28 @@ struct DocumentWindow: View {
             guard let url = url(of: id) else { return }
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(url.path(percentEncoded: false), forType: .string)
+        case .openFile:
+            OpenActions.showOpenPanel()
+        case .openFolder:
+            openFolder()
         }
+    }
+
+    /// Add a folder to the tree from the `+` after the last tab.
+    ///
+    /// **Appends.** A second folder joins the first rather than replacing it, so two unrelated
+    /// trees can be open at once — the reason the `+` is here and not a "switch folder" control.
+    /// Nothing about the tabs moves: the workbook in front stays in front and none of them close.
+    private func openFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        // Grant first: `pin` refuses a folder no grant covers, and refuses it silently.
+        // `grantWorkspace` reloads the grants synchronously, so the roots already include it.
+        guard app.grantWorkspace(url) else { return }
+        app.explorer.pin(url)
     }
 
     private func url(of id: String) -> URL? {
@@ -639,6 +710,9 @@ private struct DocumentPane<TitleBar: View>: View {
                     }
                 }
                 .gridPlane(context)
+                // The band below does this; so must the branch that replaces it, or an
+                // unreadable file draws its title row a titlebar too low.
+                .ignoresSafeArea(.container, edges: .top)
             } else {
                 // One ZStack, not a VStack of bands: the columns run the **full height of the
                 // window** and the chrome floats over them. That is what lets the sidebar's

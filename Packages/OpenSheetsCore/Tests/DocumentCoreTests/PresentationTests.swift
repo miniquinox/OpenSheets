@@ -224,7 +224,7 @@ import Testing
     func everySyncStateHasAChip(state: DocumentSyncState) {
         let chip = SyncPresentation.chip(
             for: state, pendingCellCount: 42, localEditCount: 3,
-            isWatching: true, readOnlyReason: .fileSystemPermissions
+            readOnlyReason: .fileSystemPermissions
         )
         #expect(!chip.label.isEmpty)
         #expect(!chip.detail.isEmpty, "every state must say what to do about it")

@@ -78,20 +78,17 @@ public struct ClaudePanelState: Sendable, Hashable {
     public var mcpStatus: MCPStatus
     public var feed: [SessionFeedEntry]
     /// Whether the file watcher is running. Paused is a legitimate state, not an error.
-    public var isWatching: Bool
 
     public init(
         workspacePath: String,
         isGranted: Bool,
         mcpStatus: MCPStatus,
         feed: [SessionFeedEntry] = [],
-        isWatching: Bool = true
     ) {
         self.workspacePath = workspacePath
         self.isGranted = isGranted
         self.mcpStatus = mcpStatus
         self.feed = feed
-        self.isWatching = isWatching
     }
 
     /// The sentence under the status dot. Every state gets one, and the unhappy ones say what to
@@ -156,7 +153,13 @@ public struct FileInfo: Sendable, Hashable {
 
 // MARK: - Sidebar
 
-public struct SidebarState: Sendable, Hashable {
+/// Everything in the sidebar that needs an open workbook to mean anything.
+///
+/// Bundled and made optional together because they arrive and leave together: a window opened as
+/// a *folder* has no sheets, no defined names, no file to describe and no workspace root for the
+/// Claude panel to name. Four independent optionals would let a caller express three states that
+/// cannot happen, and the sidebar would have to decide what half a document looks like.
+public struct SidebarDocument: Sendable, Hashable {
     public var sheets: [SheetTabItem]
     public var selection: SheetID?
     public var definedNames: [DefinedNameItem]
@@ -178,6 +181,52 @@ public struct SidebarState: Sendable, Hashable {
     }
 }
 
+public struct SidebarState: Sendable, Hashable {
+    /// The open workbook's half of the column, or `nil` when the window has none yet — a folder
+    /// was opened and no file has been picked. Same reasoning as ``files``: absent means absent,
+    /// not "present and empty", because an empty Sheets header in a 248pt column is furniture
+    /// describing something that does not exist.
+    public var document: SidebarDocument?
+
+    /// The granted folders, as a tree — or `nil` for *draw no such section at all*.
+    ///
+    /// `nil` rather than an empty ``FileExplorerState`` on purpose, and the distinction is the
+    /// whole flag-off contract: an empty state still draws a header, a search field and a
+    /// sentence about having nothing, which is furniture in a 248pt column for a feature the user
+    /// has switched off or never used. Absent means absent, and the sidebar is byte-for-byte what
+    /// it was before the explorer existed.
+    ///
+    /// Defaulted so that every existing construction site — and the gallery's fixture — keeps
+    /// compiling and keeps meaning what it meant.
+    public var files: FileExplorerState?
+
+    /// The document window's sidebar. Unchanged in shape from before there was a folder-only
+    /// case, so every existing call site and the gallery's fixture keep meaning what they meant.
+    public init(
+        sheets: [SheetTabItem],
+        selection: SheetID?,
+        definedNames: [DefinedNameItem],
+        fileInfo: FileInfo,
+        claude: ClaudePanelState,
+        files: FileExplorerState? = nil
+    ) {
+        document = SidebarDocument(
+            sheets: sheets,
+            selection: selection,
+            definedNames: definedNames,
+            fileInfo: fileInfo,
+            claude: claude
+        )
+        self.files = files
+    }
+
+    /// A window that has a folder open and no workbook in it. Only the file tree is drawn.
+    public init(files: FileExplorerState?) {
+        document = nil
+        self.files = files
+    }
+}
+
 public enum SidebarAction: Sendable, Hashable {
     case selectSheet(SheetID)
     case selectDefinedName(String)
@@ -190,10 +239,13 @@ public enum SidebarAction: Sendable, Hashable {
     case revokeWorkspace
     case copyMCPSetupCommand
     case showFeedEntry(String)
-    case toggleWatching
+    /// Forwarded verbatim from the files section. Wrapped rather than flattened into eight more
+    /// cases so that the explorer's vocabulary stays the explorer's: the sidebar is a courier
+    /// here, and a courier that re-spells the message is one that can get it wrong.
+    case explorer(FileExplorerAction)
 }
 
-/// Sheets · named ranges · file · **Claude**.
+/// Files · sheets · named ranges · file · **Claude**.
 ///
 /// # Flush, not floating
 ///
@@ -226,6 +278,14 @@ public enum SidebarAction: Sendable, Hashable {
 ///
 /// The Claude panel is at the bottom rather than the top, which is deliberate: it is the section
 /// you glance at, not the one you work in. Sheets are what you click.
+///
+/// # Why `Files` is first
+///
+/// It is the only section that can take you somewhere else. Everything below it is about the
+/// workbook you already have open, so a tree that answers *"what else is in this folder"* belongs
+/// above them for the same reason a file list is at the top of every editor's sidebar — you
+/// navigate before you work, not after. It is also the only section that is ever absent, and a
+/// section that appears and disappears in the middle of a column reshuffles everything under it.
 public struct Sidebar: View {
     private let state: SidebarState
     private let context: AppearanceContext
@@ -248,9 +308,15 @@ public struct Sidebar: View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: DS.Space.xl) {
-                    sheetsSection
-                    namedRangesSection
-                    fileSection
+                    filesSection
+                    // The workbook's half, drawn only when there is one. A window opened as a
+                    // folder shows the tree and stops — three headers describing a file nobody
+                    // has picked yet would be the column explaining an absence back to the user.
+                    if let document = state.document {
+                        sheetsSection(document)
+                        namedRangesSection(document)
+                        fileSection(document)
+                    }
                 }
                 // The same inset on all four sides. The top-only padding this replaced is what
                 // made the column look like it had been dropped in rather than laid out.
@@ -258,8 +324,12 @@ public struct Sidebar: View {
             }
             .scrollIndicators(.never)
             .safeAreaPadding(.top, topInset)
-            Divider().overlay(DS.Chrome.separator(context))
-            ClaudePanel(state: state.claude, context: context, perform: perform)
+            // The divider belongs to the panel, not to the column: with no panel it would be a
+            // line ruled under the last thing in a scroll view, which reads as a cut-off list.
+            if let document = state.document {
+                Divider().overlay(DS.Chrome.separator(context))
+                ClaudePanel(state: document.claude, context: context, perform: perform)
+            }
         }
         .frame(width: DS.Metrics.sidebarWidth)
         .vibrantChrome(.sidebar, context: context, separator: .trailing)
@@ -267,17 +337,36 @@ public struct Sidebar: View {
         .accessibilityLabel("Sidebar")
     }
 
-    private var sheetsSection: some View {
+    /// The granted folders, capped so a deep tree cannot swallow the column.
+    ///
+    /// Headed `Files` rather than `Folders`: in the launcher the same tree *is* the list of
+    /// folders you have granted, but here it is one more thing this document window can show you,
+    /// and the thing you come to it for is a file (plan §4.2).
+    ///
+    /// No surface of its own, and none added here. ``FileExplorer`` deliberately draws no glass
+    /// and no material so it can be dropped into somebody else's chrome; wrapping it in one would
+    /// put a lens inside a material and give this component six golden diffs it did not plan for.
+    @ViewBuilder
+    private var filesSection: some View {
+        if let files = state.files {
+            FileExplorer(state: files, context: context, title: "Files") { action in
+                perform(.explorer(action))
+            }
+            .frame(maxHeight: Self.filesSectionMaxHeight)
+        }
+    }
+
+    private func sheetsSection(_ document: SidebarDocument) -> some View {
         VStack(alignment: .leading, spacing: DS.Space.s) {
-            SectionHeader("Sheets", trailing: "\(state.sheets.count)")
+            SectionHeader("Sheets", trailing: "\(document.sheets.count)")
             VStack(alignment: .leading, spacing: DS.Space.rowGap) {
-                ForEach(state.sheets) { sheet in
+                ForEach(document.sheets) { sheet in
                     SidebarRow(
                         title: sheet.name,
                         symbol: sheet.visibility == .visible ? "tablecells" : "eye.slash",
                         badge: sheet.pendingChangeCount > 0 ? "\(sheet.pendingChangeCount)" : nil,
                         accentDot: sheet.colorIndex.map { swatch($0) },
-                        isSelected: sheet.id == state.selection,
+                        isSelected: sheet.id == document.selection,
                         context: context
                     ) { perform(.selectSheet(sheet.id)) }
                 }
@@ -286,16 +375,16 @@ public struct Sidebar: View {
     }
 
     @ViewBuilder
-    private var namedRangesSection: some View {
+    private func namedRangesSection(_ document: SidebarDocument) -> some View {
         VStack(alignment: .leading, spacing: DS.Space.s) {
-            SectionHeader("Named ranges", trailing: "\(state.definedNames.count)")
-            if state.definedNames.isEmpty {
+            SectionHeader("Named ranges", trailing: "\(document.definedNames.count)")
+            if document.definedNames.isEmpty {
                 Text("This workbook has none.")
                     .font(DS.Text.caption)
                     .foregroundStyle(DS.Chrome.tertiary)
             } else {
                 VStack(alignment: .leading, spacing: DS.Space.rowGap) {
-                    ForEach(state.definedNames) { item in
+                    ForEach(document.definedNames) { item in
                         SidebarRow(
                             title: item.name,
                             subtitle: item.rangeLabel,
@@ -309,28 +398,28 @@ public struct Sidebar: View {
         }
     }
 
-    private var fileSection: some View {
+    private func fileSection(_ document: SidebarDocument) -> some View {
         VStack(alignment: .leading, spacing: DS.Space.s) {
             SectionHeader("File")
             VStack(alignment: .leading, spacing: DS.Space.xs) {
-                DetailRow("Name", state.fileInfo.name)
+                DetailRow("Name", document.fileInfo.name)
                 // Where the file is, not just what it is called. The row truncates in the middle
                 // (``DetailRow``), which keeps both the interesting ends — the volume and the
                 // folder — while the full path stays one hover away.
-                if !state.fileInfo.folder.isEmpty {
-                    DetailRow("Where", state.fileInfo.folder)
-                        .help(state.fileInfo.path)
+                if !document.fileInfo.folder.isEmpty {
+                    DetailRow("Where", document.fileInfo.folder)
+                        .help(document.fileInfo.path)
                 }
-                DetailRow("Format", state.fileInfo.format)
-                DetailRow("Size", state.fileInfo.size, numeric: true)
-                DetailRow("Modified", state.fileInfo.modified)
-                DetailRow("Sheets", "\(state.fileInfo.sheetCount)", numeric: true)
-                if state.fileInfo.isReadOnly {
+                DetailRow("Format", document.fileInfo.format)
+                DetailRow("Size", document.fileInfo.size, numeric: true)
+                DetailRow("Modified", document.fileInfo.modified)
+                DetailRow("Sheets", "\(document.fileInfo.sheetCount)", numeric: true)
+                if document.fileInfo.isReadOnly {
                     Label("Read-only", systemImage: "lock")
                         .font(DS.Text.caption)
                         .foregroundStyle(DS.Signal.calmInk(context))
                 }
-                if state.fileInfo.containsMacros {
+                if document.fileInfo.containsMacros {
                     Label("Contains macros, not executed", systemImage: "curlybraces")
                         .font(DS.Text.caption)
                         .foregroundStyle(DS.Signal.calmInk(context))
@@ -349,6 +438,22 @@ public struct Sidebar: View {
         let entry = Palette.tabSwatches[index]
         return context.pick(light: entry.light, dark: entry.dark).color
     }
+
+    // MARK: Sizes
+
+    /// How tall the files section may grow before it scrolls inside itself.
+    ///
+    /// Load-bearing, not a nicety. ``FileExplorer`` imposes no height of its own — height belongs
+    /// to the host, by its own design — so without a cap an expanded `~/Documents` would hand this
+    /// column several thousand rows and push `Sheets`, `Named ranges` and the whole file section
+    /// below the fold of a 248pt sidebar. The one thing a sidebar must never do is hide the
+    /// document it belongs to.
+    ///
+    /// Roughly nine rows plus the header and the search field: enough that a folder reads as a
+    /// list rather than as a peephole, and small enough that `Sheets` is still on screen without
+    /// scrolling. ``ChangeTrackingPanel``'s `listMaxHeight` is the precedent for spending a named
+    /// constant rather than a token on a measurement like this.
+    private static let filesSectionMaxHeight: CGFloat = 300
 }
 
 /// Workspace · MCP · terminal · what the agent did.
@@ -387,14 +492,6 @@ public struct ClaudePanel: View {
                 .foregroundStyle(DS.Chrome.accent)
             Text("Claude").dsSectionLabel()
             Spacer(minLength: 0)
-            Button { perform(.toggleWatching) } label: {
-                Image(systemName: state.isWatching ? "eye" : "eye.slash")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(DS.Chrome.secondary)
-            }
-            .buttonStyle(.plain)
-            .help(state.isWatching ? "Pause watching this file" : "Resume watching this file")
-            .accessibilityLabel(state.isWatching ? "Pause watching" : "Resume watching")
         }
     }
 

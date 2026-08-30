@@ -113,6 +113,10 @@ public extension DS {
         /// collapsed bar's reading copy was already written to.
         public static let formulaExpandedHeight: CGFloat = formulaLineHeight * 5
 
+        /// What a document window opens at. Also what one is put back to after it has been
+        /// mistaken for the launcher — see ``WindowChrome/configureDocumentWindow(_:)``.
+        public static let documentWindowSize = CGSize(width: 1280, height: 820)
+
         /// The smallest a document window may get. Below this the toolbar starts dropping
         /// controls and the sidebar plus the inspector leave under three columns of grid, which
         /// is a window nobody can work in.

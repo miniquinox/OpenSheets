@@ -51,6 +51,12 @@ public final class SheetStore: Sendable {
     public let snapshots: SnapshotStore
     /// The security boundary. See ``WorkspaceGrants``.
     public let grants: WorkspaceGrants
+    /// Reads folders from inside that boundary. See ``DirectoryLister``.
+    ///
+    /// Handed the same ``grants`` object rather than building its own, for the reason the
+    /// suppressor is shared: two boundaries can disagree about what is granted, and the looser
+    /// one would be the one that answered.
+    public let directories: DirectoryLister
     /// Shared across every document and both processes' writes. See ``SelfWriteSuppressor``.
     public let suppressor: SelfWriteSuppressor
 
@@ -67,6 +73,7 @@ public final class SheetStore: Sendable {
             storage: database,
             denyList: configuration.denyList
         )
+        directories = DirectoryLister(grants: grants)
         suppressor = SelfWriteSuppressor()
     }
 

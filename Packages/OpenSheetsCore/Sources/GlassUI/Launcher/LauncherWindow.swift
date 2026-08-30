@@ -41,38 +41,37 @@ public struct RecentItem: Sendable, Hashable, Identifiable {
     }
 }
 
-public struct WorkspaceGrantItem: Sendable, Hashable, Identifiable {
-    public var id: String
-    /// The granted folder, abbreviated with `~`.
-    public var path: String
-    /// "3 days ago", already formatted.
-    public var grantedAt: String
-    public var fileCount: Int
-
-    public init(id: String, path: String, grantedAt: String, fileCount: Int) {
-        self.id = id
-        self.path = path
-        self.grantedAt = grantedAt
-        self.fileCount = fileCount
-    }
-}
-
 public struct LauncherState: Sendable, Hashable {
     public var recents: [RecentItem]
-    public var grants: [WorkspaceGrantItem]
+
+    /// The folder rail, or `nil` for no rail at all.
+    ///
+    /// `nil` is the feature flag, and it is `nil` rather than an empty state because the two mean
+    /// genuinely different things: an empty ``FileExplorerState`` is *you have granted nothing*,
+    /// which is a sentence worth drawing, while `nil` is *this build does not have an explorer*,
+    /// which has to cost nothing — no rail, no separator, and a narrower window. The one place
+    /// that decides between them is the app layer, because `GlassUI` cannot read a flag.
+    ///
+    /// This replaced a list of granted folders that reported a hardcoded file count of zero, so
+    /// every folder in it read "granted, contains nothing". A tree that lists what is actually
+    /// there is the answer to that; a second, truer number would not have been.
+    public var explorer: FileExplorerState?
+
     /// True while a file is being dragged over the window.
     public var isDropTargeted: Bool
-    /// Set when a drop was refused, with the reason. Shown inline, not in an alert.
+
+    /// Set when a drop was refused **or a grant was**, with the reason. Shown inline, not in an
+    /// alert: a folder the deny-list will not take is a normal thing to be told, not an incident.
     public var dropRejection: String?
 
     public init(
         recents: [RecentItem] = [],
-        grants: [WorkspaceGrantItem] = [],
+        explorer: FileExplorerState? = nil,
         isDropTargeted: Bool = false,
         dropRejection: String? = nil
     ) {
         self.recents = recents
-        self.grants = grants
+        self.explorer = explorer
         self.isDropTargeted = isDropTargeted
         self.dropRejection = dropRejection
     }
@@ -86,8 +85,10 @@ public enum LauncherAction: Sendable, Hashable {
     case removeRecent(String)
     case revealRecent(String)
     case grantFolder
-    case revokeGrant(String)
     case showGrants
+    /// Everything the rail reports. Forwarded whole rather than flattened into cases of its own,
+    /// so the two hosts of ``FileExplorer`` handle one vocabulary between them.
+    case explorer(FileExplorerAction)
 }
 
 /// First run, and every run after it. PLAN.md §1.1.
@@ -115,42 +116,97 @@ public struct LauncherWindow: View {
         self.perform = perform
     }
 
-    /// The window's content size. ``WindowChrome/configureLauncherWindow(_:)`` is what applies it.
+    /// The window's content size. ``WindowChrome/configureLauncherWindow(_:explorerEnabled:)`` is
+    /// what applies it.
     ///
     /// The *card* does not use this — it fills whatever it is given. That asymmetry is the point:
     /// there used to be two sizes that disagreed, a 640×460 card inside a window the scene asked
     /// to be 720×520, and every pixel of the difference was transparent, invisible and still
     /// solid to the mouse. One of them has to be the authority and it has to be the window, since
     /// the window is what the titlebar's height gets added to.
-    public static let panelSize = CGSize(width: 720, height: 520)
+    ///
+    /// A function of the flag rather than a constant, because a rail 248 points wide taken out of
+    /// a 720-point window would leave the recents grid too narrow for two cards. `GlassUI` cannot
+    /// read ``DocumentCore/Flags``, so the answer is passed in — which also means every call site
+    /// has to say out loud which launcher it is asking about.
+    public static func panelSize(explorerEnabled: Bool) -> CGSize {
+        explorerEnabled
+            ? CGSize(width: 880, height: 560)
+            : CGSize(width: 720, height: 520)
+    }
 
     public var body: some View {
+        layout
+            // Fills the window rather than sizing itself. A fixed card in a window sized from the
+            // same constant still leaves the titlebar's height over: the content area is that much
+            // taller than the number both of them were given, and the leftover strip is clear
+            // glass over the desktop with the close button sitting in it.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // `flush`, not `card`, and for the reason ``DS/Radius/flush`` gives: this fills the
+            // window, so a 24pt radius here is a second curve inside the window's own, with a
+            // crescent of desktop showing between them at all four corners. One curve, and it is
+            // the system's.
+            .glassCard(
+                context: context,
+                radius: DS.Radius.flush,
+                signal: state.isDropTargeted ? .agent : .neutral
+            )
+            .animation(DS.Motion.standard, value: state.isDropTargeted)
+            .dropDestination(for: URL.self) { urls, _ in
+                perform(.dropped(urls))
+                return true
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("OpenSheets")
+    }
+
+    /// One column or two.
+    ///
+    /// The rail is a sibling of the main column rather than something laid over it, so the card's
+    /// padding belongs to the main column alone: a file tree that stopped 32 points short of the
+    /// window's edge would read as a floating list rather than as the edge of the window, and the
+    /// separator would have nothing to sit against.
+    @ViewBuilder
+    private var layout: some View {
+        if let explorer = state.explorer {
+            HStack(spacing: 0) {
+                rail(explorer)
+                // The only thing between the two columns. **No second surface**: the card behind
+                // all of this is already one lens, and a lens inside a lens is the one thing the
+                // cluster rule is unambiguous about.
+                Divider().overlay(DS.Chrome.separator(context))
+                main
+            }
+        } else {
+            main
+        }
+    }
+
+    private var main: some View {
         VStack(alignment: .leading, spacing: DS.Space.l) {
             header
             contents
             actions
         }
         .padding(DS.Space.xxl)
-        // Fills the window rather than sizing itself. A fixed card in a window sized from the same
-        // constant still leaves the titlebar's height over: the content area is that much taller
-        // than the number both of them were given, and the leftover strip is clear glass over the
-        // desktop with the close button sitting in it.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        // `flush`, not `card`, and for the reason ``DS/Radius/flush`` gives: this fills the window,
-        // so a 24pt radius here is a second curve inside the window's own, with a crescent of
-        // desktop showing between them at all four corners. One curve, and it is the system's.
-        .glassCard(
-            context: context,
-            radius: DS.Radius.flush,
-            signal: state.isDropTargeted ? .agent : .neutral
-        )
-        .animation(DS.Motion.standard, value: state.isDropTargeted)
-        .dropDestination(for: URL.self) { urls, _ in
-            perform(.dropped(urls))
-            return true
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("OpenSheets")
+    }
+
+    /// The folder tree, down the leading edge.
+    ///
+    /// Inset from the top by the titlebar's height and nothing else. The window is
+    /// `.fullSizeContentView` with a transparent titlebar, so AppKit draws the close button *over*
+    /// this column's first few points; without the inset the `FOLDERS` header and the `+` sit
+    /// underneath it, unreadable and unclickable. The main column gets the same clearance for free
+    /// out of its own 32-point padding.
+    private func rail(_ explorer: FileExplorerState) -> some View {
+        FileExplorer(state: explorer, context: context) { perform(.explorer($0)) }
+            .padding(.top, DS.Metrics.titleBarHeight)
+            // Full height and pinned to the top, so three granted folders sit under the header
+            // rather than floating in the middle of the column, and so the separator beside them
+            // runs the whole way down.
+            .frame(maxHeight: .infinity, alignment: .topLeading)
+            .frame(width: DS.Metrics.sidebarWidth)
     }
 
     private var header: some View {
@@ -258,16 +314,18 @@ public struct LauncherWindow: View {
         }
     }
 
-    /// Everything that grows with use: the recents, and the folders that have been granted.
+    /// The recents, in a scroll view — which is the whole of the fix.
     ///
-    /// In a scroll view, which is the whole of the fix. The panel is a fixed size on purpose — a
-    /// launcher that is a different shape every morning depending on how much you opened last week
-    /// is not a window anybody learns the position of — but `.frame(width:height:)` does not clip.
-    /// It stops *reporting* a larger size while still laying the content out, so a thirteenth
-    /// recent was placed beyond the card's own edge and drawn directly onto the desktop, with the
-    /// glass ending somewhere in the middle of the grid and the granted folders floating below it
-    /// on nothing at all. Scrolling is what turns the fixed height into a real boundary instead of
-    /// a claim.
+    /// The panel is a fixed size on purpose — a launcher that is a different shape every morning
+    /// depending on how much you opened last week is not a window anybody learns the position of —
+    /// but `.frame(width:height:)` does not clip. It stops *reporting* a larger size while still
+    /// laying the content out, so a thirteenth recent was placed beyond the card's own edge and
+    /// drawn directly onto the desktop, with the glass ending somewhere in the middle of the grid.
+    /// Scrolling is what turns the fixed height into a real boundary instead of a claim.
+    ///
+    /// The granted folders used to be listed underneath, which put them below sixteen recent cards
+    /// and therefore off the bottom of a window that does not resize. They are the rail now, where
+    /// they are always on screen and where clicking one does something.
     private var contents: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DS.Space.xl) {
@@ -276,42 +334,11 @@ public struct LauncherWindow: View {
                 } else {
                     recentsGrid
                 }
-                if !state.grants.isEmpty {
-                    grants
-                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollBounceBehavior(.basedOnSize)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private var grants: some View {
-        VStack(alignment: .leading, spacing: DS.Space.xs) {
-            SectionHeader("Folders Claude can reach", trailing: "\(state.grants.count)")
-            ForEach(state.grants) { grant in
-                HStack(spacing: DS.Space.s) {
-                    Image(systemName: "folder")
-                        .font(.system(size: 10))
-                        .foregroundStyle(DS.Chrome.secondary)
-                    Text(grant.path)
-                        .font(DS.Text.path)
-                        .foregroundStyle(DS.Chrome.primary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: DS.Space.s)
-                    Text("\(grant.fileCount)")
-                        .dsNumeric(DS.Text.numericCaption)
-                        .foregroundStyle(DS.Chrome.tertiary)
-                    Button("Revoke") { perform(.revokeGrant(grant.id)) }
-                        .buttonStyle(.plain)
-                        .font(DS.Text.caption)
-                        .foregroundStyle(DS.Chrome.accent)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(grant.path), granted \(grant.grantedAt)")
-            }
-        }
     }
 
     /// Pinned under the scroll view rather than carried along at the bottom of it.

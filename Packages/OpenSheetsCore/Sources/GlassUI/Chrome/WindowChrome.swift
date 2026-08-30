@@ -8,15 +8,17 @@ import AppKit
 ///
 /// This is the state machine's public face — one chip in the titlebar, always visible, that names
 /// the current state in a word. The point is that the app never has an *unlabelled* relationship
-/// with the file: if it is not synced, the titlebar says which of the six ways it is not synced,
-/// and the fix is one click away.
+/// with the file: if it is not synced, the titlebar says which way it is not synced, and the fix is
+/// one click away.
+///
+/// There is no paused state. Watching the file is the reason this app exists — it sits beside an
+/// agent that edits your spreadsheet — so a switch that turns that off is a switch for not using
+/// the product, and every place it used to live was a control that made the window worse.
 public enum SyncState: Sendable, Hashable {
     /// In step with the file.
     case synced
     /// In step, and the watcher is running. The everyday state.
     case watching
-    /// The user turned the watcher off. Not an error, and not something to nag about.
-    case watchingPaused
     /// The file changed and we have not applied it, with the number of changed cells.
     case stale(cellCount: Int)
     /// Local edits and disk edits disagree, with the number of unsaved edits.
@@ -34,7 +36,6 @@ public enum SyncState: Sendable, Hashable {
         switch self {
         case .synced: "Synced"
         case .watching: "Watching"
-        case .watchingPaused: "Paused"
         case let .stale(count): "\(count.formatted()) changed on disk"
         case let .conflict(edits): "Conflict · \(edits) unsaved"
         case let .dirty(edits): "\(edits) unsaved"
@@ -50,7 +51,6 @@ public enum SyncState: Sendable, Hashable {
         switch self {
         case .synced: "The file on disk matches this window."
         case .watching: "Watching the file for outside changes."
-        case .watchingPaused: "Outside changes will not be noticed until you resume."
         case .stale: "Press ⌘R to review and apply them."
         case .conflict: "Choose Keep mine, Take disk, or Compare."
         case .dirty: "Press ⌘S to save."
@@ -65,7 +65,6 @@ public enum SyncState: Sendable, Hashable {
         switch self {
         case .synced: "checkmark.circle"
         case .watching: "eye"
-        case .watchingPaused: "eye.slash"
         case .stale: "arrow.clockwise"
         case .conflict: "exclamationmark.triangle.fill"
         case .dirty: "pencil"
@@ -77,7 +76,7 @@ public enum SyncState: Sendable, Hashable {
 
     public var signal: DS.SignalKind {
         switch self {
-        case .synced, .watching, .watchingPaused, .dirty: .neutral
+        case .synced, .watching, .dirty: .neutral
         case .stale: .agent
         case .conflict: .conflict
         case .readOnly, .locked: .neutral
@@ -152,10 +151,42 @@ public enum WindowChrome {
         // The grid is the window's background; anything the system paints behind it is a colour
         // the user would see for one frame during a live resize.
         window.backgroundColor = .clear
+
+        // Undo the launcher, line for line.
+        //
+        // A window is created before anything knows which of the two it will be, so it can render
+        // `LauncherScene` for a frame — long enough for `configureLauncherWindow` to shrink it to
+        // the panel, drop `.resizable` and hide two traffic lights — and then become a workspace
+        // and keep all three. The symptom is a document window 880pt wide that cannot be resized
+        // and has one traffic light, with its title row sitting where the launcher's was.
+        //
+        // This is the inverse rather than a guard on the other side because the ordering is
+        // SwiftUI's: whichever configurator runs last has to be the one that is right.
+        window.styleMask.insert(.resizable)
+        window.standardWindowButton(.zoomButton)?.isHidden = false
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = false
+
+        // Size, only when it is still exactly the launcher's. A window the user has resized is
+        // theirs and is left alone; the equality is against the frame the launcher computes, so
+        // it cannot accidentally match a document window somebody dragged to 880 wide.
+        let launcher = window.frameRect(
+            forContentRect: NSRect(origin: .zero, size: LauncherWindow.panelSize(explorerEnabled: true))
+        )
+        let plain = window.frameRect(
+            forContentRect: NSRect(origin: .zero, size: LauncherWindow.panelSize(explorerEnabled: false))
+        )
+        guard window.frame.size == launcher.size || window.frame.size == plain.size else { return }
+        window.setContentSize(DS.Metrics.documentWindowSize)
+        window.center()
     }
 
     /// The launcher: no title, no toolbar, a single glass panel over the desktop (PLAN.md §1.1).
-    public static func configureLauncherWindow(_ window: NSWindow) {
+    ///
+    /// - Parameter explorerEnabled: whether the window has the folder rail in it, which is what
+    ///   decides how wide it needs to be. Passed in rather than read here because `GlassUI` cannot
+    ///   see `DocumentCore.Flags`, and a window that sized itself for a rail the content did not
+    ///   draw would leave a 248-point band of empty glass.
+    public static func configureLauncherWindow(_ window: NSWindow, explorerEnabled: Bool) {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.styleMask.insert(.fullSizeContentView)
@@ -173,10 +204,13 @@ public enum WindowChrome {
         // view is reattached to the window, and an unguarded `center()` there would teleport a
         // window the user had deliberately dragged somewhere.
         let sized = window.frameRect(
-            forContentRect: NSRect(origin: .zero, size: LauncherWindow.panelSize)
+            forContentRect: NSRect(
+                origin: .zero,
+                size: LauncherWindow.panelSize(explorerEnabled: explorerEnabled)
+            )
         )
         guard window.frame.size != sized.size else { return }
-        window.setContentSize(LauncherWindow.panelSize)
+        window.setContentSize(LauncherWindow.panelSize(explorerEnabled: explorerEnabled))
         window.center()
     }
 }
