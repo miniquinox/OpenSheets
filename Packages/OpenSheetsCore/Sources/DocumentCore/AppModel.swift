@@ -65,6 +65,14 @@ public final class AppModel {
     /// reads `explorer.nodes` depends on `nodes`, and re-rendering it whenever anything else on
     /// `AppModel` changes would be a dependency on the wrong thing.
     @ObservationIgnored public let explorer: WorkspaceTree
+
+    /// Settings ▸ Claude's connect/disconnect machinery, and the reader behind ``mcpStatus``.
+    ///
+    /// `@ObservationIgnored` for ``explorer``'s reason: the connector is `@Observable` in its
+    /// own right, so a view that reads `claude.connections` depends on exactly that —
+    /// re-rendering it whenever anything else on `AppModel` changes would be a dependency on
+    /// the wrong thing.
+    @ObservationIgnored public let claude: ClaudeConnector
     public private(set) var mcpStatus: MCPStatus = .notConfigured
     public private(set) var lastError: SheetError?
 
@@ -133,6 +141,10 @@ public final class AppModel {
 
     public init(store: SheetStore) {
         self.store = store
+        // `forAuxiliaryExecutable:` resolves against Contents/MacOS/, where `Scripts/build.sh`
+        // places the server. Resolved here rather than inside the connector so a test process —
+        // whose main bundle is the test runner — can hand it a temp binary instead.
+        claude = ClaudeConnector(bundledBinary: Bundle.main.url(forAuxiliaryExecutable: "opensheets-mcp"))
         // Before the reloads, because `reloadGrants()` is what hands the tree its roots. The
         // extension set is the reader's, not the Open panel's four types: a folder listing that
         // hid the `.csv` next to the `.xlsx` would be hiding a file this app can open.
@@ -365,39 +377,51 @@ public final class AppModel {
     ///
     /// Read from `~/.claude.json` rather than by launching anything: the server is spawned *by*
     /// Claude Code, so the only honest question we can answer is "is it registered", and probing
-    /// it ourselves would start a second copy for no reason. The file is read, never written —
-    /// it is on the deny list precisely because it is not ours (PLAN.md §7.2).
+    /// it ourselves would start a second copy for no reason. The file is read here for status;
+    /// it is *written* only by ``ClaudeConnector/connect(_:)`` and
+    /// ``ClaudeConnector/disconnect(_:)``, which run solely from the user's explicit click in
+    /// Settings ▸ Claude — the "user action, not agent action" the docs demanded. The agent-side
+    /// deny list is unchanged: the server still cannot touch this file (PLAN.md §7.2); a human
+    /// pressing a labelled button in our own Settings is not the agent.
     public func refreshMCPStatus() {
         guard Flags.mcpEnabled else {
             mcpStatus = .notConfigured
             return
         }
-        let path = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude.json")
-        guard let data = try? Data(contentsOf: path),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            mcpStatus = .notConfigured
-            return
+        claude.refresh()
+        mcpStatus = Self.mcpStatus(for: claude.connections[.claudeCode] ?? .notInstalled)
+    }
+
+    /// The sidebar readout for one observed ``ClaudeConnection`` (the plan's D8).
+    ///
+    /// `.connected(command:)` maps to `.idle`, not `MCPStatus.connected`: a config entry proves
+    /// the server is *registered*, and "Registered. Nothing has called it yet." is the honest
+    /// claim. Truthfully claiming a live session needs the server to have talked to us, which is
+    /// the handshake's job — that enum case stays unused here. Static and pure so a test can
+    /// assert the whole table without a home directory.
+    static func mcpStatus(for connection: ClaudeConnection) -> MCPStatus {
+        switch connection {
+        case .connected:
+            .idle
+        case .stale:
+            .failing("the registered server binary is missing — reconnect in Settings")
+        case let .unreadable(reason):
+            .failing(reason)
+        case .notConnected, .notInstalled:
+            .notConfigured
         }
-        mcpStatus = Self.mentionsOpenSheets(root) ? .idle : .notConfigured
     }
 
     /// The command the sidebar offers to copy when the server is not set up.
     public static let mcpSetupCommand = "claude mcp add opensheets -- opensheets-mcp"
 
-    private static func mentionsOpenSheets(_ root: [String: Any]) -> Bool {
-        func search(_ value: Any) -> Bool {
-            if let dictionary = value as? [String: Any] {
-                if dictionary.keys.contains(where: { $0.localizedCaseInsensitiveContains("opensheets") }) {
-                    return true
-                }
-                return dictionary.values.contains(where: search)
-            }
-            if let array = value as? [Any] { return array.contains(where: search) }
-            if let text = value as? String { return text.localizedCaseInsensitiveContains("opensheets") }
-            return false
-        }
-        return search(root)
+    /// The same command with the server binary's resolved absolute path, for the terminal
+    /// fallback to offer once the Settings pane adopts it. The static above survives verbatim —
+    /// its consumer compiles against it today — but it silently assumes `opensheets-mcp` is on
+    /// `$PATH`, which stops being true the day the binary ships inside the app bundle instead.
+    public var setupCommand: String {
+        guard let binary = claude.serverBinary else { return Self.mcpSetupCommand }
+        return "claude mcp add opensheets -- \(binary.path(percentEncoded: false))"
     }
 
     /// The identity a file is known by.
