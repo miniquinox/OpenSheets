@@ -158,6 +158,10 @@ public struct GlassIconButton: View {
     private let isOn: Bool
     private let isEnabled: Bool
     private let shortcut: String?
+    /// A colour drawn as a bar under the glyph, for the controls that apply one. `nil` draws
+    /// nothing at all rather than a placeholder: an empty bar under every other button in the
+    /// toolbar would be six pixels of furniture describing something that is not there.
+    private let bar: Color?
     private let context: AppearanceContext
     private let action: () -> Void
 
@@ -167,6 +171,7 @@ public struct GlassIconButton: View {
         isOn: Bool = false,
         isEnabled: Bool = true,
         shortcut: String? = nil,
+        bar: Color? = nil,
         context: AppearanceContext,
         action: @escaping () -> Void
     ) {
@@ -175,6 +180,7 @@ public struct GlassIconButton: View {
         self.isOn = isOn
         self.isEnabled = isEnabled
         self.shortcut = shortcut
+        self.bar = bar
         self.context = context
         self.action = action
     }
@@ -214,11 +220,26 @@ public struct GlassIconButton: View {
 
     private var button: some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 12, weight: .medium))
-                .frame(width: 22, height: 18)
+            VStack(spacing: Self.barGap) {
+                Image(systemName: symbol)
+                    .font(.system(size: 12, weight: .medium))
+                if let bar {
+                    // Not `.foregroundStyle`: the bar is the document's colour, and the button
+                    // style's vibrancy would tint it toward the chrome. A shape with an explicit
+                    // fill is the one thing here that must survive the lens unchanged.
+                    Capsule(style: .continuous)
+                        .fill(bar)
+                        .frame(height: Self.barHeight)
+                }
+            }
+            // The same box whether or not there is a bar, so a row of buttons keeps one baseline.
+            .frame(width: 22, height: 18)
         }
     }
+
+    /// Thin enough to read as a swatch under a letter rather than as an underline on it.
+    private static let barHeight: CGFloat = 2.5
+    private static let barGap: CGFloat = 1
 }
 
 /// What a glass toolbar button becomes when transparency is reduced.

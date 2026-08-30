@@ -312,11 +312,16 @@ public struct ToolbarSurface: View {
         }
     }
 
-    /// A colour control: the glyph, a bar of the colour underneath it, and a grid of swatches.
+    /// A colour control: the toolbar's own menu button, with the swatches inside it.
     ///
-    /// The bar is why this is not a plain menu. Excel puts the current colour under the letter so
-    /// the button says what it will do before you open it, and a control that has to be opened to
-    /// find out what it is set to is a control people open twice.
+    /// ``ToolbarMenuButton``, not a `Menu` dressed to look like one. That was the first attempt and
+    /// it is the mistake the type's own doc comment already warns about: a `Menu` with
+    /// `.buttonStyle(.glass)` does not give its label vibrancy, so the glyph keeps one colour while
+    /// the lens takes the grid's — and over a white column the control disappears. It also read as
+    /// two loose glyphs beside a row of buttons, which is what made it obvious.
+    ///
+    /// The grid is built out of plain menu rows rather than a `LazyVGrid`, because a grid inside
+    /// an AppKit menu does not lay out — it collapses to nothing and the menu opens empty.
     private func colorMenu(
         symbol: String,
         label: String,
@@ -324,12 +329,10 @@ public struct ToolbarSurface: View {
         resetTitle: String,
         perform apply: @escaping (CellSwatches.Swatch?) -> Void
     ) -> some View {
-        Menu {
+        ToolbarMenuButton(symbol: symbol, label: label, isEnabled: enabled, bar: bar, context: context) {
             Button(resetTitle) { apply(nil) }
             Divider()
             ForEach(Array(CellSwatches.all.enumerated()), id: \.offset) { _, row in
-                // One `Menu` row per palette row. A `LazyVGrid` inside a menu does not lay out,
-                // so the grid is built out of the menus AppKit already knows how to draw.
                 ForEach(row) { swatch in
                     Button {
                         apply(swatch)
@@ -343,35 +346,8 @@ public struct ToolbarSurface: View {
                 }
                 Divider()
             }
-        } label: {
-            VStack(spacing: DS.Space.hair) {
-                Image(systemName: symbol)
-                    .font(.system(size: Self.colorGlyphSize, weight: .medium))
-                // The bar. `DS.Chrome.separator` when nothing is set, so the control still reads
-                // as a colour control rather than as a glyph with a gap under it.
-                Capsule(style: .continuous)
-                    .fill(bar ?? DS.Chrome.separator)
-                    .frame(height: Self.colorBarHeight)
-            }
-            .frame(width: Self.colorBarWidth)
-            .foregroundStyle(enabled ? DS.Chrome.primary : DS.Chrome.tertiary)
-            .contentShape(Rectangle())
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .disabled(!enabled)
-        .help(label)
-        .accessibilityLabel(label)
     }
-
-    /// The colour controls. Measured against the icon buttons beside them so the group keeps one
-    /// baseline: the glyph is a step smaller than a toolbar symbol to leave room for the bar, and
-    /// the bar is thick enough to read a pale yellow against the chrome.
-    private static let colorGlyphSize: CGFloat = 12
-    private static let colorBarHeight: CGFloat = 3
-    private static let colorBarWidth: CGFloat = 18
 
     private var alignment: some View {
         ToolbarGroup {
@@ -526,6 +502,8 @@ public struct ToolbarMenuButton<Content: View>: View {
     private let symbol: String
     private let label: String
     private let isEnabled: Bool
+    /// Passed straight to the button beneath. See ``GlassIconButton``.
+    private let bar: Color?
     private let context: AppearanceContext
     private let content: Content
 
@@ -533,12 +511,14 @@ public struct ToolbarMenuButton<Content: View>: View {
         symbol: String,
         label: String,
         isEnabled: Bool = true,
+        bar: Color? = nil,
         context: AppearanceContext,
         @ViewBuilder content: () -> Content
     ) {
         self.symbol = symbol
         self.label = label
         self.isEnabled = isEnabled
+        self.bar = bar
         self.context = context
         self.content = content()
     }
@@ -548,6 +528,7 @@ public struct ToolbarMenuButton<Content: View>: View {
             symbol: symbol,
             label: label,
             isEnabled: isEnabled,
+            bar: bar,
             context: context
         ) {}
             .overlay {
