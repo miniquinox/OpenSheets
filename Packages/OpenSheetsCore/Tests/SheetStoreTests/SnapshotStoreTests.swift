@@ -175,6 +175,33 @@ import Testing
         #expect(try await store.snapshots(for: link).count == 2)
     }
 
+    /// **The snapshot key must not change spelling when the file is deleted.**
+    ///
+    /// Foundation's `resolvingSymlinksInPath` resolves an existing path and returns a missing
+    /// one untouched, so a file reached through a symlinked parent (every `/tmp` path is one)
+    /// was keyed under its resolved spelling at capture time and looked up under its literal
+    /// spelling after deletion. That made `delete_file`'s undo line a lie: the id it printed
+    /// was real, and `restore` reported `snapshot.notFound` anyway.
+    @Test func theKeySurvivesTheFileItNames() async throws {
+        let scratch = TemporaryDirectory("snap-key-stability")
+        let store = store(scratch)
+        let realDirectory = scratch.url.appendingPathComponent("real", isDirectory: true)
+        try FileManager.default.createDirectory(at: realDirectory, withIntermediateDirectories: true)
+        let alias = scratch.url.appendingPathComponent("alias")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: realDirectory)
+        let throughAlias = alias.appendingPathComponent("book.xlsx")
+        try Data("content".utf8).write(to: throughAlias)
+
+        let keyWhilePresent = SnapshotStore.canonicalPath(throughAlias)
+        _ = try await store.capture(url: throughAlias, reason: .preSave)
+        try FileManager.default.removeItem(at: throughAlias)
+        let keyWhileGone = SnapshotStore.canonicalPath(throughAlias)
+
+        #expect(keyWhilePresent == keyWhileGone, "deleting the file must not rename its history")
+        #expect(try await store.snapshots(for: throughAlias).count == 1,
+                "the snapshot taken before a deletion must be findable after it")
+    }
+
     /// The database index and the directory must agree, and the directory wins when they do
     /// not — it is the only one that says what can actually be restored.
     @Test func fallsBackToTheDirectoryWhenTheIndexIsEmpty() async throws {

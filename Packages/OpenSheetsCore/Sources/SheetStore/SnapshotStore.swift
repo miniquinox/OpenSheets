@@ -382,8 +382,17 @@ public actor SnapshotStore {
 
     /// Snapshots are keyed on the resolved path, so opening a file through a symlink and
     /// through its real path shows one history rather than two.
+    ///
+    /// Through ``PathCanonicalizer``, **not** `resolvingSymlinksInPath`, because Foundation's
+    /// resolver is existence-dependent: it rewrites `/private/tmp/x` to `/tmp/x` while the file
+    /// exists and returns it untouched once it is gone. A key that changes spelling when the
+    /// file is deleted is a key that cannot find the one snapshot whose whole purpose is to
+    /// undo the deletion — `delete_file` printed an undo id that `restore` then reported as
+    /// `snapshot.notFound`. The canonicaliser resolves component by component against the
+    /// existing prefix, so the spelling survives the file it names.
     static func canonicalPath(_ url: URL) -> String {
-        url.resolvingSymlinksInPath().standardized.path(percentEncoded: false)
+        (try? PathCanonicalizer.canonicalize(url.path(percentEncoded: false)))
+            ?? url.resolvingSymlinksInPath().standardized.path(percentEncoded: false)
     }
 }
 
