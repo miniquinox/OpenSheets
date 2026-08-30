@@ -152,6 +152,21 @@ public struct SectionHeader: View {
 /// system makes is that *every* glass surface goes opaque when the user asks — not every glass
 /// surface we happen to own. A toolbar of lenses floating over a solid sidebar is exactly the
 /// half-honoured accessibility setting the brief calls out.
+/// What a toolbar control says on hover.
+///
+/// One function because there are two kinds of toolbar control — a button and a button that opens
+/// a menu — and they sit next to each other in the same group. Two copies of "label, then the
+/// shortcut" is how one of them ends up with a different separator, or with the shortcut in
+/// brackets, and a row of controls that disagree about their own tooltips reads as two toolbars.
+enum ToolbarHelp {
+    /// Two spaces before the shortcut, not a dash or brackets: it is what AppKit's own tooltips do
+    /// and it survives being read aloud, where "Bold - command B" acquires a word nobody said.
+    static func text(label: String, shortcut: String?) -> String {
+        guard let shortcut, !shortcut.isEmpty else { return label }
+        return "\(label)  \(shortcut)"
+    }
+}
+
 public struct GlassIconButton: View {
     private let symbol: String
     private let label: String
@@ -213,7 +228,7 @@ public struct GlassIconButton: View {
             }
         }
         .disabled(!isEnabled)
-        .help(shortcut.map { "\(label)  \($0)" } ?? label)
+        .help(ToolbarHelp.text(label: label, shortcut: shortcut))
         .accessibilityLabel(label)
         .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
     }

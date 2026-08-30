@@ -612,3 +612,26 @@ struct ComponentModelTests {
         #expect(Mock.fileInfo.sheetCount == Mock.tabs.count)
     }
 }
+
+/// What a toolbar control says on hover.
+///
+/// Small, and worth pinning: the two kinds of control in one toolbar group compose this
+/// separately, and the whole point of the shared function is that a plain button and a menu button
+/// sitting side by side cannot end up describing themselves differently.
+@Suite("Toolbar tooltips")
+struct ToolbarHelpTests {
+    @Test("A control with no shortcut says only its name")
+    func labelAlone() {
+        #expect(ToolbarHelp.text(label: "Fill colour", shortcut: nil) == "Fill colour")
+    }
+
+    @Test("A shortcut follows the name, separated the way AppKit separates it")
+    func labelAndShortcut() {
+        #expect(ToolbarHelp.text(label: "Bold", shortcut: "⌘B") == "Bold  ⌘B")
+    }
+
+    @Test("An empty shortcut is the same as none, not a trailing gap")
+    func emptyShortcut() {
+        #expect(ToolbarHelp.text(label: "Paste", shortcut: "") == "Paste")
+    }
+}

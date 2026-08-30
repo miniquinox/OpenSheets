@@ -274,6 +274,7 @@ public struct ToolbarSurface: View {
                 symbol: "clipboard",
                 label: "Paste",
                 isEnabled: enabled && state.canPaste,
+                shortcut: "⌘V",
                 context: context
             ) {
                 Button("Paste") { perform(.paste) }
@@ -372,6 +373,7 @@ public struct ToolbarSurface: View {
                 label: "Merge cells",
                 isOn: state.isMerged,
                 isEnabled: enabled,
+                shortcut: "⌃⌘M",
                 context: context
             ) { perform(.toggleMerge) }
         }
@@ -406,11 +408,17 @@ public struct ToolbarSurface: View {
 
     private var structure: some View {
         ToolbarGroup {
-            ToolbarMenuButton(symbol: "plus.rectangle", label: "Insert", isEnabled: enabled, context: context) {
+            ToolbarMenuButton(
+                symbol: "plus.rectangle", label: "Insert rows or columns",
+                isEnabled: enabled, context: context
+            ) {
                 Button("Insert rows") { perform(.insertRows) }
                 Button("Insert columns") { perform(.insertColumns) }
             }
-            ToolbarMenuButton(symbol: "minus.rectangle", label: "Delete", isEnabled: enabled, context: context) {
+            ToolbarMenuButton(
+                symbol: "minus.rectangle", label: "Delete rows or columns",
+                isEnabled: enabled, context: context
+            ) {
                 Button("Delete rows") { perform(.deleteRows) }
                 Button("Delete columns") { perform(.deleteColumns) }
             }
@@ -419,7 +427,9 @@ public struct ToolbarSurface: View {
 
     private var formulas: some View {
         ToolbarGroup {
-            ToolbarMenuButton(symbol: "sum", label: "Sum", isEnabled: enabled, context: context) {
+            ToolbarMenuButton(
+                symbol: "sum", label: "AutoSum", isEnabled: enabled, context: context
+            ) {
                 ForEach(AutoSumFunction.allCases) { function in
                     Button(function.label) { perform(.autoSum(function)) }
                 }
@@ -502,6 +512,8 @@ public struct ToolbarMenuButton<Content: View>: View {
     private let symbol: String
     private let label: String
     private let isEnabled: Bool
+    /// Shown after the label on hover, like ``GlassIconButton``'s.
+    private let shortcut: String?
     /// Passed straight to the button beneath. See ``GlassIconButton``.
     private let bar: Color?
     private let context: AppearanceContext
@@ -511,6 +523,7 @@ public struct ToolbarMenuButton<Content: View>: View {
         symbol: String,
         label: String,
         isEnabled: Bool = true,
+        shortcut: String? = nil,
         bar: Color? = nil,
         context: AppearanceContext,
         @ViewBuilder content: () -> Content
@@ -518,9 +531,16 @@ public struct ToolbarMenuButton<Content: View>: View {
         self.symbol = symbol
         self.label = label
         self.isEnabled = isEnabled
+        self.shortcut = shortcut
         self.bar = bar
         self.context = context
         self.content = content()
+    }
+
+    /// Label, then the shortcut if there is one — the same shape ``GlassIconButton`` uses, so the
+    /// two kinds of control in one group read identically on hover.
+    private var helpText: String {
+        ToolbarHelp.text(label: label, shortcut: shortcut)
     }
 
     public var body: some View {
@@ -543,8 +563,14 @@ public struct ToolbarMenuButton<Content: View>: View {
                 .menuIndicator(.hidden)
                 .disabled(!isEnabled)
                 .accessibilityHidden(true)
+                // On the overlay, not only on the composed view. The overlay is what the pointer
+                // is actually over, and a `.help` underneath it never gets asked — which is why
+                // every menu button in this toolbar was silent on hover while the plain buttons
+                // beside them were not.
+                .help(helpText)
             }
-            .accessibilityLabel(label)
+            .help(helpText)
+            .accessibilityLabel(helpText)
             .accessibilityAddTraits(.isButton)
     }
 }
