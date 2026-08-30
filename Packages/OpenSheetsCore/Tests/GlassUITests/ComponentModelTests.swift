@@ -245,9 +245,68 @@ struct ComponentModelTests {
             workspacePath: "~/work", isGranted: false, mcpStatus: .notConfigured
         )
         #expect(
-            unconfigured.statusDetail.contains("claude mcp add"),
-            "the not-set-up state must say the command, because that is the whole fix"
+            unconfigured.statusDetail.contains("Settings"),
+            "the not-set-up state must point at Settings ▸ Claude, because the Connect button is the whole fix"
         )
+    }
+
+    // MARK: - Claude client row
+
+    @Test("Every client-row status names itself, and no two share a word")
+    func claudeClientRowStatusesNameThemselves() {
+        for status in ClaudeClientRowModel.Status.allCases {
+            #expect(!status.label.isEmpty)
+            let model = ClaudeClientRowModel(
+                clientName: "Claude Code",
+                status: status,
+                caption: "Adds an opensheets entry to ~/.claude.json. A backup is kept beside it.",
+                buttonLabel: "Connect",
+                buttonEnabled: true,
+                rejection: nil
+            )
+            #expect(!model.caption.isEmpty, "\(status.label) rendered without a caption")
+        }
+        // Five states telling five stories need five words, or the row is telling some of them
+        // with the same face.
+        let labels = ClaudeClientRowModel.Status.allCases.map(\.label)
+        #expect(Set(labels).count == labels.count)
+    }
+
+    @Test("The client-row model round-trips its fields and compares by value")
+    func claudeClientRowModelRoundTrips() {
+        let stale = ClaudeClientRowModel(
+            clientName: "Claude Desktop",
+            status: .stale,
+            caption: "The registered binary is missing. Reconnect to re-register this build.",
+            buttonLabel: "Reconnect",
+            buttonEnabled: true,
+            rejection: "Your claude_desktop_config.json could not be parsed, so it was not modified."
+        )
+        #expect(stale.clientName == "Claude Desktop")
+        #expect(stale.status == .stale)
+        #expect(stale.buttonLabel == "Reconnect")
+        #expect(stale.buttonEnabled)
+        #expect(stale.rejection?.contains("not modified") == true)
+
+        // Equality is field-by-field, so the Settings pane re-renders exactly when something it
+        // shows has changed and never on a no-op refresh.
+        var copy = stale
+        #expect(copy == stale)
+        copy.buttonEnabled = false
+        #expect(copy != stale)
+
+        // A buttonless row is a state, not an accident: nil draws no control at all, which is
+        // how "nothing you can click would help" is spelled.
+        let uninstallable = ClaudeClientRowModel(
+            clientName: "Claude Code",
+            status: .notInstalled,
+            caption: "Not installed — get it at claude.com/code.",
+            buttonLabel: nil,
+            buttonEnabled: false,
+            rejection: nil
+        )
+        #expect(uninstallable.buttonLabel == nil)
+        #expect(uninstallable != stale)
     }
 
     // MARK: - Sheets
