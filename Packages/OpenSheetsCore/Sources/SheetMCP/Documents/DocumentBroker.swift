@@ -296,10 +296,18 @@ public actor DocumentBroker {
     /// change and refresh-loop.
     public func restore(path: String, id: ULID) async throws(SheetError) -> LoadedDocument {
         let url = try resolve(path)
+        let bytes = try await store.snapshots.data(for: id, of: url)
+        // A snapshot can outlive its file: `delete_file` snapshots the bytes and then trashes
+        // them, and the documented undo is exactly this call. Opening a session reads the file,
+        // so a missing target is resurrected from the snapshot's bytes first — through the
+        // suppressor, atomically, like every write — and the session's own restore then runs
+        // unchanged, pre-restore snapshot included.
+        if !FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
+            _ = try store.suppressor.write(bytes, to: url)
+        }
         let session = try await session(for: url)
         // The reload that follows the restore reads the bytes we are about to write. Parse
         // them now, so that read is a cache hit.
-        let bytes = try await store.snapshots.data(for: id, of: url)
         if let workbook = try? await WorkbookParser.parse(bytes: bytes, url: url) {
             reader.prime(url, bytes: bytes, workbook: workbook)
         }
@@ -328,6 +336,19 @@ public actor DocumentBroker {
     /// is.
     public nonisolated func diff(before: Workbook, after: Workbook) -> WorkbookDiff {
         WorkbookDiffer().diff(before: before, after: after)
+    }
+
+    /// Closes one file's session, if it is open.
+    ///
+    /// `delete_file` calls this immediately before trashing the file: a live session holds an
+    /// FSEvents stream on the path and an in-memory workbook that would shadow the file's
+    /// absence — every call after the delete should meet the missing file, not a ghost of it.
+    public func close(_ url: URL) async {
+        let key = DocumentBroker.key(url)
+        guard let document = documents.removeValue(forKey: key) else { return }
+        document.drain.cancel()
+        await document.session.stop()
+        readViews.removeValue(forKey: key)
     }
 
     /// Closes every session. The CLI calls this so a one-shot command does not leave an

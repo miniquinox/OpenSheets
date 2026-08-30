@@ -48,6 +48,10 @@ public enum CLISurface {
             summary: "List spreadsheet files in a granted folder"
         ),
         Command(
+            name: "new", tool: "new_workbook", form: "new <file> [sheet ...]",
+            summary: "Create a workbook (never overwrites; sheet names are xlsx-family only)"
+        ),
+        Command(
             name: "describe", tool: "describe", form: "describe <file>",
             summary: "Summarise every sheet: used range, header row, column types"
         ),
@@ -120,12 +124,20 @@ public enum CLISurface {
             summary: "Put one back (default: the newest)"
         ),
         Command(
+            name: "delete-file", tool: "delete_file", form: "delete-file <file>",
+            summary: "Trash a workbook (snapshot first, so restore can undo it)"
+        ),
+        Command(
             name: "selection", tool: "get_selection", form: "selection <file>",
             summary: "What the OpenSheets app has selected, if it is open on this file"
         ),
         Command(
             name: "reveal", tool: "reveal_range", form: "reveal <file> <range>",
             summary: "Ask the app to scroll to and select a range"
+        ),
+        Command(
+            name: "open", tool: "open_in_app", form: "open <file> [range]",
+            summary: "Open the file in the OpenSheets app, launching it if needed"
         ),
         Command(
             name: "convert", tool: nil, form: "convert <in> <out>",

@@ -24,10 +24,10 @@ public enum SetFormatTool {
             title: "Format cells",
             summary: """
             Sets number format, bold/italic/underline, font name, size and colour, fill colour, \
-            alignment and wrapping over a range, and column width / row height. Only the fields \
-            you pass are changed; everything else about the cells' formatting is left alone. \
-            Number formats are Excel format codes, e.g. `#,##0.00`, `0.0%`, `yyyy-mm-dd`, \
-            `$#,##0;[Red]($#,##0)`.
+            alignment and wrapping over a range, column width / row height, and frozen panes \
+            (freezeRows / freezeColumns, sheet-level). Only the fields you pass are changed; \
+            everything else about the cells' formatting is left alone. Number formats are Excel \
+            format codes, e.g. `#,##0.00`, `0.0%`, `yyyy-mm-dd`, `$#,##0;[Red]($#,##0)`.
             """,
             properties: [
                 ToolSchema.pathProperty,
@@ -73,6 +73,18 @@ public enum SetFormatTool {
                 ),
                 ToolProperty(
                     name: "rowHeight", kind: .number, summary: "Height in points for every row the range spans."
+                ),
+                ToolProperty(
+                    name: "freezeRows",
+                    kind: .integer,
+                    summary: "Freeze the top N rows of the target sheet; 0 unfreezes them. "
+                        + "Sheet-level — the range only picks the sheet."
+                ),
+                ToolProperty(
+                    name: "freezeColumns",
+                    kind: .integer,
+                    summary: "Freeze the left N columns of the target sheet; 0 unfreezes them. "
+                        + "Sheet-level — the range only picks the sheet."
                 ),
                 ToolSchema.previewProperty,
             ],
@@ -146,6 +158,17 @@ public enum SetFormatTool {
                 workbook.sheets[index].rowHeights.setValue(height, in: range.rows)
                 regions.insert(.rows)
             }
+            // Panes live in `<sheetViews>`, which the writer copies through verbatim unless
+            // `.views` is marked — without it the freeze would hold in memory and vanish from
+            // the file, which is the worst kind of success.
+            if let rows = change.freezeRows {
+                workbook.sheets[index].frozen.frozenRows = rows
+                regions.insert(.views)
+            }
+            if let columns = change.freezeColumns {
+                workbook.sheets[index].frozen.frozenColumns = columns
+                regions.insert(.views)
+            }
             edits.note(workbook.sheets[index], regions)
             if change.touchesCells { edits.noteStylesChanged() }
             return touched
@@ -155,6 +178,16 @@ public enum SetFormatTool {
             + "\(target.sheetName)!\(range.a1String(collapseSingleCell: false))"]
         if change.columnWidth != nil { lines.append("column width set for \(range.columnCount) columns") }
         if change.rowHeight != nil { lines.append("row height set for \(CellText.count(range.rowCount)) rows") }
+        if let rows = change.freezeRows {
+            lines.append(rows == 0
+                ? "unfroze rows on \(target.sheetName)"
+                : "froze the top \(rows) row\(rows == 1 ? "" : "s") of \(target.sheetName)")
+        }
+        if let columns = change.freezeColumns {
+            lines.append(columns == 0
+                ? "unfroze columns on \(target.sheetName)"
+                : "froze the left \(columns) column\(columns == 1 ? "" : "s") of \(target.sheetName)")
+        }
         lines.append(ResultFormatter.diffSummary(outcome))
         return ToolOutput(lines.joined(separator: "\n"))
     }
@@ -179,6 +212,8 @@ struct StyleChange: Sendable {
     var wrap: Bool?
     var columnWidth: Double?
     var rowHeight: Double?
+    var freezeRows: Int?
+    var freezeColumns: Int?
 
     init(_ arguments: ToolArguments) throws(SheetError) {
         numberFormat = arguments.optionalString("numberFormat")
@@ -235,6 +270,18 @@ struct StyleChange: Sendable {
             }
             rowHeight = height
         }
+        // Through the bounded accessor, like every count-shaped argument: a negative or
+        // absurd freeze must be a `tool.invalidArguments`, never something the model traps
+        // on later. `0` is inside the range on purpose — it is the documented spelling of
+        // "unfreeze".
+        if arguments.has("freezeRows") {
+            freezeRows = try arguments.integer("freezeRows", default: 0, atLeast: 0, atMost: Limits.rowCount)
+        }
+        if arguments.has("freezeColumns") {
+            freezeColumns = try arguments.integer(
+                "freezeColumns", default: 0, atLeast: 0, atMost: Limits.columnCount
+            )
+        }
     }
 
     var touchesCells: Bool {
@@ -243,7 +290,10 @@ struct StyleChange: Sendable {
             || align != nil || verticalAlign != nil || wrap != nil
     }
 
-    var isEmpty: Bool { !touchesCells && columnWidth == nil && rowHeight == nil }
+    var isEmpty: Bool {
+        !touchesCells && columnWidth == nil && rowHeight == nil
+            && freezeRows == nil && freezeColumns == nil
+    }
 
     /// Applies the supplied fields to a style. Called inside `StyleTable.derive`, which is what
     /// makes the result interned rather than a mutation of a shared style.

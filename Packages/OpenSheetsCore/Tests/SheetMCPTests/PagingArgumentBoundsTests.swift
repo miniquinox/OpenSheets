@@ -25,6 +25,8 @@ struct PagingArgumentBoundsTests {
         ("insert_rows", "count"),
         ("list_snapshots", "limit"),
         ("list_files", "limit"),
+        ("set_format", "freezeRows"),
+        ("set_format", "freezeColumns"),
     ]
 
     @Test("A bounded read rejects a negative value instead of trapping")

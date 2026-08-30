@@ -73,10 +73,55 @@ public struct AppHandshake: Sendable {
     /// The directory the two files live in.
     public let directory: URL
     private let now: @Sendable () -> Date
+    /// How `open_in_app` starts the app. Defaults to ``systemLaunch``.
+    ///
+    /// A closure on the handshake rather than a `Process` call at the tool's call site, for one
+    /// reason: **tests must never launch a GUI**. The handshake is already the injected
+    /// app-facing seam every `ToolContext` carries, so putting the launcher here gives tests a
+    /// spy through the same initialiser they already use — no global mutable state for parallel
+    /// suites to race on, and no second injection path for the launcher to drift away from.
+    let launch: @Sendable (URL) -> Bool
 
-    public init(applicationSupport: URL, now: @escaping @Sendable () -> Date = { Date() }) {
+    public init(
+        applicationSupport: URL,
+        now: @escaping @Sendable () -> Date = { Date() },
+        launch: @escaping @Sendable (URL) -> Bool = AppHandshake.systemLaunch
+    ) {
         directory = applicationSupport.appendingPathComponent("Handshake")
         self.now = now
+        self.launch = launch
+    }
+
+    /// The app's bundle identifier — the `-b` argument that pins `/usr/bin/open` to OpenSheets
+    /// rather than to whatever application claims the file's extension.
+    public static let appBundleID = "com.quino.opensheets"
+
+    /// The real launcher: `/usr/bin/open -b com.quino.opensheets -- <path>`.
+    ///
+    /// This is the server's first and only subprocess, and every part of it is pinned so it
+    /// stays that way in spirit as well as in count: the executable is the literal
+    /// `/usr/bin/open`, the bundle id is the constant above, the one variable argument is a
+    /// path that has already passed the grant check (behind `--`, so it cannot be read as an
+    /// option), and no shell is involved. The child's stdio is routed to `/dev/null`
+    /// explicitly — fd 1 is the protocol stream, and while `claimStdout` already redirected it,
+    /// the child should not inherit the chance to test that.
+    ///
+    /// `open` is idempotent, which is why the caller needs no "is it running" detection: a
+    /// running app is activated and handed the file as a reopen event, a cold machine gets a
+    /// launch, and both funnel into the app's one open path.
+    public static let systemLaunch: @Sendable (URL) -> Bool = { url in
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-b", AppHandshake.appBundleID, "--", url.path(percentEncoded: false)]
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            return true
+        } catch {
+            return false
+        }
     }
 
     /// What the app says about `url`, or `nil` when it is not there or not fresh.
@@ -116,6 +161,35 @@ public struct AppHandshake: Sendable {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try Data(payload.rendered.utf8).write(to: file, options: [.atomic])
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Asks the app to open a file — and, optionally, to select a sheet and range once it has.
+    /// Returns whether the request was written.
+    ///
+    /// The takeover counterpart to ``requestReveal(url:sheet:range:)``, and deliberately
+    /// **without its presence guard**: `open_in_app` writes this immediately before launching
+    /// the app, so the normal reader is a process that does not exist yet. The app's startup
+    /// sweep consumes requests younger than ninety seconds, which is exactly the window a
+    /// just-written file sits in; when the app is already running, the same request arrives
+    /// through its live watcher instead. Sheet and range are omitted from the payload when not
+    /// given — the consumer parses both as optional, and an absent key is the honest spelling
+    /// of "no selection requested".
+    @discardableResult
+    public func requestOpen(url: URL, sheet: String?, range: String?) -> Bool {
+        var members: [String: JSONValue] = [
+            "path": .string(url.path(percentEncoded: false)),
+            "requestedAt": .number(now().timeIntervalSince1970),
+        ]
+        if let sheet { members["sheet"] = .string(sheet) }
+        if let range { members["range"] = .string(range) }
+        let file = directory.appendingPathComponent("\(AppHandshake.key(url)).request.json")
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data(JSONValue.object(members).rendered.utf8).write(to: file, options: [.atomic])
             return true
         } catch {
             return false
@@ -201,7 +275,8 @@ public enum HandshakeTools {
             Asks the OpenSheets app to scroll to and select a range, so the user can see what \
             you are talking about. If the app is running but does not have the file open, it \
             opens it first. Best-effort: the app decides whether to act on it, and if the app is \
-            not running nothing happens and the result says so.
+            not running nothing happens and the result says so. Use open_in_app instead to \
+            launch the app or force the file open.
             """,
             properties: [
                 ToolSchema.pathProperty,
