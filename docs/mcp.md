@@ -3,16 +3,29 @@
 > **Superseded by [`DOCUMENTATION.md`](../DOCUMENTATION.md).**
 >
 > The MCP server, the CLI, the safety model and the worked examples are all covered there — §5 for
-> the server and all twenty tools, §6 for the CLI, §9 for the security model — against numbers and
+> the server and all **22** tools, §6 for the CLI, §9 for the security model — against numbers and
 > command output that were re-verified against the code rather than carried forward.
 >
 > This file is kept for now because it is linked from elsewhere, and because §5–§9 below go into
 > more narrative depth on a few points than the reference tables do. Where the two disagree,
-> `DOCUMENTATION.md` is correct. Two things here are known to be stale: the tool table below
-> describes `describe` as costing "a few hundred tokens" without saying how that is enforced (it is
-> asserted at under 800 estimated tokens, with line-count invariance between a 50-row and a
-> 50,000-row sheet), and the `filter` command's `limit` is documented as if it were validated —
-> it is not, and a negative value crashes the process. See `DOCUMENTATION.md` §12.2.
+> `DOCUMENTATION.md` is correct. Known to be stale below:
+>
+> - **The surface is 22 tools, not twenty.** `list_workspace` and `list_files` were added so an
+>   agent can find a file without asking the user to paste a path; the table in §5 predates them.
+>   `DOCUMENTATION.md` §5.6 has both, and `opensheets tools` prints the live list.
+> - **`describe`'s cost is enforced, not hoped for.** The table below says "a few hundred tokens"
+>   without saying how: it is asserted at under 800 estimated tokens, with identical line counts
+>   between a 50-row and a 50,000-row sheet. `DOCUMENTATION.md` §5.4.
+> - **`get_selection` and `reveal_range` now have an app half.** They shipped without one — the app
+>   never published a selection and never read a reveal request — so anything below that reads as
+>   though they worked was describing a protocol with one end missing. The app half exists now and
+>   is model-tested, but **has never been driven on a screen**: `DOCUMENTATION.md` §3.4 and §12.2.
+>
+> One item previously flagged here is **fixed** and the warning is withdrawn: `filter`'s `limit` was
+> documented as if validated when it was not, and a negative value trapped the process. It is now
+> bounds-checked. `opensheets filter … --limit -1` prints a `[tool.invalidArguments]` refusal naming
+> the argument and the value it got, and exits 1 — with a regression test that proves the server
+> survives the bad call and answers the next one.
 
 `opensheets-mcp` gives Claude Code a **structural** way to work on spreadsheets: read a column,
 insert a row, rewrite a formula — instead of decoding a binary file, guessing at it, and writing
@@ -56,6 +69,11 @@ claude mcp list           # opensheets: /usr/local/bin/opensheets-mcp (stdio) - 
 
 That is the whole registration. The server speaks MCP over stdio (JSON-RPC 2.0, newline
 delimited) and needs no configuration, no port, and no API key.
+
+Stdio is the *only* transport, which decides what can use it: any client that can spawn a local
+subprocess — Claude Code, Claude Desktop, local-LLM harnesses — and **not** ChatGPT on the web or any
+other browser-hosted assistant, which require a remotely hosted server over HTTPS with OAuth. That is
+a deliberate scope decision; `DOCUMENTATION.md` §5.9 explains why.
 
 To remove it again: `claude mcp remove opensheets`.
 
@@ -141,10 +159,12 @@ Two related guarantees, from PLAN.md §7.3:
 
 ## 5. The tools
 
-Twenty tools. `describe` is the one to reach for first.
+Twenty-two tools. Start with `list_workspace` if you have no path yet, then `describe`.
 
 | Tool | What it does |
 | --- | --- |
+| **`list_workspace`** | The folders in the app's Files panel, the folders granted but not shown, and what is open as a tab. **Start here when you do not have a path.** |
+| `list_files` | Spreadsheet files in a granted folder, one level or `recursive`. |
 | **`describe`** | Per sheet: used range, guessed header row, and per column the inferred type, null count, value range and a few examples. **A few hundred tokens whatever the row count.** |
 | `read_range` | Cells as TSV (`compact`) or one JSON object per cell (`detailed`). Paged, with a hard cap. |
 | `find` | Value / formula / regex search. Returns **cell references, not contents**. |
@@ -353,9 +373,13 @@ leaves the original intact rather than a half-written archive.
 `CLISurface` is the single table the dispatcher, `--help` and `CLISurfaceTests` all read, so a tool
 with no command is either an explicit exemption with a reason attached or a failing test. The two
 surfaces used to drift — twelve commands against twenty tools, with `recalc` reachable only over
-JSON-RPC — and that is what the table exists to stop.
+JSON-RPC — and that is what the table exists to stop. The discovery tools arrived with their commands
+already attached, which is the table doing its job.
 
 ```bash
+opensheets workspace                       # Files panel, grants, open tabs
+opensheets ls ~/Finance --recursive
+
 opensheets describe budget.xlsx
 opensheets get budget.xlsx 'Sheet1!A1:D20'
 opensheets get budget.xlsx 'A:C' --formulas

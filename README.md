@@ -8,10 +8,11 @@ The loop: you open a file → Claude Code edits it in your terminal → OpenShee
 The file is the API.
 
 **Status: v0.1, pre-release.** The app opens and renders `.xlsx` and `.csv`, watches the file for
-external changes, and edits through an MCP server. The package builds and its tests pass. Several
-release gates are genuinely open — notably that nothing we write has ever been opened in Microsoft
-Excel. See [DOCUMENTATION.md §12](DOCUMENTATION.md#12-known-limitations-and-what-is-not-done) for
-the full, honest list.
+external changes, and edits through a 22-tool MCP server. The package builds and its 1,681 tests
+pass. Several release gates are genuinely open — notably that nothing we write has ever been opened
+in Microsoft Excel, and that the app↔agent handshake has never been driven on a screen. See
+[DOCUMENTATION.md §12](DOCUMENTATION.md#12-known-limitations-and-what-is-not-done) for the full,
+honest list.
 
 **Full documentation: [DOCUMENTATION.md](DOCUMENTATION.md).**
 
@@ -28,6 +29,7 @@ the full, honest list.
 | 203 functions, including dynamic arrays | All 500+ Excel functions |
 | File-watch → diff → refresh loop | Real-time multi-user collaboration |
 | MCP server so Claude edits *structurally* | VBA / macro execution (never) |
+| Agents discover the Files panel — the folders you pinned, the tabs you have open — instead of asking you to paste a path | A hosted bridge to your local files for browser-based assistants |
 | Byte-preserving round-trip of parts we don't model | Reimplementing OOXML in full |
 
 The bet: **visualisation and sync fidelity are the product.** Depth comes from Claude.
@@ -39,7 +41,7 @@ Read [`PLAN.md`](PLAN.md) for the architecture and the reasoning behind it.
 ## Layout
 
 ```
-App/                              OpenSheets.app — thin on purpose, ~12 files
+App/                              OpenSheets.app — thin on purpose, 10 Swift files
 Config/                           Info.plist, entitlements
 Packages/OpenSheetsCore/          ~95% of the code lives here
   Sources/
@@ -49,8 +51,9 @@ Packages/OpenSheetsCore/          ~95% of the code lives here
     SheetFormula/                 lexer, parser, dependency graph, functions
     GridKit/                      virtualised AppKit grid renderer
     GlassUI/                      design tokens and every glass surface
-    SheetStore/                   file watcher, snapshots, workspace grants, SQLite
-    SheetMCP/                     the MCP tool surface
+    SheetStore/                   file watcher, snapshots, workspace grants, directory listing, SQLite
+    SheetMCP/                     the 22-tool MCP surface and the CLI
+    DocumentCore/                 the wiring layer: AppModel, DocumentModel, window rules
     TestSupport/                  builders, fakes, matchers
 Fixtures/                         the golden corpus everything is tested against
 Scripts/                          build, test, benchmark
@@ -124,15 +127,28 @@ defaults write com.quino.opensheets OSFlagEditing        -bool YES
 defaults write com.quino.opensheets OSFlagMCP            -bool YES
 defaults write com.quino.opensheets OSFlagFormulaEngine  -bool YES
 defaults write com.quino.opensheets OSFlagSnapshots      -bool YES
-defaults write com.quino.opensheets OSFlagAutoRefresh    -bool NO   # defaults to YES
 defaults write com.quino.opensheets OSFlagChangeTracking -bool NO   # defaults to YES
+defaults write com.quino.opensheets OSFlagExplorer       -bool NO   # defaults to YES
+defaults write com.quino.opensheets OSFlagHandshake      -bool NO   # defaults to YES
 defaults write com.quino.opensheets OSFlagSheetStructure -bool YES
 ```
 
 `OSFlagChangeTracking` gates the whole green/amber/red story — the changes chip, its panel, the
 grid tints and Set Checkpoint. Off, the app does none of the diffing either: the flag removes the
-cost, not just the controls. File tabs are deliberately **not** flagged; they replace the window
-architecture rather than adding to it, and a flag there would mean keeping two window models.
+cost, not just the controls.
+
+`OSFlagHandshake` is a kill switch rather than a rollout gate. It gates both halves of the app↔agent
+handshake — publishing what you have open so `get_selection` can answer, and acting on `reveal_range`
+requests — and it exists because the reveal consumer is the one thing in the app that acts on a file
+written by **another process**. Everything downstream of that is grant-checked at the moment of
+acting, so the switch is not load-bearing for safety; it is there so a bug on that path is one
+`defaults write` away from being off.
+
+File tabs are deliberately **not** flagged; they replace the window architecture rather than adding to
+it, and a flag there would mean keeping two window models. **Auto-refresh has no flag either** — an
+earlier revision of this list included an `OSFlagAutoRefresh`, and no code has ever read that key.
+It is a per-document option that defaults to on. See
+[DOCUMENTATION.md §2.6](DOCUMENTATION.md#26-feature-flags) for the authoritative table.
 
 ---
 
