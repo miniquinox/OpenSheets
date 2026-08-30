@@ -202,10 +202,9 @@ struct HandshakePublisherTests {
 
     // MARK: - The reading
 
-    /// The snapshot says what the app says. `selection` is the app's own words for the selection —
-    /// the string on the selection pill — because `get_selection` exists to answer *what is the
-    /// user looking at*, and `activeCell` carries the plain A1 an agent can feed back into
-    /// `read_range`.
+    /// The snapshot says what the app has open, in the one spelling both ends can parse. `selection`
+    /// is the active rectangle in A1 and `activeCell` the plain A1 cell inside it, so everything
+    /// `get_selection` reports can be handed straight back to `read_range`.
     @Test func aSnapshotOfALiveDocumentCarriesItsSheetSelectionAndActiveCell() throws {
         let document = try TabSpy().makeDocument(at: Self.budget)
         document.selection.select(try #require(CellRange(a1: "B2:B4")), active: CellRef(a1: "B2"))
@@ -216,6 +215,24 @@ struct HandshakePublisherTests {
         #expect(snapshot.sheetName == "Q4")
         #expect(snapshot.selection == "B2:B4")
         #expect(snapshot.activeCell == "B2")
+    }
+
+    /// **A block selection is published as a rectangle, not as its size.**
+    ///
+    /// ``SelectionStats/rangeLabel`` renders a multi-row, multi-column selection as `41R × 3C` —
+    /// right for the status bar a person reads, useless to an agent, which cannot turn a shape
+    /// back into an address. This is the case where the two spellings diverge, so it is the case
+    /// worth asserting: the single-column selection above passes either way.
+    @Test func aBlockSelectionIsPublishedAsARangeAnAgentCanRead() throws {
+        let document = try TabSpy().makeDocument(at: Self.budget)
+        let block = try #require(CellRange(a1: "B2:D42"))
+        document.selection.select(block, active: CellRef(a1: "B2"))
+
+        let snapshot = HandshakeDocumentSnapshot(document: document)
+
+        #expect(snapshot.selection == "B2:D42")
+        #expect(snapshot.selection != SelectionStatistics.label(for: document.selection))
+        #expect(CellRange(a1: snapshot.selection) != nil, "the published selection must re-parse")
     }
 
     // MARK: - The kill switch

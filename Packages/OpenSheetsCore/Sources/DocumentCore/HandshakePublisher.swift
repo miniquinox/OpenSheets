@@ -38,12 +38,17 @@ public struct HandshakeDocumentSnapshot: Sendable, Hashable {
     /// ``HandshakePublisher``'s observation work: the properties are touched inside the tracked
     /// closure, so moving the selection is what tells the publisher to publish. That is the whole
     /// reason the mapping lives in a function rather than being inlined at each call site.
+    ///
+    /// `selection` is the active rectangle in A1, **not** ``SelectionStats/rangeLabel``. The label
+    /// is written for a person reading a status bar: it renders a block as `41R × 3C` and a
+    /// multi-selection as `3 ranges · 120 cells`. Neither can be handed back to `read_range`, and
+    /// an agent that receives one has to guess. A1 is the only spelling both ends already parse.
     @MainActor
     public init(document: DocumentModel) {
         self.init(
             url: document.url,
             sheetName: document.activeSheet?.name ?? "",
-            selection: document.selectionStats.rangeLabel,
+            selection: document.selection.activeRange.a1String,
             activeCell: document.selection.active.a1String
         )
     }
