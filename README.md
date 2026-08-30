@@ -8,9 +8,10 @@ The loop: you open a file → Claude Code edits it in your terminal → OpenShee
 The file is the API.
 
 **Status: v0.1, pre-release.** The app opens and renders `.xlsx` and `.csv`, watches the file for
-external changes, and edits through a 22-tool MCP server. The package builds and its 1,681 tests
+external changes, and edits through a 22-tool MCP server. The package builds and its 1,696 tests
 pass. Several release gates are genuinely open — notably that nothing we write has ever been opened
-in Microsoft Excel, and that the app↔agent handshake has never been driven on a screen. See
+in Microsoft Excel, and that neither the app↔agent handshake nor the new Settings ▸ Claude pane has
+ever been driven on a screen. See
 [DOCUMENTATION.md §12](DOCUMENTATION.md#12-known-limitations-and-what-is-not-done) for the full,
 honest list.
 
@@ -29,6 +30,7 @@ honest list.
 | 203 functions, including dynamic arrays | All 500+ Excel functions |
 | File-watch → diff → refresh loop | Real-time multi-user collaboration |
 | MCP server so Claude edits *structurally* | VBA / macro execution (never) |
+| Connect to Claude from Settings — the server ships in the app, registration is one click, no terminal | An agent that edits Claude's own config — `~/.claude.json` stays on the deny list |
 | Agents discover the Files panel — the folders you pinned, the tabs you have open — instead of asking you to paste a path | A hosted bridge to your local files for browser-based assistants |
 | Byte-preserving round-trip of parts we don't model | Reimplementing OOXML in full |
 
@@ -75,6 +77,12 @@ Scripts/test.sh
 # Everything, including the app
 Scripts/build.sh
 ```
+
+The full `Scripts/build.sh` also embeds the MCP server in the built app
+(`OpenSheets.app/Contents/MacOS/opensheets-mcp`), which is what the **Connect** button in
+Settings ▸ Claude registers — no `sudo cp`, no terminal step. See
+[DOCUMENTATION.md §2.5](DOCUMENTATION.md#25-the-mcp-server-ships-inside-the-app) and
+[§3.2](DOCUMENTATION.md#32-connect-the-server-to-claude).
 
 Or directly:
 
