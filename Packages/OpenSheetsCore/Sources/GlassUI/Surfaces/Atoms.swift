@@ -3,8 +3,9 @@ import SwiftUI
 /// The agent's heartbeat.
 ///
 /// A filled accent dot with a ring that expands and fades out of it on
-/// ``DS/Motion/pulsePeriod``. It appears in exactly two places — the refresh pill and the MCP
-/// status row — and in both it means the same thing: *something outside this window is alive*.
+/// ``DS/Motion/pulsePeriod``. It appears in exactly three places — the refresh pill, the MCP
+/// status row, and the Settings client rows — and in all of them it means the same thing:
+/// *something outside this window is alive*.
 ///
 /// Under `reduceMotion` it holds at the mid-point of the breath rather than freezing at either
 /// end. Freezing at the bright end reads as an alert that will not go away; freezing at the dim
