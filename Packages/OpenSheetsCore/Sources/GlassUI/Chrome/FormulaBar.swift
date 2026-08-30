@@ -219,7 +219,7 @@ public struct FormulaBar: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Cell reference or defined name")
+        .hoverTitle("Cell reference or defined name")
         .accessibilityLabel("Name box, \(state.nameBoxText)")
     }
 
@@ -241,7 +241,7 @@ public struct FormulaBar: View {
         }
         .buttonStyle(.plain)
         .disabled(!state.isEditable)
-        .help("Insert function")
+        .hoverTitle("Insert function")
         .accessibilityLabel("Insert function")
     }
 
@@ -349,7 +349,7 @@ public struct FormulaBar: View {
                     .foregroundStyle(DS.Chrome.tertiary)
             }
             .buttonStyle(.plain)
-            .help(state.isExpanded ? "Collapse formula bar" : "Expand formula bar")
+            .hoverTitle(state.isExpanded ? "Collapse formula bar" : "Expand formula bar")
             .accessibilityLabel(state.isExpanded ? "Collapse formula bar" : "Expand formula bar")
         }
     }

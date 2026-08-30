@@ -115,7 +115,7 @@ public struct SyncStateChip: View {
             .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
-        .help("\(state.label). \(state.detail)")
+        .hoverTitle("\(state.label). \(state.detail)")
         .accessibilityLabel("\(state.label). \(state.detail)")
     }
 

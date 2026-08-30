@@ -95,7 +95,7 @@ public struct FileExplorer: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(DS.Chrome.secondary)
-                .help("Grant a folder…")
+                .hoverTitle("Grant a folder…")
                 .accessibilityLabel("Grant a folder")
             }
         }
@@ -234,7 +234,7 @@ public struct FileExplorer: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Close this folder. The grant stays.")
+            .hoverTitle("Close this folder. The grant stays.")
             .accessibilityLabel("Close folder \(row.name)")
         }
     }
@@ -293,7 +293,7 @@ public struct FileExplorer: View {
         .contentShape(Rectangle())
         .onHover { hovered = $0 ? row.id : (hovered == row.id ? nil : hovered) }
         .contextMenu { contextMenu(for: row) }
-        .help(helpText(for: row))
+        .hoverTitle(helpText(for: row))
     }
 
     /// "+ 2,609 more" and "Nothing to open here.".

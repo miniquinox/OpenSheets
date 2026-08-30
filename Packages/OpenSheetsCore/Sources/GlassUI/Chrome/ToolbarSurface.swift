@@ -567,9 +567,9 @@ public struct ToolbarMenuButton<Content: View>: View {
                 // is actually over, and a `.help` underneath it never gets asked — which is why
                 // every menu button in this toolbar was silent on hover while the plain buttons
                 // beside them were not.
-                .help(helpText)
+                .hoverTitle(helpText)
             }
-            .help(helpText)
+            .hoverTitle(helpText)
             .accessibilityLabel(helpText)
             .accessibilityAddTraits(.isButton)
     }

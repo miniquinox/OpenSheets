@@ -339,7 +339,7 @@ public struct Inspector: View {
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .help(name)
+        .hoverTitle(name)
         .accessibilityLabel(name)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
@@ -378,7 +378,7 @@ public struct Inspector: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(label)
+        .hoverTitle(label)
         .accessibilityLabel(label)
         .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
     }

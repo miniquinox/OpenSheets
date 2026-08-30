@@ -146,7 +146,7 @@ public struct SelectionStatsPill: View {
             .buttonStyle(.plain)
             .glassPill(context: context)
             .contextMenu { menu }
-            .help("Click to show different statistics")
+            .hoverTitle("Click to show different statistics")
             .accessibilityLabel(accessibilityLabel)
             .accessibilityHint("Shows the next set of statistics")
         }

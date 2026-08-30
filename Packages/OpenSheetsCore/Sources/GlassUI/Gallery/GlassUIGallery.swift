@@ -259,7 +259,7 @@ public struct GlassUIGallery: View {
                 .dsNumeric(DS.Text.numericCaption)
                 .foregroundStyle(DS.Chrome.tertiary)
         }
-        .help("Live from NSWorkspace. Toggle System Settings ▸ Accessibility ▸ Display to watch.")
+        .hoverTitle("Live from NSWorkspace. Toggle System Settings ▸ Accessibility ▸ Display to watch.")
     }
 
     private func flag(_ label: String, _ isOn: Bool) -> some View {

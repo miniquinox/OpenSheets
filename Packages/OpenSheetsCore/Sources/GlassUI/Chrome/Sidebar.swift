@@ -408,7 +408,7 @@ public struct Sidebar: View {
                 // folder — while the full path stays one hover away.
                 if !document.fileInfo.folder.isEmpty {
                     DetailRow("Where", document.fileInfo.folder)
-                        .help(document.fileInfo.path)
+                        .hoverTitle(document.fileInfo.path)
                 }
                 DetailRow("Format", document.fileInfo.format)
                 DetailRow("Size", document.fileInfo.size, numeric: true)
@@ -423,7 +423,7 @@ public struct Sidebar: View {
                     Label("Contains macros, not executed", systemImage: "curlybraces")
                         .font(DS.Text.caption)
                         .foregroundStyle(DS.Signal.calmInk(context))
-                        .help("Macros are preserved byte-for-byte on save and never run.")
+                        .hoverTitle("Macros are preserved byte-for-byte on save and never run.")
                 }
             }
             Button("Show in Finder") { perform(.revealInFinder) }
@@ -503,7 +503,7 @@ public struct ClaudePanel: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .textSelection(.enabled)
-                .help(state.workspacePath)
+                .hoverTitle(state.workspacePath)
 
             if state.isGranted {
                 Label("Granted to Claude", systemImage: "checkmark.shield")
@@ -518,7 +518,7 @@ public struct ClaudePanel: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(DS.Chrome.accent)
-                .help("Lets the MCP server read and write files inside this folder, and nowhere else.")
+                .hoverTitle("Lets the MCP server read and write files inside this folder, and nowhere else.")
             }
         }
         .accessibilityElement(children: .combine)
@@ -573,7 +573,7 @@ public struct ClaudePanel: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .help("Copy the `claude mcp add` command")
+                .hoverTitle("Copy the `claude mcp add` command")
                 .accessibilityLabel("Copy setup command")
             }
         }

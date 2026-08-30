@@ -256,7 +256,7 @@ public struct FileTabStrip: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Open a file or a folder")
+        .hoverTitle("Open a file or a folder")
         .accessibilityLabel("Open file or folder")
     }
 
@@ -394,7 +394,7 @@ public struct FileTabStrip: View {
                     .frame(width: Self.dropIndicatorWidth)
             }
         }
-        .help(tab.fullPath)
+        .hoverTitle(tab.fullPath)
         .animation(DS.Motion.snappy, value: isActive)
         .accessibilityLabel(tab.accessibilityLabel)
         .accessibilityHint(tab.fullPath)
@@ -429,7 +429,7 @@ public struct FileTabStrip: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Close \(tab.title)")
+        .hoverTitle("Close \(tab.title)")
         .accessibilityLabel("Close \(tab.title)")
     }
 

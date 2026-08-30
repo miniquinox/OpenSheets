@@ -167,6 +167,75 @@ enum ToolbarHelp {
     }
 }
 
+#if canImport(AppKit)
+/// Puts a real `NSView.toolTip` on the control it is attached to.
+///
+/// `.help(_:)` is supposed to do this and does not. Hosting a control in a real window and
+/// walking its `NSView` tree finds no `toolTip` anywhere — and not only on the glass-styled
+/// buttons that prompted the search: a plain `Button` with `.help` comes back empty too. So every
+/// hover title in this app was silent, not merely the toolbar's. `ToolbarTooltipTests` is that
+/// walk, kept, including the plain-button case as a known issue so that a future SwiftUI fixing
+/// `.help` shows up as a passing test rather than as two mechanisms nobody removed.
+///
+/// It sets the tip on its **superview** rather than on itself. Attached as a background, this
+/// view is a zero-content sibling of the label inside the control's container; the container is
+/// the thing with the button's bounds and the thing the pointer is over, so it is the thing that
+/// has to carry the tip. Setting it here instead would mean a tooltip on a view with no size.
+private struct ToolTipAttachment: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context _: Context) -> NSView { Attaching(text: text) }
+
+    func updateNSView(_ nsView: NSView, context _: Context) {
+        (nsView as? Attaching)?.apply(text)
+    }
+
+    private final class Attaching: NSView {
+        private var text: String
+
+        init(text: String) {
+            self.text = text
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("not from a nib") }
+
+        func apply(_ text: String) {
+            self.text = text
+            superview?.toolTip = text
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            apply(text)
+        }
+
+        // Never take a click. The control underneath is the point; this only carries the tip.
+        override func hitTest(_: NSPoint) -> NSView? { nil }
+    }
+}
+#endif
+
+extension View {
+    /// What this control says when the pointer rests on it.
+    ///
+    /// Use this rather than `.help(_:)` anywhere a hover title is wanted. `.help` alone sets no
+    /// `NSView.toolTip` — measured, in `ToolbarTooltipTests` — so on its own it shows nothing at
+    /// all. It is still applied here as well, because it is what VoiceOver reads and what a
+    /// non-AppKit platform would use; the attachment is what makes the pointer show anything.
+    func hoverTitle(_ text: String) -> some View {
+        #if canImport(AppKit)
+        // Zero-sized on purpose. The tip goes on the *superview*, so this view only has to exist
+        // to find one — and a full-size background would be an extra leaf view over every control,
+        // which is one more thing for anything walking the `NSView` tree to mistake for a target.
+        return help(text).background(ToolTipAttachment(text: text).frame(width: 0, height: 0))
+        #else
+        return help(text)
+        #endif
+    }
+}
+
 public struct GlassIconButton: View {
     private let symbol: String
     private let label: String
@@ -228,7 +297,7 @@ public struct GlassIconButton: View {
             }
         }
         .disabled(!isEnabled)
-        .help(ToolbarHelp.text(label: label, shortcut: shortcut))
+        .hoverTitle(ToolbarHelp.text(label: label, shortcut: shortcut))
         .accessibilityLabel(label)
         .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
     }

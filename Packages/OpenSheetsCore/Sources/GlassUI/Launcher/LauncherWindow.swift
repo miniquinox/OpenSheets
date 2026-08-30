@@ -257,12 +257,12 @@ public struct LauncherWindow: View {
                         Image(systemName: "questionmark.circle")
                             .font(.system(size: 10))
                             .foregroundStyle(DS.Signal.calmInk(context))
-                            .help("This file is no longer where it was.")
+                            .hoverTitle("This file is no longer where it was.")
                     } else if !item.isGranted {
                         Image(systemName: "shield.slash")
                             .font(.system(size: 10))
                             .foregroundStyle(DS.Signal.calmInk(context))
-                            .help("Claude cannot reach this folder yet.")
+                            .hoverTitle("Claude cannot reach this folder yet.")
                     }
                 }
                 Text(item.name)
@@ -358,7 +358,7 @@ public struct LauncherWindow: View {
                 .buttonStyle(.plain)
                 .font(DS.Text.control)
                 .foregroundStyle(DS.Chrome.accent)
-                .help("Lets Claude Code read and write spreadsheets inside a folder you pick.")
+                .hoverTitle("Lets Claude Code read and write spreadsheets inside a folder you pick.")
         }
         .font(DS.Text.control)
     }

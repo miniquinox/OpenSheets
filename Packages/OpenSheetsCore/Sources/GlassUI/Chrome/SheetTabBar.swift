@@ -147,7 +147,7 @@ public struct SheetTabBar: View {
         }
         .buttonStyle(.plain)
         .disabled(!state.isEditable)
-        .help("New sheet")
+        .hoverTitle("New sheet")
         .accessibilityLabel("New sheet")
     }
 
@@ -172,7 +172,7 @@ public struct SheetTabBar: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("\(state.hiddenTabs.count) hidden sheets")
+        .hoverTitle("\(state.hiddenTabs.count) hidden sheets")
         .accessibilityLabel("\(state.hiddenTabs.count) hidden sheets")
     }
 

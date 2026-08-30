@@ -218,7 +218,7 @@ public struct ChangeTrackingChip: View {
                 .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
-        .help(ChangeCounts.helpText(state))
+        .hoverTitle(ChangeCounts.helpText(state))
         .accessibilityLabel(ChangeCounts.spokenLabel(state))
         .accessibilityHint("Opens the list of changes")
     }
@@ -467,7 +467,7 @@ public struct ChangeTrackingPanel: View {
                 Spacer(minLength: 0)
                 Button("Set Checkpoint") { perform(.setCheckpoint) }
                     .buttonStyle(.borderedProminent)
-                    .help("Make the workbook as it is now the thing everything is compared against")
+                    .hoverTitle("Make the workbook as it is now the thing everything is compared against")
             }
             .font(DS.Text.control)
         }
