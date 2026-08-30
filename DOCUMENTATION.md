@@ -310,7 +310,7 @@ This is the product. Everything else is in service of it.
 ([§9](#9-security-model) explains why this is a compile-time property rather than a policy).
 
 1. Open OpenSheets.
-2. **File ▸ Grant Folder Access…**
+2. Click **+** in the Files sidebar (or the launcher's **Grant folder** button).
 3. Choose the folder your spreadsheets live in.
 
 Opening a file through the app's own `Open…` panel also grants its parent folder. A file the app did
@@ -934,8 +934,8 @@ and sends it hunting a configuration problem:
 workspace · nothing granted yet
 
 No folders are granted yet, so there is nothing to list. The user grants one in the OpenSheets
-app — File ▸ Grant Folder Access… — and neither this server nor the `opensheets` command can
-grant a folder itself.
+app — the + button in the Files sidebar, or simply opening a file — and neither this server nor
+the `opensheets` command can grant a folder itself.
 ```
 
 `list_files` lists one granted folder, one level deep by default or the whole tree with `recursive`.
@@ -1286,7 +1286,7 @@ wrote 799 bytes to summary.csv from budget.xlsx (sheet 'Summary')
 Folder access is granted in the OpenSheets app, and only there:
 
   1. Open OpenSheets.
-  2. File ▸ Grant Folder Access… (or the Workspace section of Settings).
+  2. Click + in the Files sidebar (or just open a file — its folder is granted with it).
   3. Choose the folder your spreadsheets live in.
 
 Neither `opensheets` nor `opensheets-mcp` can grant a folder — they do not link AppKit and
@@ -1294,11 +1294,10 @@ cannot present the panel, which is what stops an agent from granting itself acce
 shelling out to this binary.
 ```
 
-One line of that output is stale, and it is quoted as shipped rather than cleaned up: there is no
-"Workspace section of Settings" — Settings has Syncing, Saving and Claude, and revoking a grant
-lives in the folder's menu in the Files sidebar. The same wrong pointer was fixed in the app's
-grant alert when Settings ▸ Claude landed; the CLI's copy of it was not, and the string lives in
-the CLI source, outside this document's reach.
+That output used to point at two things that do not exist — a "File ▸ Grant Folder Access…" menu
+that was never built, and a "Workspace section of Settings" (Settings has Syncing, Saving and
+Claude) — and this section used to quote the lie as shipped. Both the string and the quote now
+name the real affordances: the sidebar's +, and opening a file.
 
 ### 6.3 Flags and exit codes
 

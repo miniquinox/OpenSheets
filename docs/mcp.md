@@ -105,7 +105,7 @@ that does not resolve inside a folder you granted:
 Grants are made **in the OpenSheets app**, and only there:
 
 1. Open OpenSheets.
-2. **File ▸ Grant Folder Access…**
+2. Click **+** in the Files sidebar (or the launcher's **Grant folder** button).
 3. Choose the folder your spreadsheets live in (`~/Documents/Finance`, a project directory,
    whatever fits) — you can grant several.
 

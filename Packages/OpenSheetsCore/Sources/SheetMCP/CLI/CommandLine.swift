@@ -697,7 +697,7 @@ public enum OpenSheetsCLI {
     Folder access is granted in the OpenSheets app, and only there:
 
       1. Open OpenSheets.
-      2. File ▸ Grant Folder Access… (or the Workspace section of Settings).
+      2. Click + in the Files sidebar (or just open a file — its folder is granted with it).
       3. Choose the folder your spreadsheets live in.
 
     Neither `opensheets` nor `opensheets-mcp` can grant a folder — they do not link AppKit and
