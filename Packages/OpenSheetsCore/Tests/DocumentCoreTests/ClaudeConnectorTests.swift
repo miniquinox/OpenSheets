@@ -105,6 +105,40 @@ struct ClaudeConnectorTests {
         #expect(!FileManager.default.fileExists(atPath: box.claudeCodeBackup.path(percentEncoded: false)))
     }
 
+    @Test("An unwritable home refuses the connect and leaves the config untouched")
+    func anUnwritableDirectoryRefusesTheConnect() throws {
+        let box = try Sandbox()
+        try box.seedClaudeCode(#"{"keep": true}"#)
+        let before = try Data(contentsOf: box.paths.claudeCodeConfig)
+        let connector = box.connector(bundled: box.binary)
+
+        // r-x: the directory can be read and traversed but nothing in it can be created —
+        // neither the backup sibling nor the atomic writer's temporary. Restored in a defer so
+        // the sandbox can be cleaned up whatever the assertions decide.
+        let directory = box.root.path(percentEncoded: false)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory)
+        }
+
+        do {
+            try connector.connect(.claudeCode)
+            Issue.record("connect must refuse when the directory cannot be written")
+        } catch {
+            // The backup copy is the first write attempted, so this surfaces as fileNotWritable;
+            // if the ordering ever changes, the atomic replace's own code is equally acceptable.
+            switch error {
+            case .fileNotWritable, .atomicReplaceFailed: break
+            default:
+                Issue.record("expected a write refusal, got \(error)")
+            }
+        }
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory)
+        #expect(try Data(contentsOf: box.paths.claudeCodeConfig) == before)
+        #expect(!FileManager.default.fileExists(atPath: box.claudeCodeBackup.path(percentEncoded: false)))
+    }
+
     @Test("A successful write over an existing file leaves a backup sibling with the pre-write bytes")
     func backupHoldsThePreviousGeneration() throws {
         let box = try Sandbox()
@@ -260,7 +294,7 @@ struct ClaudeConnectorTests {
         let entry = try #require(servers[ClaudeConnector.serverName] as? [String: Any])
         #expect(entry.count == 2)
         #expect(entry["command"] as? String == box.binary.path(percentEncoded: false))
-        #expect(entry["args"] as? [String] == [])
+        #expect((entry["args"] as? [String])?.isEmpty == true)
 
         // No pre-existing file, so nothing to back up — a zero-byte "backup" would be a trap.
         let backup = box.paths.desktopConfig.appendingPathExtension("opensheets-backup")
