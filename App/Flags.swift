@@ -24,6 +24,7 @@ extension DocumentCore.Flags {
             ("changeTracking", changeTrackingEnabled),
             ("sheetStructure", sheetStructureEditing),
             ("explorer", explorerEnabled),
+            ("handshake", handshakeEnabled),
         ]
         return states.map { "\($0.0)=\($0.1 ? "on" : "off")" }.joined(separator: " ")
     }

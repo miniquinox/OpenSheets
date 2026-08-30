@@ -40,6 +40,14 @@ public enum CLISurface {
     /// undo, then the things that are about the machine rather than a workbook.
     public static let commands: [Command] = [
         Command(
+            name: "workspace", tool: "list_workspace", form: "workspace",
+            summary: "Folders in the Files panel, grants, and open tabs"
+        ),
+        Command(
+            name: "ls", tool: "list_files", form: "ls <folder> [--recursive] [--limit N]",
+            summary: "List spreadsheet files in a granted folder"
+        ),
+        Command(
             name: "describe", tool: "describe", form: "describe <file>",
             summary: "Summarise every sheet: used range, header row, column types"
         ),

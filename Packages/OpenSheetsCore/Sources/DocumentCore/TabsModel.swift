@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SheetModel
+import SheetStore
 
 /// The workspace's open tabs — one per file, in the order the user put them in.
 ///
@@ -71,20 +72,24 @@ public final class TabsModel {
 
     public var isEmpty: Bool { tabs.isEmpty }
 
-    /// The tab set as it goes into the `workspace.tabs` preference (§1.7).
+    /// The tab set as it goes into the `workspace.tabs` preference (§1.7) — see
+    /// ``SheetStore/PersistedOpenTabs``, which owns the fields.
     ///
-    /// Paths rather than identities: the identity is a *resolved* path, and writing that down would
-    /// silently rewrite a user's symlinked path into whatever it pointed at on the day they opened
-    /// it. The tab's own URL is the spelling they gave us.
-    public struct PersistedTabs: Codable, Sendable, Equatable {
-        public var paths: [String]
-        public var activeIndex: Int?
+    /// The payload lives in `SheetStore` so `SheetMCP` can read the same row and tell an agent
+    /// which files are open in the app; `SheetMCP` cannot import `DocumentCore`. The nested name
+    /// stays because every call site — including `App/OpenSheetsApp.swift`, which this task must
+    /// not edit — spells it `TabsModel.PersistedTabs`, and a typealias keeps that a fact about
+    /// one type rather than a second declaration of it.
+    public typealias PersistedTabs = PersistedOpenTabs
 
-        public init(paths: [String] = [], activeIndex: Int? = nil) {
-            self.paths = paths
-            self.activeIndex = activeIndex
-        }
-    }
+    /// The preference key that payload is stored under.
+    ///
+    /// Re-exported here because `App/` does not import `SheetStore`, and the alternative is what
+    /// was there before: the app spelling `"workspace.tabs"` again in its own constant. Two string
+    /// literals for one row is how the reader and the writer end up disagreeing after a rename,
+    /// and this row is now read by `SheetMCP` as well, so the blast radius is wider than the tab
+    /// strip — `list_workspace` would quietly report no open files.
+    public static let preferenceKey = WorkspacePreferenceKey.tabs
 
     @ObservationIgnored
     private let openDocument: @MainActor (URL, WorkspaceConsent) async throws(SheetError) -> DocumentModel

@@ -234,6 +234,11 @@ struct RootView: View {
         )
         tabs = model
         OpenActions.installTabs(model, seed: request.url)
+        // The app↔agent handshake, both halves, behind `OSFlagHandshake`. Here because this is
+        // where the tab strip comes into existence and `OpenActions.open` — the single open funnel
+        // a reveal request has to travel through — is reachable. Everything else about it lives in
+        // `DocumentCore`; this is the one line the app target owes it.
+        app.startHandshake(tabs: model, openFile: { url in OpenActions.open(url) })
         // The folder half. Pinned after the tabs model is installed so the window exists to show
         // it, and pinned rather than merely granted: the folder the user just opened has to be a
         // root even when it sits inside one they granted months ago, or it lands forty rows down
@@ -288,8 +293,8 @@ enum OpenActions {
     static let sceneID = "main"
 
     /// PLAN.md §1.7. Unknown preference keys are never read, so a rollback leaves this behind
-    /// harmlessly.
-    static let tabsPreferenceKey = "workspace.tabs"
+    /// harmlessly. The string itself lives in `SheetStore`, which `SheetMCP` also reads it from.
+    static let tabsPreferenceKey = TabsModel.preferenceKey
 
     /// The workspace's tabs, installed by the workspace window when it appears. Private because
     /// the menu bar reaches them through `@FocusedValue(\.workspaceTabs)` instead: a focused value
@@ -384,6 +389,10 @@ enum OpenActions {
         workspaceRequested = false
         closeActiveTab = nil
         closeWorkspaceWindow = nil
+        // The handshake was started with *this* tab strip. Leaving it running would keep a timer
+        // and a directory watch alive for a workspace that is gone, and leave presence records
+        // claiming files are open for the ninety seconds it takes them to age out.
+        app?.stopHandshake()
     }
 
     /// ``DocumentCore/TabsModel``'s persist hook: the tab set, as JSON, in the preference table.

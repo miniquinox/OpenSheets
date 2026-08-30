@@ -4,6 +4,7 @@ import AppKit
 import Foundation
 import GlassUI
 import Observation
+import SheetMCP
 import SheetModel
 import SheetStore
 
@@ -130,6 +131,26 @@ public final class AppModel {
     /// else entirely. A per-instance value cannot be raced by a suite that does not share the
     /// instance.
     @ObservationIgnored public var changeTrackingForNewDocuments: Bool?
+
+    /// Whether this instance runs the app↔agent handshake. `nil` asks ``Flags``, which is what the
+    /// app wants.
+    ///
+    /// Per-instance for the reason ``changeTrackingForNewDocuments`` is, and it is worth repeating
+    /// rather than cross-referencing: `OSFlagHandshake` is process-wide, so a suite that wrote
+    /// `false` to prove the kill switch really withholds both objects could have another suite
+    /// write `true` back underneath it, and the assertion "nothing was instantiated" would fail
+    /// somewhere else entirely. A per-instance value cannot be raced by a suite that does not share
+    /// the instance.
+    @ObservationIgnored public var handshakeForThisInstance: Bool?
+
+    /// Publishes what this app has open, so `get_selection` has something true to report. `nil`
+    /// until ``startHandshake(tabs:openFile:)`` runs, and permanently `nil` with the flag off.
+    @ObservationIgnored public private(set) var handshakePublisher: HandshakePublisher?
+
+    /// Consumes `reveal_range` requests. `nil` under the same conditions as ``handshakePublisher``
+    /// — the kill switch withholds *both*, so "off" means no writing and no reading rather than
+    /// half a protocol.
+    @ObservationIgnored public private(set) var handshakeRevealConsumer: HandshakeRevealConsumer?
 
     public init(store: SheetStore) {
         self.store = store
@@ -276,6 +297,10 @@ public final class AppModel {
     public func closeDocument(_ model: DocumentModel) {
         model.close()
         open.removeValue(forKey: Self.documentKey(for: model.url))
+        // Here rather than in the tab layer because this is the funnel every close goes through,
+        // and a presence record left behind is ninety seconds of the server confidently reporting
+        // a selection in a file the user shut.
+        handshakePublisher?.withdraw(model.url)
     }
 
     /// Live documents. Used by the "save everything before quitting" prompt.
@@ -359,6 +384,113 @@ public final class AppModel {
         reloadRecents()
     }
 
+    // MARK: - The app↔agent handshake
+
+    /// Where the two handshake files live: `<applicationSupport>/Handshake`.
+    ///
+    /// Derived from the database's own location rather than from
+    /// ``SheetStore/SheetStore/Configuration/standard()``, and the difference matters: a test — or
+    /// a future second configuration — runs against a temporary application support directory, and
+    /// asking for the standard one would have the app publishing into `~/Library` while its store
+    /// lived somewhere else. `store.database.url` is `<applicationSupport>/OpenSheets.sqlite` by
+    /// construction (``SheetStore/Database/standardURL(applicationSupport:)``), so its parent is the
+    /// directory this store actually uses. `SheetStore` does not expose the configuration it was
+    /// built with, and this is the one honest way to recover it without changing that type.
+    public var handshakeDirectory: URL {
+        store.database.url.deletingLastPathComponent().appendingPathComponent("Handshake")
+    }
+
+    /// Starts publishing presence and consuming reveal requests, unless the kill switch is off.
+    ///
+    /// # Why it takes the tab strip
+    ///
+    /// Both halves are questions about *tabs*, not about documents: what is open and ready is the
+    /// set of `.ready` tabs, and honouring a reveal means fronting a tab or opening one. The tab
+    /// strip belongs to the workspace window, so the app layer hands it over here rather than this
+    /// reaching for it — which also means the app-target diff for this whole feature is one call.
+    ///
+    /// `openFile` is injected for the same reason and is the one thing this cannot supply itself:
+    /// it must be the app's single open funnel (`OpenActions.open`), so a file arriving from an
+    /// agent gets the same consent, recents and dedupe treatment as one the user double-clicked.
+    ///
+    /// Calling this twice is a no-op — the workspace window rebuilds its view body more than once,
+    /// and a second publisher would mean two timers writing the same records.
+    public func startHandshake(tabs: TabsModel, openFile: @escaping @MainActor (URL) -> Void) {
+        guard handshakeForThisInstance ?? Flags.handshakeEnabled else { return }
+        guard handshakePublisher == nil, handshakeRevealConsumer == nil else { return }
+        let handshake = AppHandshake(applicationSupport: store.database.url.deletingLastPathComponent())
+
+        let publisher = HandshakePublisher(
+            handshake: handshake,
+            // `weak` so this closure cannot be what keeps a closed workspace's tab strip alive.
+            // An absent strip publishes nothing, which is the truth: there are no open tabs.
+            documents: { [weak tabs] in tabs?.tabs.compactMap(HandshakeDocumentSnapshot.init(tab:)) ?? [] }
+        )
+        publisher.start()
+        handshakePublisher = publisher
+
+        let consumer = HandshakeRevealConsumer(
+            directory: handshake.directory,
+            actions: HandshakeRevealActions(
+                // Read through `store.grants` rather than through the cached ``grants`` array: a
+                // revoke has to take effect on the next request, not on the next reload.
+                isGranted: { [weak self] url in self?.store.grants.isAllowed(url) ?? false },
+                hasOpenTab: { [weak tabs] url in
+                    let key = Self.documentKey(for: url)
+                    return tabs?.tabs.contains { $0.id == key } ?? false
+                },
+                activate: { [weak tabs] url in tabs?.activate(Self.documentKey(for: url)) },
+                openFile: openFile,
+                reveal: { [weak tabs] request in
+                    guard let tabs else { return }
+                    await Self.reveal(request, in: tabs)
+                }
+            )
+        )
+        consumer.start()
+        handshakeRevealConsumer = consumer
+    }
+
+    /// Stops both halves and withdraws every record. Called when the workspace window goes away.
+    public func stopHandshake() {
+        handshakePublisher?.stop()
+        handshakePublisher = nil
+        handshakeRevealConsumer?.stop()
+        handshakeRevealConsumer = nil
+    }
+
+    /// Waits for `request`'s tab to be ready, then reveals the range in it.
+    ///
+    /// # Why this polls
+    ///
+    /// A reveal that opens a file has to wait for the read to finish, and ``TabsModel`` offers no
+    /// completion for an open somebody else started — its `open(_:consent:)` is the awaitable, and
+    /// this arrives after `OpenActions.open` has already launched one. Adding a callback would mean
+    /// editing the tab model to serve one caller. A tenth of a second, up to ten seconds, on a path
+    /// that runs when an agent asks a human to look at something is not a cost worth a new hook.
+    ///
+    /// Giving up silently is correct: `reveal_range` promises the app *may* act, and its own result
+    /// text already says the app decides.
+    private static func reveal(_ request: HandshakeRevealRequest, in tabs: TabsModel) async {
+        let key = documentKey(for: request.url)
+        for _ in 0 ..< 100 {
+            if let tab = tabs.tabs.first(where: { $0.id == key }) {
+                switch tab.phase {
+                case let .ready(document):
+                    HandshakeReveal.apply(request, to: document)
+                    return
+                // The file will not open — a revoked grant, a deleted file. The tab already says so
+                // where the user is looking; there is nothing for a reveal to add.
+                case .failed:
+                    return
+                case .loading:
+                    break
+                }
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
     // MARK: - MCP
 
     /// Whether `opensheets-mcp` is registered with Claude Code.
@@ -440,6 +572,21 @@ public enum Flags {
     /// itself still exists — both hosts take a non-optional reference and an empty `@Observable`
     /// costs a pointer — but it does no work, which is the part that would have been a lie.
     public static var explorerEnabled: Bool { bool("OSFlagExplorer", default: true) }
+
+    /// The app↔agent handshake: publishing what is open, and acting on `reveal_range`. **On.**
+    ///
+    /// A kill switch rather than a rollout gate, and it exists because this is the one feature in
+    /// the app that **acts on input from outside the process**. A `*.request.json` file is written
+    /// by whatever is on the other end of the MCP stream, and the threat model assumes that is
+    /// hostile. Everything downstream of it is grant-checked and goes through the normal open
+    /// funnel, so the switch is not load-bearing for safety — but a user who wants the app to stop
+    /// reading anything an agent wrote should not have to uninstall the server to get it, and a bug
+    /// in this path should be one `defaults write` away from being off.
+    ///
+    /// Off costs nothing, and that is structural rather than asserted: ``AppModel/startHandshake(tabs:openFile:)``
+    /// returns before either object exists, so there is no timer, no file descriptor and no
+    /// directory watch — see `HandshakePublisherTests.theKillSwitchWithholdsBothHalves`.
+    public static var handshakeEnabled: Bool { bool("OSFlagHandshake", default: true) }
 
     /// Sheet add, remove and reorder. **Off**, and it must stay off in v0.1: A2's writer throws
     /// `SheetError.notImplemented` for all three rather than producing a package whose
