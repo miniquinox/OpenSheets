@@ -84,8 +84,11 @@ struct OpenSheetsApp: App {
         .commands { DocumentCommands(app: app) }
 
         Settings {
-            PreferencesView(app: app)
-                .glassAppearance(appearance.context(for: .light))
+            // No appearance pinned here: the pane reads `colorScheme` itself and follows the
+            // system like every other window. A scene cannot read the environment, so the
+            // hardcoded `.light` this used to apply was the only way to decide at this level —
+            // and it was the wrong decision every time the system was dark.
+            PreferencesView(app: app, appearance: appearance)
         }
     }
 }
@@ -713,7 +716,7 @@ enum OpenActions {
 
         \(folder.path(percentEncoded: false))
 
-        You can revoke this at any time in Settings \u{25B8} Workspace.
+        You can revoke this at any time from the folder\u{2019}s menu in the Files sidebar.
         """
         alert.addButton(withTitle: "Grant and Open")
         alert.addButton(withTitle: "Cancel")

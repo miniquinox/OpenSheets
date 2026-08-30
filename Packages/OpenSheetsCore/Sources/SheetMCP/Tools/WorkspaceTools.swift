@@ -263,8 +263,8 @@ public enum WorkspaceTools {
             ? "workspace (scoped to one folder) · nothing granted here"
             : "workspace · nothing granted yet")
             + "\n\nNo folders are granted yet, so there is nothing to list. The user grants one in "
-            + "the OpenSheets app — File ▸ Grant Folder Access… — and neither this server nor the "
-            + "`opensheets` command can grant a folder itself."
+            + "the OpenSheets app — the + button in the Files sidebar, or simply opening a file — "
+            + "and neither this server nor the `opensheets` command can grant a folder itself."
     }
 
     // MARK: - list_files: the two traversals

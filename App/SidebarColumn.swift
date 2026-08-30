@@ -206,7 +206,10 @@ struct SidebarColumn: View {
             }
         case .copyMCPSetupCommand:
             NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(AppModel.mcpSetupCommand, forType: .string)
+            // The instance property, not the static: the static assumes `opensheets-mcp` is on
+            // `$PATH`, which stopped being true when the binary moved inside the app bundle. The
+            // instance resolves the absolute path the Connect button would register.
+            NSPasteboard.general.setString(app.setupCommand, forType: .string)
         case let .showFeedEntry(id):
             guard let entry = model.feed.first(where: { $0.id == id }),
                   let name = entry.sheetName,

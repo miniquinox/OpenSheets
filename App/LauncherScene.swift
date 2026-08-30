@@ -175,12 +175,22 @@ struct LauncherScene: View {
     }
 }
 
-/// Preferences. Short on purpose.
+/// Preferences. Short on purpose — except Claude, which is the connect/disconnect UI and earns
+/// its rows: registration used to be a command the user pasted into a shell, and the whole point
+/// of the pane is that the labelled button now *is* that user action.
 struct PreferencesView: View {
     let app: AppModel?
+    let appearance: AccessibilityAppearance
+
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("OSAutoSave") private var autoSave = false
     @AppStorage("OSFlagSnapshots") private var snapshots = true
     @AppStorage("OSFlagMCP") private var mcp = true
+
+    /// One inline failure per client, in the launcher's rejection idiom: shown under the row
+    /// that refused, cleared by that row's next success. Never an alert — a config file
+    /// declining a write is a normal thing to be told, not an incident.
+    @State private var rejections: [ClaudeClient: String] = [:]
 
     var body: some View {
         Form {
@@ -200,14 +210,132 @@ struct PreferencesView: View {
                     .foregroundStyle(.secondary)
             }
             Section("Claude") {
-                Toggle("Show MCP status", isOn: $mcp)
                 if let app {
+                    serverRow(for: app)
+                    clientRow(for: .claudeCode, in: app)
+                    clientRow(for: .claudeDesktop, in: app)
                     LabeledContent("Granted folders", value: "\(app.grants.count)")
                 }
+                Toggle("Show MCP status", isOn: $mcp)
             }
         }
         .formStyle(.grouped)
         .frame(width: 460)
         .padding()
+        // Settings used to pin itself to the light appearance while every other window followed
+        // the system — same chrome, different rules. The decision lives here rather than in the
+        // `Settings` scene because `colorScheme` is an environment fact only a view can read.
+        .glassAppearance(appearance.context(for: colorScheme))
+        .onAppear {
+            app?.claude.refresh()
+            app?.refreshMCPStatus()
+        }
+    }
+
+    // MARK: - Settings ▸ Claude
+
+    /// The binary a Connect click would register, or the honest absence. `DetailRow` rather than
+    /// `LabeledContent` because middle truncation is the row's own behaviour, and a path is read
+    /// by its two ends.
+    @ViewBuilder
+    private func serverRow(for app: AppModel) -> some View {
+        if let binary = app.claude.serverBinary {
+            DetailRow("Server", binary.path(percentEncoded: false), monospaced: true)
+        } else {
+            DetailRow("Server", "missing from this build")
+        }
+    }
+
+    private func clientRow(for client: ClaudeClient, in app: AppModel) -> some View {
+        ClaudeClientRow(model: rowModel(for: client, in: app)) { action in
+            switch action {
+            case .buttonTapped:
+                performClientAction(for: client, in: app)
+            }
+        }
+    }
+
+    /// `ClaudeConnection` → row model. The captions are written here and not in GlassUI because
+    /// they are policy, not presentation: what a click will actually do (the consent line — the
+    /// button is the consent, so the caption must say what it consents to), whether Desktop needs
+    /// a restart, where a missing client can be downloaded. The row only knows how to draw them.
+    private func rowModel(for client: ClaudeClient, in app: AppModel) -> ClaudeClientRowModel {
+        let name = client == .claudeCode ? "Claude Code" : "Claude Desktop"
+        let hasBinary = app.claude.serverBinary != nil
+        let missingBinary = "The server binary is missing from this build."
+        let status: ClaudeClientRowModel.Status
+        let caption: String
+        var buttonLabel: String?
+        var buttonEnabled = false
+
+        switch app.claude.connections[client] ?? .notInstalled {
+        case .notInstalled:
+            status = .notInstalled
+            // No button at all rather than a disabled Connect: there is no config file to write
+            // for a client that has never run, so the pointer is the only useful control.
+            caption = client == .claudeCode
+                ? "Not installed — get it at claude.com/code"
+                : "Not installed"
+        case .notConnected:
+            status = .notConnected
+            let consent = client == .claudeCode
+                ? "Adds an `opensheets` entry to ~/.claude.json. A backup is kept beside it."
+                : "Adds an entry to Claude Desktop's config. A backup is kept beside it."
+            caption = hasBinary ? consent : "\(consent) \(missingBinary)"
+            buttonLabel = "Connect"
+            buttonEnabled = hasBinary
+        case let .connected(command):
+            status = .connected
+            caption = client == .claudeCode
+                ? "Registered at \(command). New Claude Code sessions will see it."
+                : "Registered at \(command). Restart Claude Desktop to pick it up."
+            buttonLabel = "Disconnect"
+            buttonEnabled = true
+        case .stale:
+            status = .stale
+            caption = "Connected, but the registered binary is missing."
+            buttonLabel = "Reconnect"
+            buttonEnabled = hasBinary
+        case let .unreadable(reason):
+            status = .unreadable
+            // The reason *is* the caption — the connector already wrote the sentence ("could not
+            // be parsed, so it was not modified"), and repeating it in different words here would
+            // be two spellings of one refusal.
+            caption = reason
+        }
+
+        return ClaudeClientRowModel(
+            clientName: name,
+            status: status,
+            caption: caption,
+            buttonLabel: buttonLabel,
+            buttonEnabled: buttonEnabled,
+            rejection: rejections[client]
+        )
+    }
+
+    /// The app's only connect/disconnect call sites. Keeping them here, behind the labelled
+    /// button, is the enforced half of the policy line: the deny list keeps the *agent* out of
+    /// Claude's config, and this pane is where the *user's* action lives.
+    private func performClientAction(for client: ClaudeClient, in app: AppModel) {
+        do {
+            switch app.claude.connections[client] {
+            case .connected:
+                try app.claude.disconnect(client)
+            case .notConnected, .stale:
+                // Reconnect is a connect: the same write with a freshly resolved binary path.
+                try app.claude.connect(client)
+            case .notInstalled, .unreadable, .none:
+                // These states draw no button; an action that arrives anyway has nothing to do.
+                break
+            }
+            rejections[client] = nil
+        } catch {
+            rejections[client] = error.message
+        }
+        // The connector refreshed itself, but the sidebar's readout maps through `AppModel` —
+        // asking for both keeps the pane and the Claude panel telling one story, live.
+        app.claude.refresh()
+        app.refreshMCPStatus()
     }
 }

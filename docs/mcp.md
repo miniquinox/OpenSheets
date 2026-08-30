@@ -36,7 +36,12 @@ made by an agent and an edit made by a person produce the same file.
 
 ## 1. Install
 
-Build the two binaries and put them somewhere on `PATH`:
+The server ships inside the app: `Scripts/build.sh` embeds `opensheets-mcp` at
+`OpenSheets.app/Contents/MacOS/opensheets-mcp`, so building the app is the whole install.
+`DOCUMENTATION.md` §2.5 is the current reference.
+
+The optional CLI — and a server binary on `PATH` for other stdio clients — is still a plain
+build-and-copy:
 
 ```bash
 cd Packages/OpenSheetsCore
@@ -55,27 +60,37 @@ opensheets --version      # opensheets 0.1.0
 opensheets tools          # the MCP tool surface
 ```
 
-## 2. Register it with Claude Code
+## 2. Register it with Claude
+
+Open **OpenSheets ▸ Settings (⌘,) ▸ Claude** and click **Connect** — one row for Claude Code, one
+for Claude Desktop (which needs a restart to notice). The app writes the registration itself,
+backup-first and atomically, and refuses to touch a config file it could not parse. **Disconnect**
+undoes it. `DOCUMENTATION.md` §3.2 has the details and §9.5 the policy line; the short version is
+that the click is the user action the deny-list model always required, and the *agent* still
+cannot read or write Claude's config.
+
+The terminal path still works and registers the same server:
 
 ```bash
-claude mcp add opensheets -- /usr/local/bin/opensheets-mcp
+claude mcp add opensheets -- /path/to/OpenSheets.app/Contents/MacOS/opensheets-mcp
 ```
 
 Then confirm Claude Code can reach it:
 
 ```bash
-claude mcp list           # opensheets: /usr/local/bin/opensheets-mcp (stdio) - ✔ Connected
+claude mcp list
 ```
 
-That is the whole registration. The server speaks MCP over stdio (JSON-RPC 2.0, newline
-delimited) and needs no configuration, no port, and no API key.
+The server speaks MCP over stdio (JSON-RPC 2.0, newline delimited) and needs no configuration, no
+port, and no API key.
 
 Stdio is the *only* transport, which decides what can use it: any client that can spawn a local
 subprocess — Claude Code, Claude Desktop, local-LLM harnesses — and **not** ChatGPT on the web or any
 other browser-hosted assistant, which require a remotely hosted server over HTTPS with OAuth. That is
 a deliberate scope decision; `DOCUMENTATION.md` §5.9 explains why.
 
-To remove it again: `claude mcp remove opensheets`.
+To remove it again: **Disconnect** in Settings ▸ Claude (which also clears project-scope leftovers
+from old manual registrations), or `claude mcp remove opensheets`.
 
 ## 3. Grant a folder — this step is not optional
 
@@ -90,7 +105,7 @@ that does not resolve inside a folder you granted:
 Grants are made **in the OpenSheets app**, and only there:
 
 1. Open OpenSheets.
-2. **File ▸ Grant Folder Access…**
+2. Click **+** in the Files sidebar (or the launcher's **Grant folder** button).
 3. Choose the folder your spreadsheets live in (`~/Documents/Finance`, a project directory,
    whatever fits) — you can grant several.
 

@@ -7,7 +7,7 @@ The loop: you open a file → Claude Code edits it in your terminal → OpenShee
 exactly what changed, and lets you accept it. No Microsoft account, no plugin store, no cloud.
 The file is the API.
 
-> **Status: v0.1, pre-release.** The package builds and its 1,681 tests pass. The app builds and
+> **Status: v0.1, pre-release.** The package builds and its 1,696 tests pass. The app builds and
 > runs. Several release gates in [§12](#12-known-limitations-and-what-is-not-done) are genuinely
 > open, and this document names every one of them rather than rounding up.
 
@@ -136,10 +136,10 @@ Warnings-as-errors is applied with `-Xswiftc` rather than in `Package.swift`, be
 in a manifest makes a package unusable as a dependency — and `OpenSheets.xcodeproj` depends on this
 one by path.
 
-**Measured on this machine** (`swift test`, debug, warm build cache, load ≈ 0.4× cores):
+**Measured on this machine** (`swift test`, debug, while writing this revision):
 
 ```
-━ Test run with 1681 tests in 146 suites passed after 33.963 seconds with 8 known issues.
+━ Test run with 1696 tests in 147 suites passed after 36.092 seconds with 8 known issues.
 ```
 
 The 8 "known issues" are deliberate and are explained in [§10.7](#107-the-tests-that-are-supposed-to-fail).
@@ -203,7 +203,24 @@ Verified: `pgrep -fl` prints one line per process with its full bundle path, so 
 scratch directory is immediately visible. `CGWindowListCopyWindowInfo` attributes every on-screen
 window to its owning pid if you need to go further.
 
-### 2.5 Build and install the CLI and MCP binaries
+### 2.5 The MCP server ships inside the app
+
+Build the app and the server is inside it. `Scripts/build.sh` builds every SwiftPM product before
+it runs xcodebuild, and its last step copies the result into the bundle at
+`OpenSheets.app/Contents/MacOS/opensheets-mcp` — failing the build loudly if either the binary or
+the app is missing, because a silent skip would ship a Settings pane whose Connect button can never
+enable. (The copy lives in `build.sh` because the `.xcodeproj` has no copy phase and may not gain
+one — the project file is never edited, [§13.1](#131-repository-layout).)
+
+At runtime the app resolves that embedded copy with `Bundle.main.url(forAuxiliaryExecutable:)`, and
+registration is one click in **Settings ▸ Claude** ([§3.2](#32-connect-the-server-to-claude)) — no
+`sudo`, nothing on `PATH`. `/usr/local/bin/opensheets-mcp`, the manual install below, is only the
+fallback for when the bundled copy is absent.
+
+#### The CLI on your PATH (optional)
+
+The `opensheets` CLI — and a server binary you can point other stdio clients at — is still a plain
+install:
 
 ```bash
 cd Packages/OpenSheetsCore
@@ -215,7 +232,8 @@ sudo cp .build/release/opensheets-mcp .build/release/opensheets /usr/local/bin/
 Two invocations on purpose: SwiftPM's `--product` takes one product, and passing it twice silently
 builds only one of them.
 
-Measured: the first product took 48.5 s on a warm cache; each binary is ≈ 11.8 MB.
+Measured while writing this revision: the first product took 54.9 s starting from an empty
+`.build` (dependencies from SwiftPM's cache); each binary is ≈ 12.1 MB.
 
 Check they run:
 
@@ -223,15 +241,17 @@ Check they run:
 $ opensheets --version
 opensheets 0.1.0
 
-$ opensheets tools     # the 20-tool MCP surface, see §5
+$ opensheets tools     # the 22-tool MCP surface, see §5
+list_workspace
+  Show the user's workspace — required: none
+list_files
+  List spreadsheets in a folder — required: path
 describe
   Describe a workbook — required: path
-read_range
-  Read a range — required: path
 ...
 ```
 
-Both outputs above are literal, from the built binaries.
+Both outputs above are literal, from binaries built while writing this revision.
 
 ### 2.6 Feature flags
 
@@ -242,7 +262,7 @@ without a relaunch.
 | Key | Default | What it gates |
 | --- | --- | --- |
 | `OSFlagEditing` | **on** | cell editing |
-| `OSFlagMCP` | **on** | the MCP **status readout** — whether the app checks `~/.claude.json` to report the server as registered, and the launcher's "Show MCP status" toggle. It has never gated the handshake, despite what this table used to say. |
+| `OSFlagMCP` | **on** | the MCP **status readout** — whether the sidebar reports the server as registered; the "Show MCP status" toggle in Settings writes it. It has never gated the handshake, despite what this table used to say — and it does not gate Settings ▸ Claude either, which reads true state regardless. |
 | `OSFlagFormulaEngine` | **on** | evaluation and recalculation |
 | `OSFlagSnapshots` | **on** | restore points |
 | `OSFlagChangeTracking` | **on** | the changes chip and panel, the grid's standing tints, Set Checkpoint, and the baseline machinery behind all three. Off means no diffing happens at all — the flag removes the cost, not just the controls. |
@@ -290,7 +310,7 @@ This is the product. Everything else is in service of it.
 ([§9](#9-security-model) explains why this is a compile-time property rather than a policy).
 
 1. Open OpenSheets.
-2. **File ▸ Grant Folder Access…**
+2. Click **+** in the Files sidebar (or the launcher's **Grant folder** button).
 3. Choose the folder your spreadsheets live in.
 
 Opening a file through the app's own `Open…` panel also grants its parent folder. A file the app did
@@ -304,23 +324,51 @@ Granted folders:
   /private/tmp/opensheets-demo
 ```
 
-### 3.2 Register the server with Claude Code
+### 3.2 Connect the server to Claude
+
+Open **OpenSheets ▸ Settings (⌘,) ▸ Claude** and click **Connect** on the Claude Code row. That is
+the whole registration: the app writes an `opensheets` entry pointing at its own bundled server
+binary ([§2.5](#25-the-mcp-server-ships-inside-the-app)) into `~/.claude.json` — user scope, so
+every project sees it — and the row reads "Connected". Claude Desktop has its own row and the same
+click, plus a restart of Desktop, which reads its config at launch. **Disconnect** undoes it —
+including any project-scope leftovers from old manual registrations — and if the app was moved or
+rebuilt so the registered binary no longer exists, the row says so and the button becomes
+**Reconnect**, which rewrites the entry with the freshly resolved path.
+
+The write is guarded three ways: the previous file is copied to a `<name>.opensheets-backup`
+sibling first, the replacement is atomic, and **a config file that does not parse is never
+written** — the pane shows the refusal inline instead. One declared trade-off: the write
+re-serialises the file with sorted, pretty-printed keys, so the *content* is preserved but the
+*layout* is normalised, and a user who diffs `~/.claude.json` will see a large formatting-only diff
+on first connect. The backup sibling is the mitigation.
+[§9.5](#95-who-writes-claudes-config--the-line-the-connect-button-draws) has the policy line this
+does and does not move.
+
+The terminal path still works and registers the same server. When nothing is registered yet the
+sidebar's Claude panel says "Connect in Settings ▸ Claude (⌘,)." and, for the terminal-inclined,
+offers this command to copy, with the server's resolved absolute path filled in when one exists:
 
 ```bash
-claude mcp add opensheets -- /usr/local/bin/opensheets-mcp
-claude mcp list          # opensheets: /usr/local/bin/opensheets-mcp (stdio) - ✔ Connected
+claude mcp add opensheets -- /path/to/OpenSheets.app/Contents/MacOS/opensheets-mcp
+claude mcp list
 ```
 
-That is the whole registration. The server speaks MCP over stdio (newline-delimited JSON-RPC 2.0)
-and needs no configuration, no port, and no API key. Remove it with `claude mcp remove opensheets`.
+The server speaks MCP over stdio (newline-delimited JSON-RPC 2.0) and needs no configuration, no
+port, and no API key. Remove it with Disconnect, or `claude mcp remove opensheets`.
 
-> **Unverified.** The registration command above has **not** been run against a live Claude Code
-> client in this repository's history, and was not run while writing this document — registering
-> persistently means writing `~/.claude.json`, which is on the server's own deny-list and is not
-> something an agent should do unasked. What *has* been verified is the shipped binary driven over
-> real JSON-RPC as a subprocess: initialize, version negotiation, notifications, `tools/list`,
-> `tools/call`, malformed-frame recovery and EOF shutdown. See
-> [§12.1](#121-release-gates-that-are-genuinely-open).
+> **Unverified.** Nobody has clicked Connect on a real screen: the Settings window has not been
+> opened in this repository's history, no button in it has been pressed, and no live
+> `claude mcp list` has been observed confirming a registration the app wrote. What *has* been
+> verified is the connector underneath the button, in process and against real files — 12 tests
+> covering idempotent connect, content preservation through the rewrite (junk keys, integers and
+> booleans survive), the parse-refusal leaving the file byte-identical, the backup sibling,
+> disconnect across both scopes, stale detection and reconnect, and binary-resolution order — plus
+> the shipped server binary driven over real JSON-RPC as a subprocess: initialize, version
+> negotiation, notifications, `tools/list`, `tools/call`, malformed-frame recovery and EOF
+> shutdown. The pane
+> itself is compile-verified only. Treat the button as implemented-and-model-tested, not as
+> demonstrated — a UI claim outrunning the code is the defect class §12.2 records this project
+> committing before. See [§12.1](#121-release-gates-that-are-genuinely-open).
 
 ### 3.3 A worked example, start to finish
 
@@ -571,17 +619,17 @@ Line counts from `find <dir> -name '*.swift' -exec cat {} + | wc -l`; test count
 | `SheetFormat` | 7,655 | 26 | 174 | xlsx and csv, read and write. The hardened XML pull parser, the surgical writer, dialect and encoding sniffing. |
 | `SheetFormula` | 9,062 | 31 | 155 | Lexer, parser, dependency graph, evaluator, 203 functions, reference transforms. |
 | `GridKit` | 7,861 | 27 | 196 | The virtualised AppKit grid renderer, geometry, text layout cache, selection, panes, flash. |
-| `GlassUI` | 12,172 | 36 | 151 | Design tokens (`DS`), every glass surface, the appearance context, the component gallery. |
+| `GlassUI` | 12,358 | 37 | 153 | Design tokens (`DS`), every glass surface, the appearance context, the component gallery. |
 | `SheetStore` | 6,280 | 23 | 179 | File watcher, the sync state machine, atomic writes, fingerprints, snapshots, workspace grants, the directory lister and walker, SQLite. |
-| `SheetMCP` | 7,433 | 28 | 167 | The **22-tool** surface, the JSON-RPC server (stdio only), the CLI, the untrusted-content envelope, `describe`'s profiler, the handshake's server half. |
-| `DocumentCore` | 7,843 | 25 | 275 | Wave-2 wiring: `AppModel`, `DocumentModel`, window rules, the theme bridge, `Flags`, the workspace tree, the handshake's app half. |
+| `SheetMCP` | 7,489 | 28 | 168 | The **22-tool** surface, the JSON-RPC server (stdio only), the CLI, the untrusted-content envelope, `describe`'s profiler, the handshake's server half. |
+| `DocumentCore` | 8,262 | 26 | 287 | Wave-2 wiring: `AppModel`, `DocumentModel`, window rules, the theme bridge, `Flags`, the workspace tree, the handshake's app half, the Claude connector. |
 | `TestSupport` | 4,348 | 11 | 121 | Builders, fakes, matchers, the fixture library, the benchmark harness. Ships in the package so every test target can use it without a cycle. |
 | `opensheets` / `opensheets-mcp` | 33 | 2 | — | Shims over `SheetMCP.OpenSheetsCLI` — 14 and 19 lines, mostly comment. |
-| **Package total** | **71,566** | **232** | **1,681** | |
-| `App/` | 3,786 | 10 | 0 | SwiftUI scenes and menus only. |
+| **Package total** | **72,227** | **234** | **1,696** | |
+| `App/` | 3,920 | 10 | 0 | SwiftUI scenes and menus only. |
 
 *(Line counts vary by a few dozen depending on how trailing newlines are counted; treat them as
-"about 71,500 in the package and about 3,800 in the app", which is the ratio that matters.)*
+"about 72,200 in the package and about 3,900 in the app", which is the ratio that matters.)*
 
 `DocumentCore` is the one place that imports every other target at once. It is where the components
 are wired together, and it is the only layer allowed to know about more than one of them.
@@ -679,11 +727,13 @@ and an edit made by a person produce the same file.
 
 ### 5.1 Setup
 
-Build and install per [§2.5](#25-build-and-install-the-cli-and-mcp-binaries), grant a folder per
-[§3.1](#31-grant-a-folder), then:
+Build the app — the server is embedded in it
+([§2.5](#25-the-mcp-server-ships-inside-the-app)) — grant a folder per
+[§3.1](#31-grant-a-folder), then click **Connect** in **Settings ▸ Claude**
+([§3.2](#32-connect-the-server-to-claude)). The terminal alternative registers the same binary:
 
 ```bash
-claude mcp add opensheets -- /usr/local/bin/opensheets-mcp
+claude mcp add opensheets -- /path/to/OpenSheets.app/Contents/MacOS/opensheets-mcp
 claude mcp list
 ```
 
@@ -884,8 +934,8 @@ and sends it hunting a configuration problem:
 workspace · nothing granted yet
 
 No folders are granted yet, so there is nothing to list. The user grants one in the OpenSheets
-app — File ▸ Grant Folder Access… — and neither this server nor the `opensheets` command can
-grant a folder itself.
+app — the + button in the Files sidebar, or simply opening a file — and neither this server nor
+the `opensheets` command can grant a folder itself.
 ```
 
 `list_files` lists one granted folder, one level deep by default or the whole tree with `recursive`.
@@ -1116,7 +1166,7 @@ use it.
 | Client | Works | Why |
 | --- | --- | --- |
 | **Claude Code** | yes | Spawns the binary as a local subprocess. This is the target case ([§5.1](#51-setup)). |
-| **Claude Desktop** | yes | Same mechanism — a local `command` entry in its MCP config. |
+| **Claude Desktop** | yes | Same mechanism — a local `command` entry in its MCP config, which **Settings ▸ Claude** writes with one click ([§3.2](#32-connect-the-server-to-claude)); restart Desktop to pick it up. |
 | **Any client that can spawn a local stdio MCP server** | yes | Including local-LLM harnesses. Nothing in the protocol is Anthropic-specific; it is MCP over stdin and stdout. |
 | **ChatGPT on the web** | **no** | Browser-hosted assistants require a **remotely hosted** MCP server reachable over HTTPS, with OAuth. A page in a browser tab cannot spawn a process on your Mac. |
 | **Any other browser-hosted assistant** | **no** | Same reason. |
@@ -1236,13 +1286,18 @@ wrote 799 bytes to summary.csv from budget.xlsx (sheet 'Summary')
 Folder access is granted in the OpenSheets app, and only there:
 
   1. Open OpenSheets.
-  2. File ▸ Grant Folder Access… (or the Workspace section of Settings).
+  2. Click + in the Files sidebar (or just open a file — its folder is granted with it).
   3. Choose the folder your spreadsheets live in.
 
 Neither `opensheets` nor `opensheets-mcp` can grant a folder — they do not link AppKit and
 cannot present the panel, which is what stops an agent from granting itself access by
 shelling out to this binary.
 ```
+
+That output used to point at two things that do not exist — a "File ▸ Grant Folder Access…" menu
+that was never built, and a "Workspace section of Settings" (Settings has Syncing, Saving and
+Claude) — and this section used to quote the lie as shipped. Both the string and the quote now
+name the real affordances: the sidebar's +, and opening a file.
 
 ### 6.3 Flags and exit codes
 
@@ -1652,6 +1707,13 @@ sandboxed app cannot fulfil "let Claude Code touch any file we want" without fig
 every turn, and this is not a Mac App Store product. Folder access still goes through `NSOpenPanel`
 and persists security-scoped bookmarks, so a future sandboxed build is a small change.
 
+One note owed since the server moved into the bundle
+([§2.5](#25-the-mcp-server-ships-inside-the-app)): the app now carries a second executable at
+`Contents/MacOS/opensheets-mcp`, and whatever signing pass eventually produces the Developer ID
+build must sign that helper too. No signing pipeline exists in-repo today — `Scripts/build.sh`
+passes `CODE_SIGNING_ALLOWED=NO` and there is no notarisation script anywhere in the tree — so
+this is a note for whoever builds one, not work already done.
+
 ### 9.2 Workspace grants
 
 The MCP server is spawned by Claude Code and inherits the *user's full file access*. That is far more
@@ -1776,6 +1838,40 @@ A hostile `.xlsx` is a real attack surface, and 23 fixtures exist to exercise it
 Every one of these maps to a specific `SheetError.code` that the corpus asserts, and no case may
 crash, hang, or allocate unboundedly.
 
+### 9.5 Who writes Claude's config — the line the Connect button draws
+
+`~/.claude.json` is on the deny list above, and Settings ▸ Claude did not move it: the deny list is
+byte-for-byte unchanged, its three asserting tests pass unmodified, and the **agent** still cannot
+read or write Claude's config through any tool. What changed is the other side of the line.
+Earlier revisions of this document — and a comment in `AppModel` that is now gone — said the file
+was *read, never written*. That stopped being the whole truth when the Connect button landed, so
+the line is redrawn here rather than silently dropped: this document always said registration must
+be "a user action, not an agent action", and the button is that user action made concrete. The
+deny list keeps the agent out (server-side, enforced on the server's path arguments and tested);
+the only code that writes either client's config is `ClaudeConnector.connect`/`disconnect`, whose
+only call sites are the labelled buttons in Settings ▸ Claude. Nothing runs them in the
+background, and nothing spawns the binary either — verification is an existence-and-executable
+check, because the server is Claude's subprocess, not ours.
+
+The rails on that write, in order:
+
+- **Backup first.** The existing file is copied to a `<name>.opensheets-backup` sibling before
+  every write — one known-good generation, replaced each time.
+- **A file that does not parse is never written** — and never backed up either, since a backup of
+  a file we did not understand would overwrite the previous good one. The refusal appears inline
+  in the pane.
+- **The write is atomic** — temp sibling, fsync, rename, POSIX mode preserved — through the same
+  `AtomicWriter` every other write in the project uses.
+
+The declared trade-off: the write re-serialises the file with sorted, pretty-printed keys, so
+content survives exactly (unknown keys, integers as integers, booleans as booleans) while the
+formatting is normalised — a user who diffs `~/.claude.json` sees one large formatting-only diff on
+first connect. Accepted, because Claude Code machine-manages and rewrites that file constantly;
+the backup is the mitigation. And the scope of Disconnect, stated precisely because "disconnected"
+must not be a lie: it removes the `opensheets` entry from the top-level `mcpServers` **and** from
+every `projects.<path>.mcpServers` — leftovers of old manual `claude mcp add` runs — and touches
+nothing else.
+
 ---
 
 ## 10. Testing
@@ -1788,7 +1884,7 @@ This is the section to read if you want to know whether to trust the project.
 
 ```
 $ cd Packages/OpenSheetsCore && swift test
-━ Test run with 1681 tests in 146 suites passed after 33.963 seconds with 8 known issues.
+━ Test run with 1696 tests in 147 suites passed after 36.092 seconds with 8 known issues.
 ```
 
 ```bash
@@ -1798,19 +1894,19 @@ for t in Tests/*/; do echo "$(basename $t): $(grep -rho '@Test' $t | wc -l)"; do
 
 | Test target | Tests | Files | Lines | What it covers |
 | --- | ---: | ---: | ---: | --- |
-| `DocumentCoreTests` | 275 | 19 | 7,574 | The core loop end to end, open-document and window rules, save fidelity, grid integration, recalculate-on-open, **rendered-grid pixels**, the frozen-divider shadow, the workspace tree, **both halves of the app↔agent handshake**, and Files-panel/MCP listing parity. |
+| `DocumentCoreTests` | 287 | 20 | 7,963 | The core loop end to end, open-document and window rules, save fidelity, grid integration, recalculate-on-open, **rendered-grid pixels**, the frozen-divider shadow, the workspace tree, **both halves of the app↔agent handshake**, Files-panel/MCP listing parity, and the **Claude connector's config reads and writes** ([§9.5](#95-who-writes-claudes-config--the-line-the-connect-button-draws)). |
 | `SheetModelTests` | 257 | 15 | 3,762 | The frozen model: `CellRef`/`CellRange` A1 conversion, `CellStore`, `RunLengthArray`, `StyleTable`, `NumberFormat`, `SerialDate`, `SheetFragment`, `SheetError`, Codable round-trips, the Wave-1 model corrections. |
 | `GridKitTests` | 196 | 17 | 3,996 | Axis metrics, cell formatting, **drawn-pixel rendering**, dark-mode text, selection and merges, header selection, spill rendering, the host view, flash and cache, the scroll benchmark lane. |
 | `SheetStoreTests` | 179 | 14 | 4,388 | The file watcher, self-write suppression, the sync state machine, document sessions, snapshots, workspace grants, the directory lister and walker, the differ. |
 | `SheetFormatTests` | 174 | 19 | 4,467 | The golden corpus, the hostile corpus, the XML pull parser, the ZIP reader and writer, the surgical write, the passthrough contract, atomic writes, CSV read and write. |
-| `SheetMCPTests` | 167 | 13 | 4,165 | `describe`, the read tools, **the discovery tools**, editing, safety, **grant escapes**, paging-argument bounds, the JSON-RPC protocol, the **shipped binary**, CLI behaviour, CLI/tool surface parity, recalculate-on-read. |
+| `SheetMCPTests` | 168 | 13 | 4,196 | `describe`, the read tools, **the discovery tools**, editing, safety, **grant escapes**, paging-argument bounds, the JSON-RPC protocol, the **shipped binary**, CLI behaviour, CLI/tool surface parity, recalculate-on-read. |
 | `SheetFormulaTests` | 155 | 11 | 2,307 | The 779-row function table, error semantics, Excel-vs-LibreOffice divergences, spill, the dependency graph and recalculation, uncomputed cells, stored function names, performance. |
-| `GlassUITests` | 151 | 10 | 3,476 | Component behaviour, palette contrast, the appearance snapshot matrix, and the **lint rules enforced as tests**. |
+| `GlassUITests` | 153 | 10 | 3,535 | Component behaviour, palette contrast, the appearance snapshot matrix, and the **lint rules enforced as tests**. |
 | `TestSupportTests` | 121 | 10 | 1,825 | The test infrastructure itself — builders, matchers, fakes, the perf harness, the snapshot harness — including that each of them **fails when it should**. |
 | `MiniZipTests` | 6 | 1 | 82 | The shared ZIP types. (The real ZIP coverage lives in `SheetFormatTests`.) |
-| **Total** | **1,681** | **130** | **36,042** | |
+| **Total** | **1,696** | **130** | **36,521** | |
 
-The `@Test` count and the runtime count agree exactly at 1,681, which is the cheap check that the
+The `@Test` count and the runtime count agree exactly at 1,696, which is the cheap check that the
 table above is not drifting from the suite it describes.
 
 The "known issues" total is **8 or 9 depending on the run**, not a fixed 8. They are the deliberate
@@ -2314,10 +2410,14 @@ that `passthrough/kitchen-sink.xlsm` (chart + pivot + image + macros + condition
 clean after an edit-and-save, and that `formats/dates-1904.xlsx` shows the same wall-clock dates as
 its 1900 twin.
 
-**`claude mcp add` has not been run against the live client.** See
-[§3.2](#32-register-the-server-with-claude-code). The shipped binary is driven over real JSON-RPC by
-6 subprocess tests; registration is a user action, not an agent action, because it means writing
-`~/.claude.json`.
+**Nobody has clicked Connect on a real screen.** This gate used to read "`claude mcp add` has not
+been run against the live client"; registration is now something the app performs itself, from the
+button in Settings ▸ Claude ([§3.2](#32-connect-the-server-to-claude)), so the gate moves with it.
+The connector behind the button is covered by 12 in-process tests against real files, and the
+shipped server binary is driven over real JSON-RPC by 6 subprocess tests — but the Settings window
+has never been opened, no Connect has been clicked, and no live `claude mcp list` has been observed
+confirming a registration the app wrote. The gate is one person and two minutes: build with
+`Scripts/build.sh`, launch, click Connect, run `claude mcp list`, and watch a session call a tool.
 
 **No fuzz target exists.** `PLAN.md` §10.4 wants a nightly fuzz job over the parser, and an
 ASan-over-hostile-corpus CI job. The reader exists so the target is buildable; neither job has been
@@ -2328,7 +2428,8 @@ TSan. CI runs `swift test --sanitize thread --filter 'SheetModelTests|MiniZipTes
 
 **The UI has never been driven.** The environment the app was built in had no assistive access, so the
 refresh-pill morph, ⌘R and the conflict banner are model-tested against a real out-of-process `mv` but
-have never been seen working.
+have never been seen working. The Settings ▸ Claude pane is in the same state: compile-verified,
+its status labels pinned by row-model tests, never rendered on a screen.
 
 **The app↔agent handshake has never been driven either.** The app half now exists — presence
 publishing and reveal consumption, [§3.4](#34-in-the-app) — and both directions are exercised in
@@ -2352,6 +2453,7 @@ watch whether it moves. Neither has been done.
 | **Find and replace does not exist** | ⌘F opens the command palette (go-to-cell, sheets, named ranges). `PLAN.md` puts find/replace in v0.4. |
 | **`New Sheet` demands a save location up front** | An untitled workbook cannot be watched, snapshotted, or reached by Claude Code, so it is saved before it is opened. |
 | **The CLI cannot grant a folder** | By construction ([§9.2](#92-workspace-grants)). Deliberate and security-positive; a real UX consequence. |
+| **A dev build's Connect registers a path into DerivedData** | Connect writes the absolute path of the binary embedded in whatever app you clicked it in, and a Debug app lives in DerivedData — so cleaning DerivedData deletes the registered binary out from under the entry. The row then reads "Needs reconnect" and the sidebar's status says why; **Reconnect** rewrites the entry with the freshly resolved path. This is the designed recovery, not a bug to file, and an installed app is unaffected. |
 | **Printing, Quick Look, Services, window restoration** | Not built. Menus, shortcuts, Open Recent and drag-and-drop are. |
 | **A launch that names no file shows nothing** | Cold-launching the app with no file argument — `open -a OpenSheets`, or running the binary directly — leaves a running app with no window, whether or not `workspace.tabs` holds anything. A second `open -a` (which reaches the running process as a reopen) brings the workspace or the launcher up correctly. **Pre-existing**: A/B'd against the commit before file tabs were started, where it behaves identically. The launcher path and `OpenActions.provokeDefaultWindow()` are where to look. |
 | **A stray launcher window per external open** | Each `open -a OpenSheets <file>` against the running app leaves an extra empty launcher window behind; `DocumentWindows.extras(in:)` names it correctly and `OpenActions.tidyWindows()` never closes it. Also **pre-existing** and worse before tabs — the same A/B leaves seven windows where today's leaves four. Suspect the `Task { }` hop in `tidyWindows`/`dismiss`, or `NSWindow.isVisible` being false for the workspace at the moment the tidy runs. |
@@ -2395,7 +2497,9 @@ in — a perf gate that fails for being busy is a gate people learn to ignore
 ([§10.10](#1010-performance-testing-without-flakiness) argues exactly this and this test predates it).
 
 **A stray empty `Packages/OpenSheetsCore/Tests/Debug.swift`** sits outside every test target. Zero
-bytes, harmless, and it makes a naive `find Tests -name '*.swift' | wc -l` report 107 instead of 106.
+bytes, harmless, and it makes a naive `find Tests -name '*.swift' | wc -l` report 131 instead of
+130 (re-counted while writing this revision; earlier revisions of this note carried the counts of a
+smaller suite).
 
 **Documentation drift.** Still stale as of writing, and corrected in this document where they overlap
 with it: `PLAN.md` §11's "flags default off"; `PLAN.md` §0/§5.3's "~120 functions";
@@ -2410,7 +2514,7 @@ read — was found during this pass and is corrected in both files ([§2.6](#26-
 
 ### 12.4 What is genuinely solid, so don't re-litigate it
 
-- 1,681 tests in 146 suites green, zero warnings, strict concurrency throughout.
+- 1,696 tests in 147 suites green, zero warnings, strict concurrency throughout.
 - Grant enforcement: **946** in-process checks — every one of the 22 tools in `ToolRegistry.standard`
   against all 43 escape cases, so the number grows with the surface rather than with a list somebody
   maintains — plus 147 against the shipped binary, **zero escapes**, each refusal asserted to happen
@@ -2443,7 +2547,7 @@ Packages/OpenSheetsCore/          ~95% of the code
   Sources/SheetMCP/               the 22-tool MCP surface and the CLI
   Sources/DocumentCore/           the wiring layer
   Sources/TestSupport/            builders, fakes, matchers, harnesses
-  Tests/                          130 files, 1,681 tests
+  Tests/                          130 files, 1,696 tests
 Fixtures/                         the golden corpus — 87 definitions, 8 groups
 Scripts/                          build.sh, test.sh, bench.sh, gen-fixtures.py, validate-fixtures.py
 docs/perf/                        budgets, baseline, latest run, the scroll write-up
@@ -2456,7 +2560,7 @@ PLAN.md                           architecture and reasoning
 ```bash
 Scripts/build.sh --package-only     # build the package
 Scripts/build.sh                    # …and the app
-Scripts/test.sh                     # 1,681 tests, ~34 s warm
+Scripts/test.sh                     # 1,696 tests, ~36 s warm
 Scripts/test.sh --filter GlassLint  # one suite
 Scripts/test.sh --coverage          # per-target line coverage
 Scripts/test.sh --sanitize thread
