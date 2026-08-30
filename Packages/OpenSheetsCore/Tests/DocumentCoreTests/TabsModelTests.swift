@@ -417,3 +417,85 @@ struct TabsModelTests {
         }
     }
 }
+
+// MARK: - Reordering
+
+/// Dragging a file tab, the way a browser does it.
+///
+/// The index arithmetic is the whole of it, and it is the half that looks wrong when written down:
+/// removing the dragged tab before inserting it shifts everything to its right, so the same `to`
+/// means "after" when dragging right and "before" when dragging left. That is what puts the tab
+/// under the pointer in both directions, and it is pinned here because the obvious "fix" — clamping
+/// or offsetting — breaks one direction to tidy the other.
+@Suite("Dragging a file tab")
+@MainActor
+struct FileTabReorderTests {
+    private func names(_ tabs: TabsModel) -> [String] {
+        tabs.tabs.map { $0.url.lastPathComponent }
+    }
+
+    private func threeTabs(_ spy: TabsModelTests.Spy) async -> TabsModel {
+        let tabs = spy.makeTabs()
+        for name in ["a", "b", "c"] {
+            await tabs.open(URL(fileURLWithPath: "/tmp/\(name).xlsx"), consent: .userSelectedInPanel)
+        }
+        return tabs
+    }
+
+    @Test func draggingRightLandsAfterTheTabItWasDroppedOn() async throws {
+        let spy = try TabsModelTests.Spy()
+        let tabs = await threeTabs(spy)
+        #expect(names(tabs) == ["a.xlsx", "b.xlsx", "c.xlsx"])
+
+        tabs.move(from: 0, to: 2)
+
+        #expect(names(tabs) == ["b.xlsx", "c.xlsx", "a.xlsx"])
+    }
+
+    @Test func draggingLeftLandsBeforeTheTabItWasDroppedOn() async throws {
+        let spy = try TabsModelTests.Spy()
+        let tabs = await threeTabs(spy)
+
+        tabs.move(from: 2, to: 0)
+
+        #expect(names(tabs) == ["c.xlsx", "a.xlsx", "b.xlsx"])
+    }
+
+    @Test func aMoveOntoItselfOrOutOfRangeChangesNothing() async throws {
+        let spy = try TabsModelTests.Spy()
+        let tabs = await threeTabs(spy)
+        let before = names(tabs)
+
+        tabs.move(from: 1, to: 1)
+        tabs.move(from: -1, to: 0)
+        tabs.move(from: 0, to: 9)
+        tabs.move(from: 9, to: 0)
+
+        #expect(names(tabs) == before)
+    }
+
+    @Test func theTabInFrontStaysInFrontWhereverItLands() async throws {
+        let spy = try TabsModelTests.Spy()
+        let tabs = await threeTabs(spy)
+        let active = tabs.activeTabID
+
+        tabs.move(from: 2, to: 0)
+
+        // Activation is by id, so reordering must not change which file is in front — only where
+        // its tab sits.
+        #expect(tabs.activeTabID == active)
+        #expect(tabs.tabs.first?.id == active)
+    }
+
+    @Test func reorderingPersistsTheNewOrder() async throws {
+        let spy = try TabsModelTests.Spy()
+        let tabs = await threeTabs(spy)
+        let before = spy.writes.count
+
+        tabs.move(from: 0, to: 2)
+
+        #expect(spy.writes.count == before + 1, "a reorder is a change to the stored tab set")
+        let last = try #require(spy.writes.last)
+        #expect(last.paths.map { ($0 as NSString).lastPathComponent } == ["b.xlsx", "c.xlsx", "a.xlsx"])
+    }
+}

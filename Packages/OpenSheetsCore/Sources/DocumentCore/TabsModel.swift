@@ -267,6 +267,25 @@ public final class TabsModel {
 
     /// 0-based; out of range is ignored. ⌘1…⌘9 land here, and ⌘7 with four tabs open should do
     /// nothing rather than something.
+    /// Move the tab at `from` so that it lands at `to`, the way dragging a browser tab does.
+    ///
+    /// `to` is the index of the tab being dropped **onto**, in the list as it looks before the
+    /// move — which is what the view can see. Dragging right therefore lands *after* the tab you
+    /// dropped on and dragging left lands *before* it, because removing the dragged tab first
+    /// shifts everything to its right down by one. That asymmetry is not a bug to correct: it is
+    /// what makes the tab end up under the pointer in both directions.
+    ///
+    /// Order is window state, not file content. Nothing here touches a workbook, so unlike sheet
+    /// reordering it needs nothing from the writer and is not behind a flag.
+    public func move(from: Int, to: Int) {
+        guard tabs.indices.contains(from), tabs.indices.contains(to), from != to else { return }
+        let moved = tabs.remove(at: from)
+        tabs.insert(moved, at: to)
+        // The active tab is identified by id, so it does not move with the indices — but the
+        // stored `activeIndex` does, which is why this persists rather than only reordering.
+        persist()
+    }
+
     public func activate(index: Int) {
         guard tabs.indices.contains(index) else { return }
         activate(tabs[index].id)

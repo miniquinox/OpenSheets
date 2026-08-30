@@ -456,6 +456,8 @@ struct DocumentWindow: View {
             OpenActions.showOpenPanel()
         case .openFolder:
             openFolder()
+        case let .reorder(from, to):
+            tabs.move(from: from, to: to)
         }
     }
 

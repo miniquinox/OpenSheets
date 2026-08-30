@@ -96,6 +96,9 @@ public enum FileTabAction: Sendable, Hashable {
     /// already open — and a single "add" the host has to disambiguate is a question asked twice.
     case openFile
     case openFolder
+    /// Dragged from one position to another. Indices into ``FileTabStripState/tabs`` as the view
+    /// currently shows it — the host owns what that means for its own ordering.
+    case reorder(from: Int, to: Int)
 }
 
 /// How a status is drawn, as a value.
@@ -197,6 +200,10 @@ public struct FileTabStrip: View {
     private let perform: (FileTabAction) -> Void
 
     @State private var hoveredID: String?
+    /// The tab a drag is currently over, for the drop indicator.
+    @State private var dropTargetID: String?
+    /// Where the dragged tab came from, so the indicator can sit on the correct edge.
+    @State private var dragOrigin: Int?
     /// The laid-out width of the tab row, which is what caps the scroller. See the note above.
     @State private var contentWidth: CGFloat?
 
@@ -256,8 +263,8 @@ public struct FileTabStrip: View {
     private var strip: some View {
         ScrollView(.horizontal) {
             HStack(spacing: DS.Space.xs) {
-                ForEach(state.tabs) { tab in
-                    tabView(tab)
+                ForEach(Array(state.tabs.enumerated()), id: \.element.id) { index, tab in
+                    tabView(tab, at: index)
                 }
                 addButton
             }
@@ -283,8 +290,30 @@ public struct FileTabStrip: View {
 
     // MARK: One tab
 
+    /// Records where a drag started and hands AppKit the payload.
+    ///
+    /// A method rather than a closure body: `.onDrag(_:preview:)` takes a `ViewBuilder` for the
+    /// preview, and a multi-statement closure in the first argument is enough for the compiler to
+    /// try applying that builder to the wrong one.
+    private func beginDrag(_ tab: FileTabItem, at index: Int) -> NSItemProvider {
+        dragOrigin = index
+        return NSItemProvider(object: tab.id as NSString)
+    }
+
+    /// Which edge of the target tab the drop indicator sits on.
+    ///
+    /// Trailing when the tab is travelling right and leading when it is travelling left, which is
+    /// where ``DocumentCore/TabsModel/move(from:to:)`` actually puts it: removing the dragged tab
+    /// first shifts everything to its right down one, so the same index means "after" going right
+    /// and "before" going left. The indicator follows the arithmetic rather than the other way
+    /// round, because the arithmetic is what puts the tab under the pointer.
+    private func dropEdge(for index: Int) -> Alignment {
+        guard let origin = dragOrigin else { return .leading }
+        return origin < index ? .trailing : .leading
+    }
+
     @ViewBuilder
-    private func tabView(_ tab: FileTabItem) -> some View {
+    private func tabView(_ tab: FileTabItem, at index: Int) -> some View {
         let isActive = tab.id == state.activeID
         // The close button is always on the active tab and appears on hover elsewhere. Always-on
         // would put a row of ✕ across the title bar; hover-only on the active tab would mean the
@@ -330,6 +359,41 @@ public struct FileTabStrip: View {
         .onTapGesture { perform(.select(tab.id)) }
         .onHover { hoveredID = $0 ? tab.id : (hoveredID == tab.id ? nil : hoveredID) }
         .contextMenu { contextMenu(for: tab) }
+        // Reorder by dragging, the way every browser does. The payload is the tab's id — the
+        // document key — rather than its index, because an index goes stale the moment a tab
+        // opens or closes mid-drag and would move the wrong file.
+        // `.onDrag` rather than `.draggable`, for one reason: its closure runs when the drag
+        // *starts*, which is the only place the origin index can be recorded. The indicator has to
+        // know which way the tab is travelling to sit on the edge it will actually land against,
+        // and `.draggable`'s preview builder is not a place to put a side effect.
+        .onDrag { beginDrag(tab, at: index) } preview: {
+            Text(tab.title)
+                .font(DS.Text.control)
+                .padding(.horizontal, DS.Space.s)
+                .padding(.vertical, DS.Space.xs)
+        }
+        .dropDestination(for: String.self) { items, _ in
+            guard let dragged = items.first,
+                  let from = state.tabs.firstIndex(where: { $0.id == dragged }),
+                  from != index
+            else { return false }
+            perform(.reorder(from: from, to: index))
+            dragOrigin = nil
+            dropTargetID = nil
+            return true
+        } isTargeted: { targeted in
+            dropTargetID = targeted ? tab.id : (dropTargetID == tab.id ? nil : dropTargetID)
+        }
+        // A line on the edge the tab will land against, so the drop is predictable before it
+        // happens. Leading when dragging left, trailing when dragging right — which is where the
+        // tab actually ends up, given how `TabsModel.move` resolves the index.
+        .overlay(alignment: dropEdge(for: index)) {
+            if dropTargetID == tab.id {
+                Capsule(style: .continuous)
+                    .fill(DS.Chrome.accent)
+                    .frame(width: Self.dropIndicatorWidth)
+            }
+        }
         .help(tab.fullPath)
         .animation(DS.Motion.snappy, value: isActive)
         .accessibilityLabel(tab.accessibilityLabel)
@@ -397,6 +461,9 @@ public struct FileTabStrip: View {
     /// which is what keeps a small ✕ clickable without enlarging the tab.
     private static let closeHitTarget: CGFloat = 16
     private static let closeGlyphSize: CGFloat = 9
+
+    /// The drop indicator. Thin enough to read as an insertion point rather than as a tab.
+    private static let dropIndicatorWidth: CGFloat = 2
 
     /// The `+`. Matched to the close glyph rather than to the tab text: both are chrome on a tab
     /// row, and a plus that reads as a heading makes the row look like it has two title weights.
