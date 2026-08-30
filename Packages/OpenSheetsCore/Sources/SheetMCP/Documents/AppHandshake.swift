@@ -163,8 +163,9 @@ public enum HandshakeTools {
             title: "Reveal a range in the app",
             summary: """
             Asks the OpenSheets app to scroll to and select a range, so the user can see what \
-            you are talking about. Best-effort: the app decides whether to act on it, and if the \
-            app is not running nothing happens and the result says so.
+            you are talking about. If the app is running but does not have the file open, it \
+            opens it first. Best-effort: the app decides whether to act on it, and if the app is \
+            not running nothing happens and the result says so.
             """,
             properties: [
                 ToolSchema.pathProperty,
