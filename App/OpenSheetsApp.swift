@@ -293,8 +293,8 @@ enum OpenActions {
     static let sceneID = "main"
 
     /// PLAN.md §1.7. Unknown preference keys are never read, so a rollback leaves this behind
-    /// harmlessly.
-    static let tabsPreferenceKey = "workspace.tabs"
+    /// harmlessly. The string itself lives in `SheetStore`, which `SheetMCP` also reads it from.
+    static let tabsPreferenceKey = TabsModel.preferenceKey
 
     /// The workspace's tabs, installed by the workspace window when it appears. Private because
     /// the menu bar reaches them through `@FocusedValue(\.workspaceTabs)` instead: a focused value

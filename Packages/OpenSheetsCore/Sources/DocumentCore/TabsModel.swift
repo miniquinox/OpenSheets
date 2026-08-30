@@ -82,6 +82,15 @@ public final class TabsModel {
     /// one type rather than a second declaration of it.
     public typealias PersistedTabs = PersistedOpenTabs
 
+    /// The preference key that payload is stored under.
+    ///
+    /// Re-exported here because `App/` does not import `SheetStore`, and the alternative is what
+    /// was there before: the app spelling `"workspace.tabs"` again in its own constant. Two string
+    /// literals for one row is how the reader and the writer end up disagreeing after a rename,
+    /// and this row is now read by `SheetMCP` as well, so the blast radius is wider than the tab
+    /// strip — `list_workspace` would quietly report no open files.
+    public static let preferenceKey = WorkspacePreferenceKey.tabs
+
     @ObservationIgnored
     private let openDocument: @MainActor (URL, WorkspaceConsent) async throws(SheetError) -> DocumentModel
     @ObservationIgnored
