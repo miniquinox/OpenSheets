@@ -84,7 +84,8 @@ cd -
 xcodebuild build -project OpenSheets.xcodeproj -scheme OpenSheets -destination 'platform=macOS'
 ```
 
-Warnings are errors in CI. They are applied with `-Xswiftc` rather than in `Package.swift`,
+Warnings are errors: pass `-Xswiftc -warnings-as-errors`, which `Scripts/build.sh` and
+`Scripts/test.sh` already do. They are applied that way rather than in `Package.swift`,
 because `unsafeFlags` in a manifest makes a package unusable as a dependency — and
 `OpenSheets.xcodeproj` depends on this one by path.
 
@@ -104,9 +105,13 @@ swiftformat .        # brew install swiftformat
 swiftlint lint       # brew install swiftlint
 ```
 
-Both are pinned by config files in the repository root, and CI runs them in `--lint` /
-`--strict` mode. The two tools are configured not to overlap: SwiftFormat owns layout,
+Both are pinned by config files in the repository root; run them in `--lint` / `--strict` mode
+before you commit. The two tools are configured not to overlap: SwiftFormat owns layout,
 SwiftLint owns judgement.
+
+Note that the pinned versions are older than what Homebrew installs today, so a bare
+`swiftformat --lint .` reports thousands of findings from rules the config does not enable —
+grep its output for the files you touched. Never run bare `swiftformat .`; it rewrites the repo.
 
 ---
 
