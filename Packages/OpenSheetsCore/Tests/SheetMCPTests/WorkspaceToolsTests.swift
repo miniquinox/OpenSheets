@@ -33,6 +33,37 @@ struct WorkspaceToolsTests {
         #expect(!output.text.contains("<untrusted-spreadsheet-content"), "there are no names to wrap")
     }
 
+    /// **A folder granted twice is reported once.**
+    ///
+    /// `workspace_grant` stores a row per grant, not per folder, and revocation is a soft delete —
+    /// so re-picking a folder in the panel, or opening a second file inside it, leaves two active
+    /// rows naming the same place. This was found against a real database holding thirteen rows
+    /// for ten folders, with one listed three times.
+    ///
+    /// Both halves matter: the list must not repeat itself, and the count in the header must agree
+    /// with the list underneath it. A header saying `13 granted` above ten folders is worse than
+    /// the repetition, because it reads as eleven folders the report forgot to name.
+    @Test @MainActor func aFolderGrantedTwiceIsReportedOnce() async throws {
+        let harness = try Harness.make("workspace-duplicate-grants")
+        let first = try grantASecondFolder(harness, named: "statements")
+        let second = try grantASecondFolder(harness, named: "statements")
+        // The two spellings differ by a trailing slash, which makes the fixture stronger than it
+        // was meant to be: the report has to collapse them by path, not by string equality.
+        #expect(first != second, "the second grant should spell the folder differently")
+        #expect(
+            URL(fileURLWithPath: first).standardized == URL(fileURLWithPath: second).standardized,
+            "the fixture must grant the same folder twice"
+        )
+
+        let output = await harness.call("list_workspace", [:])
+
+        #expect(!output.isError, "\(output.text)")
+        let body = try envelope(output.text)
+        let mentions = body.filter { $0.contains("statements") }.count
+        #expect(mentions == 1, "granted twice, listed \(mentions) times: \(output.text)")
+        #expect(output.text.contains("2 granted"), "the count is folders, not rows: \(output.text)")
+    }
+
     /// The Files panel shows pins, not grants, and the report keeps the two apart.
     ///
     /// A user who granted their home folder and pinned `~/Documents/Finance` has *pointed* at

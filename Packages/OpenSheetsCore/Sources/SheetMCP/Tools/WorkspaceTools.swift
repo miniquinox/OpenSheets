@@ -168,9 +168,11 @@ public enum WorkspaceTools {
 
     private static func report(store: SheetStore, handshake: AppHandshake, scope: String?) -> String {
         let scopeComponents = scope.map(components)
-        let granted = store.grants.activeGrants()
-            .map(\.path)
-            .filter { related($0, to: scopeComponents) }
+        let granted = distinct(
+            store.grants.activeGrants()
+                .map(\.path)
+                .filter { related($0, to: scopeComponents) }
+        )
 
         // A missing row and a corrupt one are the same answer — "the app has not told us" — and
         // neither is an error. See `PersistedWorkspaceTree.read(from:)`.
@@ -430,6 +432,24 @@ public enum WorkspaceTools {
 
     private static func same(_ lhs: String, _ rhs: String) -> Bool {
         components(lhs) == components(rhs)
+    }
+
+    /// One entry per folder, in the order the rows arrived.
+    ///
+    /// `workspace_grant` holds a row per grant, not per folder: granting the same folder twice —
+    /// re-picking it in the panel, or opening a second file in it — inserts a second active row,
+    /// and revocation is a soft delete that leaves the old ones behind. A real database here had
+    /// thirteen rows for ten folders, one of them listed three times.
+    ///
+    /// That is worth collapsing rather than showing. Repeating a path tells an agent nothing it
+    /// did not already know, spends its context to do it, and inflates the count in the header
+    /// into a number that disagrees with the list underneath it.
+    ///
+    /// Compared by canonical components, like everything else here, so two spellings of one folder
+    /// count once.
+    private static func distinct(_ paths: [String]) -> [String] {
+        var seen: Set<[String]> = []
+        return paths.filter { seen.insert(components($0)).inserted }
     }
 
     /// Whether `path` is at or inside `folder`.
