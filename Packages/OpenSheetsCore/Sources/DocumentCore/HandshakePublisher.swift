@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import Observation
 import SheetMCP
@@ -212,7 +211,7 @@ public final class HandshakePublisher {
     /// (a tab closed while it was still loading), and a document being closed is not a moment to
     /// raise an error about application support.
     public func withdraw(_ url: URL) {
-        try? FileManager.default.removeItem(at: presenceFile(for: url))
+        handshake.withdraw(URL(fileURLWithPath: AppModel.documentKey(for: url)))
     }
 
     /// Withdraws every record this publisher can currently see a document for.
@@ -228,36 +227,24 @@ public final class HandshakePublisher {
 
     /// Writes one presence record. `false` when it could not be written.
     ///
-    /// # Why this renders the payload instead of calling `AppHandshake.publish(_:)`
-    ///
-    /// It cannot call it. ``SheetMCP/AppHandshake/publish(_:)`` is `public` and documented as
-    /// *"The app calls this"*, but its argument ``SheetMCP/AppPresence`` has no public
-    /// initialiser — the memberwise one is `internal` — so no code outside `SheetMCP` can
-    /// construct the value the method needs. The method has been uncallable since it shipped,
-    /// which is a large part of why the app side of the handshake was never built.
-    ///
-    /// Fixing that belongs to whoever owns `SheetMCP`; the protocol is frozen for this change. So
-    /// the bytes are rendered here, through the same ``SheetMCP/JSONValue`` the server uses, with
-    /// the same six keys — and the duplication is not left to inspection.
-    /// `HandshakePublisherTests.aPublishedRecordIsWhatTheServerReadsBack` asserts the real
-    /// ``SheetMCP/AppHandshake/presence(for:)`` parses this file as fresh with every field intact,
-    /// so a key renamed on either side fails a test rather than silently reporting nothing.
+    /// This goes through ``SheetMCP/AppHandshake/publish(_:)`` — the same writer whose output
+    /// ``SheetMCP/AppHandshake/presence(for:)`` reads — so the record's six keys and its filename
+    /// have exactly one definition rather than two that have to be kept in step. That was not
+    /// possible until ``SheetMCP/AppPresence`` gained a public initialiser: the method was
+    /// documented as *"the app calls this"* while being uncallable from the app, which is a large
+    /// part of why this side of the handshake went unbuilt for so long.
     private func publish(_ snapshot: HandshakeDocumentSnapshot) -> Bool {
-        let payload = JSONValue.object([
-            "path": .string(AppModel.documentKey(for: snapshot.url)),
-            "sheet": .string(snapshot.sheetName),
-            "selection": .string(snapshot.selection),
-            "activeCell": .string(snapshot.activeCell),
-            "pid": .integer(processID),
-            "updatedAt": .number(now().timeIntervalSince1970),
-        ])
         do {
-            try FileManager.default.createDirectory(
-                at: handshake.directory, withIntermediateDirectories: true
+            try handshake.publish(
+                AppPresence(
+                    path: AppModel.documentKey(for: snapshot.url),
+                    sheetName: snapshot.sheetName,
+                    selection: snapshot.selection,
+                    activeCell: snapshot.activeCell,
+                    processID: processID,
+                    updatedAt: now()
+                )
             )
-            // Atomic, like the writer on the other side: the server may read this file at any
-            // moment, and a half-written record would parse as no record at all.
-            try Data(payload.rendered.utf8).write(to: presenceFile(for: snapshot.url), options: [.atomic])
             return true
         } catch {
             // Application support being unwritable is not something to interrupt a spreadsheet
@@ -287,20 +274,4 @@ public final class HandshakePublisher {
         }
     }
 
-    /// The file the server will look for when asked about `url`.
-    ///
-    /// The name is the SHA-256 of the canonical path, which is `AppHandshake.key(_:)`'s rule —
-    /// `internal` there, so it is spelled again here. Two reasons it is a hash and not the path,
-    /// both worth keeping in view: a file called `../../etc/passwd` cannot escape the directory,
-    /// and a three-hundred-character path cannot exceed `NAME_MAX`.
-    ///
-    /// The duplication is guarded rather than trusted:
-    /// `HandshakePublisherTests.aPublishedRecordIsWhatTheServerReadsBack` publishes through this
-    /// and reads through the real ``SheetMCP/AppHandshake/presence(for:)``, which finds nothing at
-    /// all if the two derivations ever disagree by a byte.
-    private func presenceFile(for url: URL) -> URL {
-        let canonical = url.resolvingSymlinksInPath().standardized.path(percentEncoded: false)
-        let key = SHA256.hash(data: Data(canonical.utf8)).map { String(format: "%02x", $0) }.joined()
-        return handshake.directory.appendingPathComponent("\(key).json")
-    }
 }

@@ -16,6 +16,29 @@ public struct AppPresence: Sendable, Hashable {
     public var processID: Int
     public var updatedAt: Date
 
+    /// The memberwise initialiser, spelled out so it is `public`.
+    ///
+    /// It has to be. ``AppHandshake/publish(_:)`` is documented as *"the app calls this"*, and the
+    /// app is in another module — so while the synthesised initialiser was `internal`, the method
+    /// was uncallable from the only place meant to call it, and the app side of the handshake went
+    /// unbuilt for exactly as long. Widening this is what lets the app publish through the same
+    /// writer the server reads, instead of re-spelling the format alongside it.
+    public init(
+        path: String,
+        sheetName: String,
+        selection: String,
+        activeCell: String,
+        processID: Int,
+        updatedAt: Date
+    ) {
+        self.path = path
+        self.sheetName = sheetName
+        self.selection = selection
+        self.activeCell = activeCell
+        self.processID = processID
+        self.updatedAt = updatedAt
+    }
+
     /// Whether this record is recent enough to believe.
     ///
     /// A handshake file outlives the process that wrote it — a crash, a force quit, a machine
@@ -119,6 +142,19 @@ public struct AppHandshake: Sendable {
         } catch {
             throw SheetError.fileNotWritable(path: file.path(percentEncoded: false), underlying: "\(error)")
         }
+    }
+
+    /// Removes the presence record for `url`, if there is one.
+    ///
+    /// The counterpart to ``publish(_:)``, and the app needs it for the same reason it needs to
+    /// publish: a record that merely ages out claims for up to ninety seconds that the user is
+    /// looking at a file they closed. Absent is the honest answer the moment the tab goes.
+    ///
+    /// Silent when there is nothing to remove — withdrawing twice, or withdrawing a file that was
+    /// never published, is the normal case at shutdown and is not a failure.
+    public func withdraw(_ url: URL) {
+        let file = directory.appendingPathComponent("\(AppHandshake.key(url)).json")
+        try? FileManager.default.removeItem(at: file)
     }
 
     static func key(_ url: URL) -> String {
