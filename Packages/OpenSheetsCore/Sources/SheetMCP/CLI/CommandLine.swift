@@ -76,6 +76,7 @@ public enum OpenSheetsCLI {
             case "--formulas": options.formulas = true
             case "--detailed": options.format = "detailed"
             case "--delete": options.delete = true
+            case "--recursive", "-r": options.recursive = true
             case "--no-header": options.hasHeader = false
             case "--header": options.hasHeader = true
             case "--allow-formulas": options.allowFormulas = true
@@ -425,6 +426,28 @@ public enum OpenSheetsCLI {
         store: SheetStore
     ) async throws -> Int32? {
         switch command {
+        case "workspace":
+            // The one command that takes no file: `opensheets workspace` is where somebody who
+            // does not know what is granted starts, which is the same place an agent starts.
+            var payload: [String: JSONValue] = [:]
+            if let folder = arguments.first { payload["path"] = .string(folder) }
+            return await invoke(
+                "list_workspace", arguments: payload, console: console, options: options, context: context
+            )
+
+        case "ls":
+            guard let folder = arguments.first else {
+                return missing("ls <folder> [--recursive] [--limit N]", console)
+            }
+            var payload: [String: JSONValue] = [
+                "path": .string(folder),
+                "recursive": .bool(options.recursive),
+            ]
+            if let limit = options.limit { payload["limit"] = .integer(limit) }
+            return await invoke(
+                "list_files", arguments: payload, console: console, options: options, context: context
+            )
+
         case "convert":
             guard arguments.count >= 2 else { return missing("convert <in> <out>", console) }
             return try await convert(arguments[0], arguments[1], options: options, console: console, context: context)
@@ -624,6 +647,8 @@ public enum OpenSheetsCLI {
         var limit: Int?
         /// `filter --delete`: run the destructive action instead of listing.
         var delete = false
+        /// `ls --recursive`: walk the whole tree instead of one level.
+        var recursive = false
         /// `sort`: `nil` means "whatever `describe` would guess", which is the tool's default.
         var hasHeader: Bool?
         var allowFormulas = false
@@ -699,6 +724,7 @@ public enum OpenSheetsCLI {
           --formulas        `get`: show formulas instead of values
           --limit <n>       Cap rows or matches
           --delete          `filter`: delete the matching rows instead of listing them
+          --recursive, -r   `ls`: walk subfolders too
           --header / --no-header
                             `sort`: whether the first row is a header (default: guess)
           --allow-formulas  `sort`: sort a range that holds formulas, translating them

@@ -1,5 +1,6 @@
 import Foundation
 import SheetModel
+import SheetStore
 
 /// One tool result.
 ///
@@ -26,6 +27,20 @@ public struct ToolContext: Sendable {
     public let broker: DocumentBroker
     public let log: MCPLog
     public let handshake: AppHandshake
+
+    /// The store the broker enforces grants through: its database, its grant list, its directory
+    /// lister.
+    ///
+    /// The discovery tools need all three — `list_workspace` reads the app's preferences and the
+    /// grant list, `list_files` drives the lister — and none of them is reachable through a
+    /// ``DocumentBroker`` alone.
+    ///
+    /// Computed from the broker rather than stored beside it, deliberately. A second stored `let`
+    /// would make it possible to hand a context one store's grant boundary and another store's
+    /// database, and this codebase has the rule written down in three other places for the same
+    /// reason: *two boundaries can disagree, and the loose one is the one that answers*. Derived,
+    /// they cannot.
+    public var store: SheetStore { broker.store }
 
     public init(broker: DocumentBroker, log: MCPLog = MCPLog(destination: .none), handshake: AppHandshake) {
         self.broker = broker
@@ -98,9 +113,15 @@ public struct ToolRegistry: Sendable {
         .object(["tools": .array(tools.map(\.schema.listing))])
     }
 
-    /// The full surface, in the order an agent should meet it: understand, then read, then
-    /// write, then restructure, then undo.
+    /// The full surface, in the order an agent should meet it: find the files, then understand
+    /// one, then read, then write, then restructure, then undo.
+    ///
+    /// Discovery comes first because it is what a session with no prior knowledge needs first:
+    /// every other tool takes an absolute path, and until `list_workspace` existed there was no
+    /// way to obtain one except to ask the user to paste it.
     public static let standard = ToolRegistry(tools: [
+        WorkspaceTools.listWorkspace,
+        WorkspaceTools.listFiles,
         DescribeTool.definition,
         ReadRangeTool.definition,
         FindTool.definition,
