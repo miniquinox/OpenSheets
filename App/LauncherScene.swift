@@ -117,11 +117,12 @@ struct LauncherScene: View {
             app.explorer.refresh(id)
         case let .revealInFinder(id):
             NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: id)])
-        case let .removeRoot(id):
-            // Removing a root **is** revoking the grant. There is no second concept, and inventing
-            // one would leave a folder the MCP server still reaches with nothing on screen saying
-            // so. Resolved through `grant(forRootID:)` rather than by matching `path` — a stored
-            // grant and a node id are not the same spelling of the same folder.
+        case let .closeFolder(id):
+            // The tree only. Closing a folder is tidying, not a permission change.
+            app.explorer.unpin(id)
+            if explorerSelection == id { explorerSelection = nil }
+        case let .revokeFolder(id):
+            app.explorer.unpin(id)
             guard let grant = app.grant(forRootID: id) else { return }
             app.revokeGrant(grant)
         case let .search(text):

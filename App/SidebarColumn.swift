@@ -240,11 +240,17 @@ struct SidebarColumn: View {
             app.explorer.refresh(id)
         case let .revealInFinder(id):
             NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: id)])
-        case let .removeRoot(id):
-            // Removing a root **is** revoking the grant. There is no second concept, and offering
-            // one would leave a folder the MCP server still reaches and the user believes is gone.
-            // `grant(forRootID:)`, not a `path` match: the stored spelling and the canonical
-            // node id differ for any folder under a symlinked parent.
+        case let .closeFolder(id):
+            // Only the tree changes. The grant stays, the tabs stay, and reopening the folder
+            // costs one trip through the picker rather than a second permission decision.
+            app.explorer.unpin(id)
+            if explorerSelection == id { explorerSelection = nil }
+        case let .revokeFolder(id):
+            // Closes it too, and then takes the permission away. Order matters only for the
+            // reason the comment above gives: the tree must not be left holding a root the
+            // grant no longer covers. `grant(forRootID:)`, not a `path` match — the stored
+            // spelling and the canonical node id differ under a symlinked parent.
+            app.explorer.unpin(id)
             guard let grant = app.grant(forRootID: id) else { return }
             app.revokeGrant(grant)
         case .addFolder:

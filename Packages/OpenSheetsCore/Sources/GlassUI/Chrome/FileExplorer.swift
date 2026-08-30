@@ -210,6 +210,35 @@ public struct FileExplorer: View {
     /// it. Nesting them would make one click ambiguous — the chevron's job is to expand without
     /// selecting, and a button inside a button cannot promise that. As siblings each owns its own
     /// hit area, and Full Keyboard Access gets the two stops it should have.
+    /// Whether this row shows its close control right now.
+    ///
+    /// Roots only, and only under the pointer. A folder you opened is a thing you can put away,
+    /// and burying that in a context menu is how the last four controls in this app went unfound.
+    private func showsClose(_ row: FileExplorerRow) -> Bool {
+        row.kind == .root && hovered == row.id
+    }
+
+    /// The `×` on an open folder's row.
+    ///
+    /// It replaces the trailing detail rather than sitting beside it, so the row never changes
+    /// width on hover — the same reason ``FileTabStrip`` swaps its close button in over the tab's
+    /// own trailing space instead of adding to it.
+    @ViewBuilder
+    private func closeControl(_ row: FileExplorerRow) -> some View {
+        if showsClose(row) {
+            Button { perform(.closeFolder(row.id)) } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: Self.closeGlyphSize, weight: .semibold))
+                    .foregroundStyle(DS.Chrome.secondary)
+                    .frame(width: Self.closeHitTarget, height: Self.closeHitTarget)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Close this folder. The grant stays.")
+            .accessibilityLabel("Close folder \(row.name)")
+        }
+    }
+
     private func fileRow(_ row: FileExplorerRow) -> some View {
         HStack(spacing: 0) {
             // An expression, not a literal, which is what keeps this off the spacing scale
@@ -233,7 +262,7 @@ public struct FileExplorer: View {
 
                     Spacer(minLength: DS.Space.xs)
 
-                    if let detail = row.detail {
+                    if let detail = row.detail, !showsClose(row) {
                         Text(detail)
                             .dsNumeric(DS.Text.numericCaption)
                             .foregroundStyle(DS.Chrome.tertiary)
@@ -246,6 +275,8 @@ public struct FileExplorer: View {
             .buttonStyle(.plain)
             .accessibilityLabel(row.accessibilityLabel)
             .accessibilityAddTraits(row.isSelected ? [.isButton, .isSelected] : .isButton)
+
+            closeControl(row)
         }
         .padding(.horizontal, DS.Space.s)
         .padding(.vertical, DS.Space.xs)
@@ -352,9 +383,11 @@ public struct FileExplorer: View {
             Divider()
             Button("Refresh") { perform(.refresh(row.id)) }
             if row.kind == .root {
-                // The only way out of a grant that no longer points at anything. It stays on a
-                // missing root precisely because that is the row somebody wants rid of.
-                Button("Remove from List") { perform(.removeRoot(row.id)) }
+                Button("Close Folder") { perform(.closeFolder(row.id)) }
+                // Destructive, and named for what it takes away rather than for the row it
+                // removes: closing a folder and cutting an agent's access to it are different
+                // decisions, and only one of them is reversible by reopening.
+                Button("Revoke Access…", role: .destructive) { perform(.revokeFolder(row.id)) }
             }
         }
     }
@@ -428,6 +461,11 @@ public struct FileExplorer: View {
     /// glance — and the rail this sits in is 248 points wide, so a five-deep path has to leave
     /// room for a file name.
     private static let indentPerLevel: CGFloat = 12
+
+    /// The `×` on a root row. Matched to ``FileTabStrip``'s close, because it is the same gesture
+    /// on the same kind of thing — put this away — and two sizes for one idea reads as two ideas.
+    private static let closeGlyphSize: CGFloat = 9
+    private static let closeHitTarget: CGFloat = 16
 
     /// The disclosure column. Sized for `ProgressView().controlSize(.small)`, which is the widest
     /// of the three things that go here; the chevron and the empty case are held to it.

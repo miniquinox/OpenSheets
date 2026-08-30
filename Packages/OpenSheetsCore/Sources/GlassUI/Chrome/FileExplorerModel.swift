@@ -183,7 +183,13 @@ public enum FileExplorerAction: Sendable, Hashable {
     case select(String)
     case refresh(String)
     case revealInFinder(String)
-    case removeRoot(String)
+    /// Take this folder out of the tree. The grant behind it is untouched — the user is done
+    /// looking at it, not withdrawing permission.
+    case closeFolder(String)
+    /// Withdraw the grant as well, so nothing can read the folder any more. Separate from
+    /// ``closeFolder(_:)`` because one is tidying and the other is a security decision, and a
+    /// single control that did both would make the safe act carry the dangerous one.
+    case revokeFolder(String)
     case addFolder
     case search(String)
 }
