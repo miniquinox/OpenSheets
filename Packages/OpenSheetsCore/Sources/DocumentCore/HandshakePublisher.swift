@@ -13,13 +13,13 @@ public struct HandshakeDocumentSnapshot: Sendable, Hashable {
     public var url: URL
     /// The sheet the user is looking at.
     public var sheetName: String
-    /// The selection, spelled the way the app spells it on the selection pill — `B2:B41`,
-    /// `41R × 3C` for a block, `3 ranges · 90 cells` for a multi-selection.
+    /// The selected rectangle, in A1 — `B2:B41`, or `B2:D42` for a block.
     ///
-    /// The app's own words rather than a re-derived A1 string, because `get_selection` exists to
-    /// answer *"what is the user looking at"* and the honest answer to that is the one on their
-    /// screen. ``activeCell`` is always a plain A1 reference, so an agent that needs something it
-    /// can feed back into `read_range` has one.
+    /// Deliberately not the app's own words for it. ``SelectionStatistics/label(for:)`` writes for
+    /// a person reading a status bar, so it renders a block as `41R × 3C` and a multi-selection as
+    /// `3 ranges · 90 cells`; both are the right answer to *"what is the user looking at"* and
+    /// neither can be turned back into an address by the caller receiving it. `get_selection`
+    /// answers into a tool surface where every other range is A1, so this one is too.
     public var selection: String
     /// The active cell, in A1.
     public var activeCell: String

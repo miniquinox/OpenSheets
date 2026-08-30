@@ -2401,11 +2401,7 @@ bytes, harmless, and it makes a naive `find Tests -name '*.swift' | wc -l` repor
 with it: `PLAN.md` §11's "flags default off"; `PLAN.md` §0/§5.3's "~120 functions";
 `Fixtures/README.md`'s "85 fixtures", "62 non-hostile" and "1,751 assertions"; two `CellError` doc
 comments claiming `#SPILL!` and `#CALC!` are read-only for us, which stopped being true when spill
-landed; and `HandshakeDocumentSnapshot.selection`'s own doc comment in
-`Sources/DocumentCore/HandshakePublisher.swift`, which still describes the selection as being spelled
-"the way the app spells it on the selection pill — `41R × 3C` for a block" when the initialiser
-directly beneath it publishes `activeRange.a1String`. The code is right and the comment above it is
-one revision behind.
+landed.
 
 Two items previously listed here have been fixed and are removed rather than carried forward:
 `README.md`'s status paragraph no longer claims "Nothing here opens a spreadsheet yet", and the
