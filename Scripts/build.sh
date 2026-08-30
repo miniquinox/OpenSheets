@@ -54,4 +54,27 @@ xcodebuild build \
 		-destination 'platform=macOS' \
 		CODE_SIGNING_ALLOWED=NO
 
+# Embed the MCP server in the app bundle, so Settings ▸ Claude has a binary to register. The
+# xcodeproj has no copy phase and may not gain one (house rule: the project file is never
+# edited), so this is the sanctioned bundling point. Failures are loud on purpose: a silent
+# skip would ship a Connect button that can never enable.
+echo "==> embed opensheets-mcp"
+MCP_BINARY="$ROOT/Packages/OpenSheetsCore/.build/$CONFIGURATION/opensheets-mcp"
+if [[ ! -x "$MCP_BINARY" ]]; then
+	echo "error: $MCP_BINARY is missing or not executable — the swift build above should have produced it" >&2
+	exit 1
+fi
+APP_SETTINGS=$(xcodebuild -project OpenSheets.xcodeproj -scheme OpenSheets \
+	-configuration "$XCODE_CONFIGURATION" -destination 'platform=macOS' \
+	-showBuildSettings 2>/dev/null)
+TARGET_BUILD_DIR=$(echo "$APP_SETTINGS" | awk -F' = ' '/ TARGET_BUILD_DIR =/{print $2; exit}')
+FULL_PRODUCT_NAME=$(echo "$APP_SETTINGS" | awk -F' = ' '/ FULL_PRODUCT_NAME =/{print $2; exit}')
+APP_BUNDLE="$TARGET_BUILD_DIR/$FULL_PRODUCT_NAME"
+if [[ ! -d "$APP_BUNDLE/Contents/MacOS" ]]; then
+	echo "error: built app not found at $APP_BUNDLE — xcodebuild reported a product that is not there" >&2
+	exit 1
+fi
+cp "$MCP_BINARY" "$APP_BUNDLE/Contents/MacOS/"
+echo "    embedded $APP_BUNDLE/Contents/MacOS/opensheets-mcp"
+
 echo "==> done"
