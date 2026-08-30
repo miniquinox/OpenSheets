@@ -1,3 +1,4 @@
+import SheetModel
 import SwiftUI
 
 // MARK: - Value types
@@ -98,6 +99,12 @@ public struct ToolbarState: Sendable, Hashable {
     public var numberFormat: NumberFormatChoice
     public var fontName: String
     public var fontSize: Double
+    /// The selection's text colour, or `nil` when it is automatic or the cells disagree. Resolved
+    /// by the app layer, because turning a ``SheetModel/StyleColor`` into a `Color` needs the
+    /// document's palette and `GlassUI` does not have one.
+    public var textColor: Color?
+    /// The selection's fill, or `nil` for none.
+    public var fillColor: Color?
     /// Whether the pasteboard holds something we can take.
     public var canPaste: Bool
     /// Whether anything is selected. Almost everything is disabled without a selection, and
@@ -117,6 +124,8 @@ public struct ToolbarState: Sendable, Hashable {
         numberFormat: NumberFormatChoice = .general,
         fontName: String = "Calibri",
         fontSize: Double = 11,
+        textColor: Color? = nil,
+        fillColor: Color? = nil,
         canPaste: Bool = true,
         hasSelection: Bool = true,
         isEditable: Bool = true
@@ -130,6 +139,8 @@ public struct ToolbarState: Sendable, Hashable {
         self.numberFormat = numberFormat
         self.fontName = fontName
         self.fontSize = fontSize
+        self.textColor = textColor
+        self.fillColor = fillColor
         self.canPaste = canPaste
         self.hasSelection = hasSelection
         self.isEditable = isEditable
@@ -149,6 +160,13 @@ public enum ToolbarAction: Sendable, Hashable {
     case toggleUnderline
     case setFontName(String)
     case setFontSize(Double)
+    /// The text colour. ``SheetModel/StyleColor/automatic`` is "whatever the grid says", which is
+    /// how text stays legible when the canvas is dark — so it is a real choice, not a clear.
+    case setTextColor(StyleColor)
+    /// The cell's background, or `nil` for no fill at all. `nil` rather than white, because a
+    /// white fill and no fill look identical on screen and behave differently everywhere else:
+    /// printing, banded rows, and every conditional format underneath.
+    case setFillColor(StyleColor?)
 
     case setAlignment(CellAlign)
     case toggleWrapText
@@ -279,8 +297,81 @@ public struct ToolbarSurface: View {
                 symbol: "underline", label: "Underline", isOn: state.isUnderline,
                 isEnabled: enabled, shortcut: "⌘U", context: context
             ) { perform(.toggleUnderline) }
+            colorMenu(
+                symbol: "character",
+                label: "Text colour",
+                bar: state.textColor,
+                resetTitle: "Automatic"
+            ) { perform(.setTextColor($0.map { StyleColor.rgb($0.color) } ?? .automatic)) }
+            colorMenu(
+                symbol: "paintbrush.fill",
+                label: "Fill colour",
+                bar: state.fillColor,
+                resetTitle: "No Fill"
+            ) { perform(.setFillColor($0.map { StyleColor.rgb($0.color) })) }
         }
     }
+
+    /// A colour control: the glyph, a bar of the colour underneath it, and a grid of swatches.
+    ///
+    /// The bar is why this is not a plain menu. Excel puts the current colour under the letter so
+    /// the button says what it will do before you open it, and a control that has to be opened to
+    /// find out what it is set to is a control people open twice.
+    private func colorMenu(
+        symbol: String,
+        label: String,
+        bar: Color?,
+        resetTitle: String,
+        perform apply: @escaping (CellSwatches.Swatch?) -> Void
+    ) -> some View {
+        Menu {
+            Button(resetTitle) { apply(nil) }
+            Divider()
+            ForEach(Array(CellSwatches.all.enumerated()), id: \.offset) { _, row in
+                // One `Menu` row per palette row. A `LazyVGrid` inside a menu does not lay out,
+                // so the grid is built out of the menus AppKit already knows how to draw.
+                ForEach(row) { swatch in
+                    Button {
+                        apply(swatch)
+                    } label: {
+                        Label {
+                            Text(swatch.name)
+                        } icon: {
+                            Image(systemName: "square.fill").foregroundStyle(swatch.display)
+                        }
+                    }
+                }
+                Divider()
+            }
+        } label: {
+            VStack(spacing: DS.Space.hair) {
+                Image(systemName: symbol)
+                    .font(.system(size: Self.colorGlyphSize, weight: .medium))
+                // The bar. `DS.Chrome.separator` when nothing is set, so the control still reads
+                // as a colour control rather than as a glyph with a gap under it.
+                Capsule(style: .continuous)
+                    .fill(bar ?? DS.Chrome.separator)
+                    .frame(height: Self.colorBarHeight)
+            }
+            .frame(width: Self.colorBarWidth)
+            .foregroundStyle(enabled ? DS.Chrome.primary : DS.Chrome.tertiary)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(!enabled)
+        .help(label)
+        .accessibilityLabel(label)
+    }
+
+    /// The colour controls. Measured against the icon buttons beside them so the group keeps one
+    /// baseline: the glyph is a step smaller than a toolbar symbol to leave room for the bar, and
+    /// the bar is thick enough to read a pale yellow against the chrome.
+    private static let colorGlyphSize: CGFloat = 12
+    private static let colorBarHeight: CGFloat = 3
+    private static let colorBarWidth: CGFloat = 18
 
     private var alignment: some View {
         ToolbarGroup {

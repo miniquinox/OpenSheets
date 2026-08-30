@@ -10,6 +10,7 @@ import SheetFormula
 import SheetMCP
 import SheetModel
 import SheetStore
+import SwiftUI
 
 /// One open document.
 ///
@@ -1756,9 +1757,29 @@ public final class DocumentModel {
             numberFormat: choice(workbook.styles.numberFormat(for: styleID)),
             fontName: style.font.name,
             fontSize: style.font.size,
+            // `nil` for automatic rather than resolving it: the bar under the glyph is there to
+            // say "this cell has a colour on it", and automatic is precisely the absence of one.
+            textColor: style.font.color == .automatic ? nil : swatchColor(style.font.color),
+            fillColor: style.fill.effectiveColor.flatMap(swatchColor),
             canPaste: pasteboardHasContent,
             hasSelection: true,
             isEditable: isEditable
+        )
+    }
+
+    /// A document colour as SwiftUI sees it.
+    ///
+    /// Resolved through the workbook's own palette, because `theme` and `indexed` colours mean
+    /// nothing without it — a themed blue is a different blue in two files, and guessing would
+    /// put a swatch under the toolbar glyph that does not match the cell.
+    private func swatchColor(_ color: StyleColor) -> Color {
+        let rgba = color.resolved(in: workbook.styles.palette)
+        return Color(
+            .sRGB,
+            red: Double(rgba.red) / 255,
+            green: Double(rgba.green) / 255,
+            blue: Double(rgba.blue) / 255,
+            opacity: 1
         )
     }
 

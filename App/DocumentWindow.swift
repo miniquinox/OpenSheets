@@ -1076,6 +1076,11 @@ private struct DocumentPane<TitleBar: View>: View {
         case let .setFontSize(size): model.restyle("Font size") { $0.font.size = size }
         case let .setAlignment(align): model.restyle("Alignment") { $0.alignment.horizontal = horizontal(align) }
         case .toggleWrapText: model.restyle("Wrap text") { $0.alignment.wrapText.toggle() }
+        case let .setTextColor(color): model.restyle("Text colour") { $0.font.color = color }
+        case let .setFillColor(color):
+            // `.none`, not a white fill: xlsx distinguishes "no pattern" from "solid white", and
+            // only the first lets a banded row or a conditional format show through underneath.
+            model.restyle("Fill colour") { $0.fill = color.map(FillStyle.solid) ?? .none }
         case .toggleMerge: model.toggleMerge()
         case let .setNumberFormat(choice):
             model.restyle("Number format") { $0.numberFormatID = formatID(choice) }
