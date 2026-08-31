@@ -91,10 +91,23 @@ claude mcp list
 The server speaks MCP over stdio (JSON-RPC 2.0, newline delimited) and needs no configuration, no
 port, and no API key.
 
-Stdio is the *only* transport, which decides what can use it: any client that can spawn a local
-subprocess — Claude Code, Claude Desktop, local-LLM harnesses — and **not** ChatGPT on the web or any
-other browser-hosted assistant, which require a remotely hosted server over HTTPS with OAuth. That is
-a deliberate scope decision; `DOCUMENTATION.md` §5.9 explains why.
+Stdio is the *only* transport this program has, which decides what can spawn it: any client that can
+run a local subprocess — Claude Code, Claude Desktop, local-LLM harnesses. A page in a browser tab
+cannot.
+
+Browser-based assistants reach it a different way, through **Cloud Share**: the OpenSheets app holds
+an outbound WebSocket to a small hosted relay and pumps this subprocess's stdin and stdout through
+it, so a link URL the owner creates and can revoke becomes a remote MCP endpoint. The server itself
+is unchanged by that — same one transport, no listener, no port, no API key — and, more to the
+point, **nothing about enforcement moves**. The grant check, the deny-list, `preview: true`, the
+snapshot before every write and the untrusted-content envelope all still run right here, in this
+local process, in the mode that cannot mint a grant. The relay routes bytes and grants nothing; it
+stores token hashes and never a frame body.
+
+A link is off by default and read-only by default, and a read-only link spawns this binary with
+`--read-only`, so it serves nine reading tools and does not advertise the rest. See
+[`cloud-share.md`](cloud-share.md) for the guide and `DOCUMENTATION.md` §5.9 for the argument — the
+one this project used to make against hosted bridges, kept and answered rather than deleted.
 
 To remove it again: **Disconnect** in Settings ▸ Claude (which also clears project-scope leftovers
 from old manual registrations), or `claude mcp remove opensheets`.
