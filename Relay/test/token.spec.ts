@@ -13,11 +13,14 @@ describe("A token is exactly os1.<22>.<43> in base64url", () => {
     expect(parsed!.token).toBe(TOKEN);
   });
 
-  it("hashes the shared test vector to the value the Swift suite pins", async () => {
-    // ShareTokenTests in Packages/OpenSheetsCore pins the same pair.
+  it("hashes the shared test vectors to the values the Swift suite pins", async () => {
+    // ShareTokenTests in Packages/OpenSheetsCore pins the same pairs.
     expect(await sha256Hex(TOKEN)).toBe(
       "75ce5756ee6c47791fe79a7812c0305e8b8e012496ad893247790f6c22392e1b",
     );
+    expect(
+      await sha256Hex("os1.AAECAwQFBgcICQoLDA0ODw.AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"),
+    ).toBe("e3363d12c26a578a78211fc86f33a674e1aaa5f0d0b3c640eff9e7f7603845fc");
   });
 
   it("rejects every malformed shape", () => {
