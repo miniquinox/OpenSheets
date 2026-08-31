@@ -15,7 +15,7 @@
   RefreshPill            capsule    solid #DEECFD border #00000026 @ 1.0pt
   RefreshPill/conflict   capsule    solid #FCF3E2 border #00000026 @ 1.0pt
   RefreshPill/failure    capsule    solid #FCE6E6 border #00000026 @ 1.0pt
-  DiffPanel              card       solid #FCFCFD border #00000026 @ 1.0pt
+  DiffPanel              panel      solid #FCFCFD border #00000026 @ 1.0pt
   ConflictBanner         panel      solid #FCF3E2 border #00000026 @ 1.0pt
 
 ## Signals

@@ -15,7 +15,7 @@
   RefreshPill            capsule    solid #2A3E56 border #FFFFFF2E @ 1.0pt
   RefreshPill/conflict   capsule    solid #534536 border #FFFFFF2E @ 1.0pt
   RefreshPill/failure    capsule    solid #53393B border #FFFFFF2E @ 1.0pt
-  DiffPanel              card       solid #323236 border #FFFFFF2E @ 1.0pt
+  DiffPanel              panel      solid #323236 border #FFFFFF2E @ 1.0pt
   ConflictBanner         panel      solid #534536 border #FFFFFF2E @ 1.0pt
 
 ## Signals

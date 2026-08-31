@@ -15,7 +15,7 @@
   RefreshPill            capsule    glass regular.tint(#007AFF6B) → lens #92C5FE
   RefreshPill/conflict   capsule    glass regular.tint(#FFB0206B) → lens #FDDCA0
   RefreshPill/failure    capsule    glass regular.tint(#FF453A6B) → lens #FDAFAB
-  DiffPanel              card       glass regular.interactive
+  DiffPanel              panel      glass regular.interactive
   ConflictBanner         panel      glass regular.tint(#FFB0206B) → lens #FDDCA0
 
 ## Signals

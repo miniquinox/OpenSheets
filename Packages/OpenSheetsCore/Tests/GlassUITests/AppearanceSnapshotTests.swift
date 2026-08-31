@@ -351,7 +351,7 @@ enum ComponentCatalog {
         ),
         Entry(
             name: "DiffPanel", file: "Sync/SyncSurface.swift",
-            tier: .floating, signal: .neutral, shape: .card, expectedModifier: ".glassCard("
+            tier: .floating, signal: .neutral, shape: .panel, expectedModifier: ".glassCard("
         ),
         Entry(
             name: "ConflictBanner", file: "Sync/ConflictBanner.swift",
