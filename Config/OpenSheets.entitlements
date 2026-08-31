@@ -20,8 +20,28 @@
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
 
-	<!-- Nothing here grants network access, JIT, unsigned memory, or library-validation
-	     bypass. If a future change appears to need one of those, that is a design smell worth
-	     arguing about before it is worth entitling. -->
+	<!-- The tripwire this comment used to be said: "Nothing here grants network access, JIT,
+	     unsigned memory, or library-validation bypass. If a future change appears to need one
+	     of those, that is a design smell worth arguing about before it is worth entitling."
+
+	     The argument happened. Cloud Share (2026-08) is the one exception, and it is entitled
+	     below rather than quietly: with the owner's switch on, the app holds an outbound
+	     WebSocket to a relay and pumps a local `opensheets-mcp` subprocess's stdio through it,
+	     so a browser-based assistant can reach the folders the owner granted. The counter-
+	     argument is in DOCUMENTATION.md §5.9, which used to say a hosted bridge was the wrong
+	     shape, and the answer is that the relay routes bytes and grants nothing: every grant
+	     check, the deny-list, and the untrusted-content envelope still run in the same local
+	     process they always ran in, and the relay holds token *hashes* only.
+
+	     What this key does not buy: it is inert while `app-sandbox` is false, because an
+	     unsandboxed process already has the network. It is here for the same reason the two
+	     file keys above are — so a future sandboxed build stays a build-setting change rather
+	     than a rewrite — and so this file states what the app does instead of understating it.
+
+	     The other three still stand. Nothing here grants JIT, unsigned memory, or
+	     library-validation bypass, and a change that appears to need one of those is still a
+	     design smell worth arguing about before it is worth entitling. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>
