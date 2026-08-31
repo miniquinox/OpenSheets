@@ -7,6 +7,16 @@ The loop: you open a file → Claude Code edits it in your terminal → OpenShee
 shows you *exactly what changed*, and lets you accept it. No Microsoft account, no plugin
 store, no cloud. The file is the API.
 
+> **"No cloud" needs a footnote as of 2026-08-30, and the sentence is kept rather than quietly
+> edited.** Cloud Share adds an opt-in relay so a browser-based assistant can reach the folders you
+> granted. What "no cloud" was defending is intact and is worth naming precisely: your files are
+> never uploaded, there is no account, no sync service holds a copy, and the relay stores nothing
+> but token hashes. What changed is that, with a switch the owner throws and can throw back, frames
+> from a hosted endpoint are pumped to a local subprocess. The relay routes bytes and grants
+> nothing. Off by default, revocable per link, and the honest limits — it terminates TLS, so
+> content transits it in plaintext per hop — are in [`docs/cloud-share.md`](docs/cloud-share.md)
+> and DOCUMENTATION.md §5.9.
+
 **Owner:** quino · **Type:** open-source macOS app · **Target:** macOS 26.0+ (Tahoe), Apple Silicon + Intel
 **Toolchain:** Xcode 26.6 · Swift 6.3 (strict concurrency ON) · SDK macosx26.5
 
@@ -29,6 +39,13 @@ So OpenSheets is deliberately **not** trying to out-feature Excel. It is:
 | File-watch → diff → refresh loop | Real-time multi-user collaboration |
 | MCP server so Claude edits *structurally* | VBA / macro execution (never) |
 | Byte-preserving round-trip of parts we don't model | Reimplementing OOXML in full |
+
+  **One row was added on 2026-08-30 and no row was removed.** *We build:* Cloud Share — an opt-in,
+  revocable relay so a browser-based assistant can reach the folders you granted, routing bytes and
+  granting nothing. *We deliberately don't:* end-to-end encryption to that assistant, link expiry
+  dates, per-recipient folder scoping, or accounts for recipients. The reasoning, and the argument
+  it had to answer, are in DOCUMENTATION.md §5.9; the guide is
+  [`docs/cloud-share.md`](docs/cloud-share.md).
 
 The bet: **visualisation + sync fidelity is the product.** Depth comes from Claude.
 
@@ -520,6 +537,15 @@ this is an app for people who left the cloud on purpose.
 
 ## 12. Integrations
 - **Claude Code (MCP)** — `opensheets-mcp` over stdio, registered via `claude mcp add`. §7.2 grants.
+- **Cloudflare Workers + Durable Objects** — the Cloud Share relay in `Relay/`, one Durable Object
+  per device, holding the Mac's outbound WebSocket and a table of link-token *hashes*. The only
+  third-party service in the project, and the only directory that is not Swift. Creating the account
+  and running `npx wrangler deploy` are user steps; no secret lives in the repository, because
+  wrangler uses its own login. Deployed 2026-08-30 and answering on `/health`.
+- **Browser-based assistants, through that relay** — claude.ai custom connectors, ChatGPT developer
+  mode and Gemini Enterprise all accept a Streamable-HTTP MCP URL with auth "None", which is what a
+  share link is. Gemini's consumer surface and the claude.ai org-managed admin flow are unverified;
+  [`docs/cloud-share.md`](docs/cloud-share.md) says which is which.
 - **Terminal** — `Open terminal here` opens Terminal or iTerm2 (whichever is default) at the
   workspace root with `claude` pre-typed but **not executed**.
 - **Quick Look** — a thumbnail/preview extension for xlsx (v0.4, nice-to-have).
