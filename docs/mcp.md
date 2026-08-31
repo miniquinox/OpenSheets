@@ -3,23 +3,30 @@
 > **Superseded by [`DOCUMENTATION.md`](../DOCUMENTATION.md).**
 >
 > The MCP server, the CLI, the safety model and the worked examples are all covered there — §5 for
-> the server and all **22** tools, §6 for the CLI, §9 for the security model — against numbers and
+> the server and all **25** tools, §6 for the CLI, §9 for the security model — against numbers and
 > command output that were re-verified against the code rather than carried forward.
 >
 > This file is kept for now because it is linked from elsewhere, and because §5–§9 below go into
 > more narrative depth on a few points than the reference tables do. Where the two disagree,
 > `DOCUMENTATION.md` is correct. Known to be stale below:
 >
-> - **The surface is 22 tools, not twenty.** `list_workspace` and `list_files` were added so an
->   agent can find a file without asking the user to paste a path; the table in §5 predates them.
->   `DOCUMENTATION.md` §5.6 has both, and `opensheets tools` prints the live list.
+> - **The surface is 25 tools, not the twenty this file originally described.** `list_workspace`
+>   and `list_files` were added so an
+>   agent can find a file without asking the user to paste a path, and the file lifecycle added
+>   `new_workbook` (create, never overwrites), `delete_file` (snapshot first, then the Trash) and
+>   `open_in_app` (launch the app and front the file — the server's one sanctioned subprocess,
+>   `/usr/bin/open` on a grant-checked path). The table in §5 has been extended; `DOCUMENTATION.md`
+>   §5.6 is the reference, and `opensheets tools` prints the live list.
 > - **`describe`'s cost is enforced, not hoped for.** The table below says "a few hundred tokens"
 >   without saying how: it is asserted at under 800 estimated tokens, with identical line counts
 >   between a 50-row and a 50,000-row sheet. `DOCUMENTATION.md` §5.4.
 > - **`get_selection` and `reveal_range` now have an app half.** They shipped without one — the app
 >   never published a selection and never read a reveal request — so anything below that reads as
->   though they worked was describing a protocol with one end missing. The app half exists now and
->   is model-tested, but **has never been driven on a screen**: `DOCUMENTATION.md` §3.4 and §12.2.
+>   though they worked was describing a protocol with one end missing. The app half exists now, is
+>   model-tested, and the loop has since been driven live through `open_in_app` — running-app
+>   takeover and cold launch both, confirmed by reading the app's own published presence back —
+>   though `reveal_range`'s polite path itself has not been separately driven:
+>   `DOCUMENTATION.md` §3.4 and §12.
 >
 > One item previously flagged here is **fixed** and the warning is withdrawn: `filter`'s `limit` was
 > documented as if validated when it was not, and a negative value trapped the process. It is now
@@ -170,29 +177,35 @@ Two related guarantees, from PLAN.md §7.3:
 - **Nothing from a file is ever executed.** No DDE, no `=cmd|`, no macros. A `vbaProject.bin` is
   passed through on save and never run.
 - **Nothing is ever fetched.** External workbook links and `HYPERLINK()` targets are inert. The
-  server makes no network requests at all.
+  server makes no network requests at all — and it spawns exactly one thing, deliberately:
+  `/usr/bin/open` on the user's own app, for a path that already passed the grant check, when
+  `open_in_app` asks. No shell, constant bundle id, child stdio to `/dev/null`;
+  `DOCUMENTATION.md` §9.3 has the full pinning.
 
 ## 5. The tools
 
-Twenty-two tools. Start with `list_workspace` if you have no path yet, then `describe`.
+Twenty-five tools. Start with `list_workspace` if you have no path yet, then `describe`.
 
 | Tool | What it does |
 | --- | --- |
 | **`list_workspace`** | The folders in the app's Files panel, the folders granted but not shown, and what is open as a tab. **Start here when you do not have a path.** |
 | `list_files` | Spreadsheet files in a granted folder, one level or `recursive`. |
+| `new_workbook` | Create a workbook from scratch — **never overwrites**. `sheets` names the tabs (xlsx family only; csv/tsv are single-sheet by nature). |
+| `delete_file` | Move a workbook to the Trash, **snapshot first** — double-recoverable, never a hard delete. |
+| `open_in_app` | Open the file in the OpenSheets app, launching it if it is not running, and optionally select a sheet and range. The takeover counterpart to `reveal_range`'s polite request. |
 | **`describe`** | Per sheet: used range, guessed header row, and per column the inferred type, null count, value range and a few examples. **A few hundred tokens whatever the row count.** |
 | `read_range` | Cells as TSV (`compact`) or one JSON object per cell (`detailed`). Paged, with a hard cap. |
 | `find` | Value / formula / regex search. Returns **cell references, not contents**. |
 | `filter` | "Every row where …", answered as row numbers. Can delete the matches in one pass. |
 | `write_range` | Values or formulas into a rectangle. Recalculates dependents. |
-| `set_format` | Number format, bold/italic/underline, font, colours, alignment, width, height. |
+| `set_format` | Number format, bold/italic/underline, font, colours, alignment, width, height, and freeze panes (`freezeRows`/`freezeColumns`, 0 unfreezes). |
 | `recalc` | Recompute every formula and report what moved. |
 | `insert_rows` · `delete_rows` · `insert_columns` · `delete_columns` | Structural edits, **with every formula in the workbook rewritten to match**. |
 | `sort` | Reorder rows by one or more columns, in Excel's cross-type order. |
 | `rename_sheet` | Rename a sheet. |
-| `add_sheet` · `delete_sheet` | **Refuse in v0.1** — see §8. |
+| `add_sheet` · `delete_sheet` | **Refuse in v0.1** — see §8; both refusals route from-scratch creation to `new_workbook`. |
 | `snapshot` · `list_snapshots` · `restore` | Restore points. Every write already takes one. |
-| `get_selection` · `reveal_range` | Talk to the OpenSheets app if it is running. Optional. |
+| `get_selection` · `reveal_range` | Talk to the OpenSheets app if it is running. Optional — and polite: the app decides, and neither launches anything. `open_in_app` is the one that does. |
 
 ### Every tool takes `preview: true`
 
@@ -205,7 +218,9 @@ preview only, nothing written · would change: 1 sheet, 4 cells changed
 ```
 
 Preview before anything destructive. `delete_rows`, `delete_columns`, `filter` with
-`action: "delete_rows"`, `sort` and `restore` are the ones that can lose data.
+`action: "delete_rows"`, `sort`, `restore` and `delete_file` are the ones that can lose data —
+though `delete_file` is the least dangerous of them by construction: snapshot first, then the
+Trash, never a hard delete.
 
 ### Ranges
 
@@ -347,8 +362,10 @@ sample values — usually enough to answer without reading a single row.
 means a new part, a new content-type override and a new relationship, all consistent with each
 other and with `workbook.xml`. A partial job produces a file Excel reports as damaged, and a file
 Excel will not open is worse than a feature it does not have. Both tools say so and suggest
-something else: write to an existing sheet, or use `delete_rows` over a sheet's used range to
-empty it.
+something else: write to an existing sheet, use `delete_rows` over a sheet's used range to empty
+it, or create a fresh workbook with exactly the sheets you need via `new_workbook`. That last is
+not a contradiction — the refusal is about mutating an *existing* archive's part structure in
+place, and generating a fresh, complete package is what every save already does.
 
 Some things are **copied through unchanged and do not follow a structural edit** — worth knowing
 before you insert rows into a heavily formatted workbook:
@@ -379,6 +396,11 @@ undoing an undo works.
 `list_snapshots` shows them, newest first, with why each was taken. `snapshot` takes one you have
 named, for marking the start of a multi-step edit.
 
+`delete_file` leans on the same machinery: it snapshots the bytes *before* moving the file to the
+Trash, and its result names both safety nets — the Trash, and the `restore(path, id)` undo. A
+`restore` whose target no longer exists resurrects the file from the snapshot's bytes, which is
+what makes that undo line true rather than aspirational.
+
 Writes are also atomic: the file is written to a temporary and exchanged, so a crash mid-save
 leaves the original intact rather than a half-written archive.
 
@@ -394,6 +416,7 @@ already attached, which is the table doing its job.
 ```bash
 opensheets workspace                       # Files panel, grants, open tabs
 opensheets ls ~/Finance --recursive
+opensheets new plan.xlsx Summary Data      # create — never overwrites
 
 opensheets describe budget.xlsx
 opensheets get budget.xlsx 'Sheet1!A1:D20'
@@ -418,9 +441,11 @@ opensheets diff before.xlsx after.xlsx
 opensheets snapshot budget.xlsx 'before restructuring'
 opensheets snapshots budget.xlsx
 opensheets restore budget.xlsx 01JQ8Z4M7XK2P9V3B1N5C6D7E8
+opensheets delete-file old.xlsx       # snapshot first, then the Trash
 
 opensheets selection budget.xlsx      # what the app has selected, if it is open
 opensheets reveal budget.xlsx C4:C20  # ask the app to scroll there
+opensheets open budget.xlsx B2:D9 --sheet Budget  # open in the app, launching it if needed
 opensheets grants
 opensheets tools
 ```

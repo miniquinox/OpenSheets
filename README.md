@@ -8,10 +8,11 @@ The loop: you open a file → Claude Code edits it in your terminal → OpenShee
 The file is the API.
 
 **Status: v0.1, pre-release.** The app opens and renders `.xlsx` and `.csv`, watches the file for
-external changes, and edits through a 22-tool MCP server. The package builds and its 1,696 tests
-pass. Several release gates are genuinely open — notably that nothing we write has ever been opened
-in Microsoft Excel, and that neither the app↔agent handshake nor the new Settings ▸ Claude pane has
-ever been driven on a screen. See
+external changes, and edits through a 25-tool MCP server — including creating a workbook from
+scratch, trashing one recoverably, and opening a file in the app from a terminal. The package
+builds and its 1,720 tests pass. Several release gates are genuinely open — notably that nothing
+we write has ever been opened in Microsoft Excel, and that the Settings ▸ Claude pane has never
+been driven on a screen. See
 [DOCUMENTATION.md §12](DOCUMENTATION.md#12-known-limitations-and-what-is-not-done) for the full,
 honest list.
 
@@ -54,7 +55,7 @@ Packages/OpenSheetsCore/          ~95% of the code lives here
     GridKit/                      virtualised AppKit grid renderer
     GlassUI/                      design tokens and every glass surface
     SheetStore/                   file watcher, snapshots, workspace grants, directory listing, SQLite
-    SheetMCP/                     the 22-tool MCP surface and the CLI
+    SheetMCP/                     the 25-tool MCP surface and the CLI
     DocumentCore/                 the wiring layer: AppModel, DocumentModel, window rules
     TestSupport/                  builders, fakes, matchers
 Fixtures/                         the golden corpus everything is tested against
