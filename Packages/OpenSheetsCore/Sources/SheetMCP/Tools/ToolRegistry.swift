@@ -147,4 +147,25 @@ public struct ToolRegistry: Sendable {
         FileLifecycleTools.deleteFile,
         FileLifecycleTools.openInApp,
     ])
+
+    /// ``standard`` with everything that can change a workbook taken out.
+    ///
+    /// A server built on this registry does not merely refuse a write — it never advertises one.
+    /// `tools/list` returns the reading half, so a client is never tempted to plan around a tool
+    /// it cannot call, and a call to a missing name comes back as `methodNotFound` rather than as
+    /// a permission argument the agent might try to talk its way out of.
+    ///
+    /// **Filtered on each schema's own ``ToolSchema/isReadOnly``, never on a list of names.** A
+    /// hand-kept list would be a second place to remember, and the forgotten one is always this
+    /// one: the tool ships, the list stays as it was, and a link the owner called "read only"
+    /// quietly serves a write. Filtering on the annotation makes every future tool classify
+    /// itself, and a tool whose annotation is wrong is wrong in `tools/list` too, where it is
+    /// visible.
+    ///
+    /// Two exclusions are worth knowing about, because both are tools a person would call
+    /// "reading": `filter` is annotated `isReadOnly: false` because `action: "delete"` removes the
+    /// matching rows, and `snapshot` writes a restore point. Neither is a misannotation, and the
+    /// remedy — if a read-only surface should list them — is to split the tool, not to special-case
+    /// it here.
+    public static let readOnly = ToolRegistry(tools: standard.tools.filter(\.schema.isReadOnly))
 }

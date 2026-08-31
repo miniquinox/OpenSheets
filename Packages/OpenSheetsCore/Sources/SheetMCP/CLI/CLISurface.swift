@@ -160,8 +160,8 @@ public enum CLISurface {
             summary: "Show the MCP tool surface"
         ),
         Command(
-            name: "serve", tool: nil, form: "serve",
-            summary: "Run as an MCP server on stdin/stdout"
+            name: "serve", tool: nil, form: "serve [--read-only]",
+            summary: "Run as an MCP server on stdin/stdout; --read-only omits every writing tool"
         ),
         Command(
             name: "help", tool: nil, form: "help",
