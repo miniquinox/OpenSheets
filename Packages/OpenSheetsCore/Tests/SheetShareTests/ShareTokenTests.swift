@@ -219,13 +219,14 @@ struct ShareTokenTests {
     }
 
     /// The compiled-in origin parses, which is what makes the `??` in
-    /// `CloudShareConfiguration.standard` unreachable rather than merely unlikely.
-    @Test func theCompiledRelayOriginParsesAndSaysItIsAPlaceholder() {
+    /// `CloudShareConfiguration.standard` unreachable rather than merely unlikely — and since
+    /// the 2026-08-30 deploy it is the real relay, not the placeholder sentinel.
+    @Test func theCompiledRelayOriginParsesAndIsTheDeployedRelay() {
         #expect(
             CloudShareConfiguration.standard.relayOrigin.absoluteString
-                == CloudShareConfiguration.placeholderRelayOrigin
+                == CloudShareConfiguration.standardRelayOrigin
         )
-        #expect(CloudShareConfiguration.standard.isPlaceholder)
+        #expect(!CloudShareConfiguration.standard.isPlaceholder)
         #expect(CloudShareConfiguration.standard.relayOrigin.scheme == "https")
     }
 

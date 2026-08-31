@@ -3,20 +3,20 @@ import SheetModel
 
 /// Where the relay lives and how its two endpoints are spelled.
 ///
-/// # Why the default is a placeholder that cannot work
+/// The compiled-in origin is the relay deployed on 2026-08-30 (OPEN-1 in the Cloud Share plan,
+/// since resolved): `wrangler deploy` from `Relay/` into the owner's Cloudflare account printed
+/// it, and `/health` answered before it was baked in here. `OSCloudRelayURL` in `UserDefaults`
+/// still overrides it, which is how development against a `wrangler dev` instance works.
 ///
-/// The relay is a Cloudflare Worker somebody has to deploy into an account they own, and that
-/// deploy is a user step, not an agent step (OPEN-1 in the Cloud Share plan). Until it happens
-/// there is no honest value to compile in. A placeholder host that obviously is not a real
-/// deployment is better than a plausible-looking one: ``isPlaceholder`` lets the settings pane
-/// say "no relay configured yet" instead of showing a connection failing forever against a
-/// domain that was never going to answer.
-///
-/// The one-line follow-up after the deploy is to change ``placeholderRelayOrigin`` to the
-/// `workers.dev` origin the deploy printed. `OSCloudRelayURL` in `UserDefaults` overrides it in
-/// the meantime, which is how development against a `wrangler dev` instance works.
+/// ``placeholderRelayOrigin`` survives as the sentinel for a build whose relay has been
+/// deliberately pointed away (and for ``isPlaceholder``, which the settings pane can use to say
+/// "no relay configured" instead of showing a connection failing forever against a domain that
+/// was never going to answer).
 public struct CloudShareConfiguration: Sendable, Equatable {
-    /// The compiled-in default. Not a real deployment — see the type's note.
+    /// The deployed relay's origin — what `wrangler deploy` printed.
+    public static let standardRelayOrigin = "https://opensheets-relay.opensheets-relay.workers.dev"
+
+    /// The not-a-real-deployment sentinel. See the type's note.
     public static let placeholderRelayOrigin = "https://opensheets-relay.example.workers.dev"
 
     /// The relay's HTTPS origin. Scheme and host only; paths come from this type.
@@ -50,7 +50,7 @@ public struct CloudShareConfiguration: Sendable, Equatable {
     /// purpose: if it ever were reached, ``agentURL()`` throws on the scheme rather than quietly
     /// connecting somewhere unintended.
     public static let standard = CloudShareConfiguration(
-        relayOrigin: URL(string: placeholderRelayOrigin) ?? URL(fileURLWithPath: "/dev/null")
+        relayOrigin: URL(string: standardRelayOrigin) ?? URL(fileURLWithPath: "/dev/null")
     )
 
     /// True while no relay has been deployed and pointed at (OPEN-1).
