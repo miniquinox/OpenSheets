@@ -23,16 +23,6 @@ public enum GlassTier: String, Sendable, Hashable, CaseIterable, Codable {
     ///
     /// Tint is semantic and there are exactly three of them. See ``DS/SignalKind``.
     case signal
-
-    /// `.regular.tint(frost).interactive()` — the sheet-chat bubble and its panel.
-    ///
-    /// Floating, but **frosted**, the way the system's own volume HUD is: a white frost tint
-    /// lifts the lens off whatever is beneath it, so the surface reads as a control in its own
-    /// right rather than as a dark window onto the grid. The plain floating tier is the right
-    /// default — a lens should show the document — but a *conversation* is not a readout of the
-    /// cells behind it, and rendering it as one made it look switched off. The frost is a look,
-    /// not a meaning, which is why this is a tier and not a fourth ``DS/SignalKind``.
-    case hud
 }
 
 /// The signature surface.
@@ -101,8 +91,6 @@ public struct GlassSurface<S: Shape>: ViewModifier {
             DS.Signal.tintValue(signal, context)
                 .map { Glass.regular.tint($0.opacity(DS.Signal.glassTintStrength).color) }
                 ?? .regular
-        case .hud:
-            .regular.tint(DS.Surface.hudFrost(context).color).interactive()
         }
     }
 }
@@ -138,7 +126,7 @@ public struct GlassResolution: Sendable, Hashable, CustomStringConvertible {
         guard context.usesRealGlass else {
             let fill: RGBA = switch tier {
             case .chrome: DS.Surface.chromeColor(context)
-            case .floating, .hud: DS.Surface.floatingColor(context)
+            case .floating: DS.Surface.floatingColor(context)
             case .signal: DS.Surface.signalColor(signal, context)
             }
             return GlassResolution(
@@ -158,8 +146,6 @@ public struct GlassResolution: Sendable, Hashable, CustomStringConvertible {
             recipe = "regular"
         case .floating:
             recipe = "regular.interactive"
-        case .hud:
-            recipe = "regular.tint(\(DS.Surface.hudFrost(context).hexString)).interactive"
         case .signal:
             if signal == .neutral {
                 recipe = "regular"
@@ -225,9 +211,9 @@ public struct GlassCluster<Content: View>: View {
 
 // MARK: - Entry points
 
-public extension View {
+extension View {
     /// Chrome glass in an explicit shape.
-    func glassSurface(
+    public func glassSurface(
         _ tier: GlassTier,
         in shape: some Shape,
         context: AppearanceContext,
@@ -237,18 +223,11 @@ public extension View {
     }
 
     /// A floating capsule: the stats pill, the refresh pill, the sync chip.
-    ///
-    /// `frosted` swaps the plain lens for the ``GlassTier/hud`` frost. A signal outranks a
-    /// frost: a tinted surface is saying something, and the saying wins.
-    func glassPill(
-        context: AppearanceContext,
-        signal: DS.SignalKind = .neutral,
-        frosted: Bool = false
-    ) -> some View {
+    public func glassPill(context: AppearanceContext, signal: DS.SignalKind = .neutral) -> some View {
         modifier(
             GlassSurface(
                 shape: Capsule(style: .continuous),
-                tier: signal != .neutral ? .signal : (frosted ? .hud : .floating),
+                tier: signal == .neutral ? .floating : .signal,
                 context: context,
                 signal: signal
             )
@@ -256,16 +235,15 @@ public extension View {
     }
 
     /// A floating card at ``DS/Radius/card``: the diff panel, the command palette, the launcher.
-    func glassCard(
+    public func glassCard(
         context: AppearanceContext,
         radius: CGFloat = DS.Radius.card,
-        signal: DS.SignalKind = .neutral,
-        frosted: Bool = false
+        signal: DS.SignalKind = .neutral
     ) -> some View {
         modifier(
             GlassSurface(
                 shape: DS.Radius.shape(radius),
-                tier: signal != .neutral ? .signal : (frosted ? .hud : .floating),
+                tier: signal == .neutral ? .floating : .signal,
                 context: context,
                 signal: signal
             )
@@ -273,7 +251,7 @@ public extension View {
     }
 
     /// An edge-anchored chrome bar: the toolbar, the formula bar, the tab bar, the sidebar.
-    func glassChrome(context: AppearanceContext, radius: CGFloat = DS.Radius.panel) -> some View {
+    public func glassChrome(context: AppearanceContext, radius: CGFloat = DS.Radius.panel) -> some View {
         modifier(
             GlassSurface(
                 shape: DS.Radius.shape(radius),
@@ -294,7 +272,7 @@ public extension View {
     ///
     /// The fill is the grid canvas, not a material, because §3's whole discipline is that there
     /// is exactly one opaque plane and this is it.
-    func gridPlane(_ context: AppearanceContext) -> some View {
+    public func gridPlane(_ context: AppearanceContext) -> some View {
         background(GridTheme.resolved(context).canvas.color)
             .backgroundExtensionEffect()
     }
@@ -319,10 +297,10 @@ public enum GlassMorphID: String, Sendable, Hashable, CaseIterable {
     case chatSurface
 }
 
-public extension View {
+extension View {
     /// Marks this view as one end of a morph. Both ends must use the same id **and** be inside
     /// the same ``GlassCluster``, or the system has nothing to interpolate between.
-    func glassMorph(_ id: GlassMorphID, in namespace: Namespace.ID) -> some View {
+    public func glassMorph(_ id: GlassMorphID, in namespace: Namespace.ID) -> some View {
         glassEffectID(id, in: namespace)
     }
 
@@ -335,7 +313,7 @@ public extension View {
     /// Under `reduceMotion` it becomes `.identity`, which leaves the two shapes to cross-fade.
     /// Somebody who has asked the system for less motion should not be handed the app's most
     /// motion-heavy moment as a reward for using its best feature.
-    func glassMorphTransition(_ context: AppearanceContext) -> some View {
+    public func glassMorphTransition(_ context: AppearanceContext) -> some View {
         glassEffectTransition(context.reduceMotion ? .identity : .matchedGeometry)
     }
 }

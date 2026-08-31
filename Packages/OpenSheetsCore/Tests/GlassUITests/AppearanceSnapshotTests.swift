@@ -319,15 +319,17 @@ enum ComponentCatalog {
             name: "SnapshotBrowser", file: "Floating/SnapshotBrowser.swift",
             tier: .floating, signal: .neutral, shape: .card, expectedModifier: ".glassCard("
         ),
-        // The chat pair morphs like the sync surface's, on the hud frost at both sizes — one
-        // lens, one recipe, or the morph reads as two objects cross-fading.
+        // The chat pair morphs like the sync surface's, and takes the plain floating tier at
+        // both sizes — the stats pill's own glass. A frosted `hud` tier was tried here and
+        // removed: tinting the lens read as paint, and the volume HUD it chased turned out to
+        // be exactly this untinted glass.
         Entry(
             name: "ChatBubble", file: "Floating/ChatSurface.swift",
-            tier: .hud, signal: .neutral, shape: .capsule, expectedModifier: ".glassPill("
+            tier: .floating, signal: .neutral, shape: .capsule, expectedModifier: ".glassPill("
         ),
         Entry(
             name: "ChatPanel", file: "Floating/ChatSurface.swift",
-            tier: .hud, signal: .neutral, shape: .card, expectedModifier: ".glassCard("
+            tier: .floating, signal: .neutral, shape: .card, expectedModifier: ".glassCard("
         ),
         // `.none` because the launcher card is flush: it fills its window, so the corners are the
         // window's and it has no radius of its own. Same reason the toolbar and sidebar are `.none`.

@@ -139,9 +139,10 @@ public struct ChatSurface: View {
 
 // MARK: - The bubble
 
-/// The Apple Intelligence glyph in a round frosted lens — the system volume HUD's grammar: an
-/// icon the OS has already taught, on the ``GlassTier/hud`` frost so it reads as a control and
-/// not as a dark window onto the grid.
+/// The Apple Intelligence glyph in a round lens — the system volume HUD's grammar: one icon
+/// the OS has already taught, on the same plain floating glass as the stats pill across the
+/// grid from it. No tint: the volume HUD's depth comes from the lens itself — the refraction
+/// and the lit rim — and every attempt to help it with a frost tint read as paint, not glass.
 public struct ChatBubble: View {
     private let isResponding: Bool
     private let context: AppearanceContext
@@ -157,9 +158,9 @@ public struct ChatBubble: View {
         self.perform = perform
     }
 
-    /// The system volume HUD's proportions: one glyph in a round frosted lens, no caption. The
-    /// words moved to the tooltip and the accessibility label — an icon that needs a label next
-    /// to it is an icon that is not doing its job, and this one is the OS's own.
+    /// The system volume HUD's proportions: one glyph in a round lens, no caption. The words
+    /// moved to the tooltip and the accessibility label — an icon that needs a label next to it
+    /// is an icon that is not doing its job, and this one is the OS's own.
     private static let diameter: CGFloat = 40
 
     public var body: some View {
@@ -173,7 +174,7 @@ public struct ChatBubble: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .glassPill(context: context, frosted: true)
+        .glassPill(context: context)
         .hoverTitle("Ask your sheet — ⌥⌘C")
         .accessibilityLabel(isResponding ? "Sheet chat, answering" : "Ask your sheet")
         .accessibilityHint("Opens the sheet chat")
@@ -183,9 +184,8 @@ public struct ChatBubble: View {
 // MARK: - The panel
 
 /// The conversation. Fixed width like the diff panel, height capped so the transcript scrolls
-/// rather than the panel growing past the window. Frosted (``GlassTier/hud``) rather than plain
-/// floating glass: a transcript is read *on* the surface, not through it, and the frost is what
-/// keeps three paragraphs legible over a grid of numbers.
+/// rather than the panel growing past the window, and the diff panel's own plain floating
+/// glass — the surface the rest of the app has already taught the eye to read text on.
 public struct ChatPanel: View {
     private let state: ChatSurfaceState
     private let context: AppearanceContext
@@ -222,9 +222,7 @@ public struct ChatPanel: View {
             }
         }
         .frame(width: Metrics.width)
-        // Frosted like the bubble it morphs out of — both ends of a morph are one lens, and a
-        // lens that changes recipe mid-flight reads as a cross-fade between two objects.
-        .glassCard(context: context, frosted: true)
+        .glassCard(context: context)
         .onExitCommand { perform(.collapse) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sheet chat")
