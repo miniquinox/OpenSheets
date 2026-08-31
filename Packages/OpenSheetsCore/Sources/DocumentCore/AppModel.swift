@@ -151,6 +151,25 @@ public final class AppModel {
     /// the instance.
     @ObservationIgnored public var handshakeForThisInstance: Bool?
 
+    /// Whether this instance runs Cloud Share. `nil` asks ``Flags``, which is what the app wants.
+    ///
+    /// The same per-instance seam as ``handshakeForThisInstance``, with one difference that is not
+    /// cosmetic: it is a `let` set through ``init(store:cloudShareForThisInstance:)`` rather than a
+    /// `var` set afterwards, because ``share`` is built **in** `init`. A property assigned after
+    /// construction could not change what construction did, so a `var` here would be a switch that
+    /// looked like it worked and did nothing — the worst kind of test seam.
+    @ObservationIgnored public let cloudShareForThisInstance: Bool?
+
+    /// Settings ▸ Cloud's machinery: the link list, the master switch, and the relay socket behind
+    /// them. `nil` whenever ``Flags/cloudShareEnabled`` is off, and that is the kill switch.
+    ///
+    /// `@ObservationIgnored` for ``claude``'s reason — the service is `@Observable` in its own
+    /// right, so a view reading `share?.links` should depend on exactly that.
+    ///
+    /// Not built from a window, a scene, or `OpenActions`: a share link has to keep answering
+    /// while every document window is closed, so the service's lifetime is the process's.
+    @ObservationIgnored public private(set) var share: CloudShareService?
+
     /// Publishes what this app has open, so `get_selection` has something true to report. `nil`
     /// until ``startHandshake(tabs:openFile:)`` runs, and permanently `nil` with the flag off.
     @ObservationIgnored public private(set) var handshakePublisher: HandshakePublisher?
@@ -160,8 +179,12 @@ public final class AppModel {
     /// half a protocol.
     @ObservationIgnored public private(set) var handshakeRevealConsumer: HandshakeRevealConsumer?
 
-    public init(store: SheetStore) {
+    /// - Parameter cloudShareForThisInstance: overrides ``Flags/cloudShareEnabled`` for this model
+    ///   only. A parameter rather than a property because ``share`` is built here — see the
+    ///   property's note.
+    public init(store: SheetStore, cloudShareForThisInstance: Bool? = nil) {
         self.store = store
+        self.cloudShareForThisInstance = cloudShareForThisInstance
         // `forAuxiliaryExecutable:` resolves against Contents/MacOS/, where `Scripts/build.sh`
         // places the server. Resolved here rather than inside the connector so a test process —
         // whose main bundle is the test runner — can hand it a temp binary instead.
@@ -181,6 +204,15 @@ public final class AppModel {
                 ? DatabaseWorkspaceTreeStorage(database: store.database)
                 : nil
         )
+        // The kill switch, and it is structural rather than asserted: with the flag off there is
+        // no object, so there is no socket to open, no Keychain item to read, no `share_link` row
+        // to select and no subprocess to spawn. `startIfEnabled()` then adds the second gate —
+        // the object exists but does none of those things until the owner's own switch is on.
+        if cloudShareForThisInstance ?? Flags.cloudShareEnabled {
+            let service = CloudShareService.standard(store: store)
+            share = service
+            service.startIfEnabled()
+        }
         reloadRecents()
         reloadGrants()
     }
@@ -617,6 +649,26 @@ public enum Flags {
     /// `[Content_Types].xml`, relationships and `workbook.xml` disagree (addendum §4). The tab
     /// bar's `+` and its Delete item are hidden behind this rather than failing at save time.
     public static var sheetStructureEditing: Bool { bool("OSFlagSheetStructure") }
+
+    /// Cloud Share: share links that let a browser-based assistant reach this Mac's granted
+    /// folders through a relay. **Off**, and it ships that way on purpose.
+    ///
+    /// This is the one feature in the app that **opens a socket to the internet**, and the whole
+    /// design turns on the claim that switching it off costs nothing. So the switch is not a
+    /// rollout gate dressed up as a kill switch — it is the real thing, and the bar it has to
+    /// clear is `OSFlagHandshake`'s: off means no object, not a hidden pane over machinery that
+    /// still runs. ``AppModel/share`` is `nil`, so there is no relay socket, no Keychain read, no
+    /// `share_link` query and no `opensheets-mcp` child. `CloudShareServiceTests` pins it with a
+    /// store that counts the reads nobody makes.
+    ///
+    /// It stays off in v0.1 for a second reason as well, and it is the more ordinary one: the
+    /// Settings ▸ Cloud pane is screen-unverified (`DOCUMENTATION.md` §12) — the
+    /// `OSFlagSheetStructure` precedent, where a flag holds back work that compiles but has not
+    /// been looked at.
+    ///
+    /// The flag gates *existence*. `OSCloudShareEnabled` — the owner's own switch in Settings,
+    /// also default off — gates whether the service that exists ever connects.
+    public static var cloudShareEnabled: Bool { bool("OSFlagCloudShare") }
 
     private static func bool(_ key: String, default defaultValue: Bool = false) -> Bool {
         UserDefaults.standard.object(forKey: key) as? Bool ?? defaultValue
