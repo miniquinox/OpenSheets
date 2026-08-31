@@ -99,6 +99,7 @@ public final class DocumentChatBridge: ChatDocument {
             // handshake makes, because this string goes straight back into `read_cells`.
             selectionA1: model.selection.activeRange.a1String(),
             selectionStatsLine: statsLine.isEmpty ? nil : statsLine,
+            nextEmptyRow: used.map { $0.end.row + 2 },
             headerCells: headers,
             isEditable: model.isEditable
         )
@@ -224,6 +225,24 @@ public final class DocumentChatBridge: ChatDocument {
             }
         }
         return ChatFindResult(matches: matches, truncated: truncated)
+    }
+
+    public func appendRow(_ values: [String]) throws -> ChatAppendOutcome {
+        guard let model else { throw DocumentClosedError() }
+        let sheet = try resolveSheet(named: nil, in: model)
+        // Below the used range, starting at its leading column — an empty sheet appends at A1.
+        let used = sheet.usedRange
+        let row = used.map { $0.end.row + 1 } ?? 0
+        let startColumn = used?.start.column ?? 0
+        let edits = values.enumerated().map { offset, value in
+            (ref: CellRef(row: row, column: startColumn + offset), text: value)
+        }
+        let outcome = model.applyAssistantEdits(edits)
+        return ChatAppendOutcome(
+            rowNumber: row + 1,
+            appliedCount: outcome.appliedRefs.count,
+            refusals: outcome.refusals
+        )
     }
 
     public func evaluate(_ formulaSource: String) throws -> String {

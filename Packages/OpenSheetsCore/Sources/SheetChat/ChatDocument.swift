@@ -33,6 +33,12 @@ public protocol ChatDocument: AnyObject, Sendable {
     /// Where something is, not what it says — mirrors the MCP `find` contract.
     func find(_ query: String, maxMatches: Int) -> ChatFindResult
 
+    /// Adds one row of values immediately below the sheet's data, the document choosing the
+    /// row and columns. Exists because reference-picking is the observed failure: asked to "add
+    /// a region", the model overwrote the A1 header and then scattered cells near the user's
+    /// selection. Appending has no reference for it to get wrong.
+    func appendRow(_ values: [String]) throws -> ChatAppendOutcome
+
     /// Computes a formula against the live workbook without writing anything, and returns the
     /// result rendered as text — a number, `TRUE`, an error token like `#NAME?`, or a sentence
     /// for a formula the engine cannot evaluate. The model's calculator: it exists so that
@@ -56,6 +62,9 @@ public struct ChatWorkbookOverview: Sendable, Hashable {
     /// `Average 162,005 · Count 6 · Sum 972,029`, pre-formatted like the stats pill's values,
     /// and for the same reason: only the document knows the number format.
     public var selectionStatsLine: String?
+    /// 1-based row just below the data, stated outright because "A1:C7, so row 8" is an
+    /// inference the on-device model was watched getting wrong. `nil` for an empty sheet.
+    public var nextEmptyRow: Int?
     /// Row 1 of the active sheet, capped by the implementation. Untrusted — it is cell text.
     public var headerCells: [String]
     public var isEditable: Bool
@@ -67,6 +76,7 @@ public struct ChatWorkbookOverview: Sendable, Hashable {
         usedRangeA1: String?,
         selectionA1: String,
         selectionStatsLine: String?,
+        nextEmptyRow: Int? = nil,
         headerCells: [String],
         isEditable: Bool
     ) {
@@ -76,6 +86,7 @@ public struct ChatWorkbookOverview: Sendable, Hashable {
         self.usedRangeA1 = usedRangeA1
         self.selectionA1 = selectionA1
         self.selectionStatsLine = selectionStatsLine
+        self.nextEmptyRow = nextEmptyRow
         self.headerCells = headerCells
         self.isEditable = isEditable
     }
@@ -148,6 +159,20 @@ public struct ChatEditOutcome: Sendable, Hashable {
     public init(appliedCount: Int, appliedRangeA1: String?, refusals: [String]) {
         self.appliedCount = appliedCount
         self.appliedRangeA1 = appliedRangeA1
+        self.refusals = refusals
+    }
+}
+
+/// What ``ChatDocument/appendRow(_:)`` did: which row the document chose, and what landed.
+public struct ChatAppendOutcome: Sendable, Hashable {
+    /// 1-based, as the user's row labels read.
+    public var rowNumber: Int
+    public var appliedCount: Int
+    public var refusals: [String]
+
+    public init(rowNumber: Int, appliedCount: Int, refusals: [String]) {
+        self.rowNumber = rowNumber
+        self.appliedCount = appliedCount
         self.refusals = refusals
     }
 }

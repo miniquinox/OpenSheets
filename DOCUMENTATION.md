@@ -590,13 +590,16 @@ writes until you checkpoint.
 The bottom-right of the grid holds a second permanent floating surface beside the stats pill's
 slot: a glass bubble reading **Ask your sheet** (⌥⌘C, also in the View menu and ⌘K). Click it and
 it morphs into a conversation panel — the same pill→panel gesture as the refresh pill. Type a
-question; Apple's on-device foundation model answers it, reading the sheet through four tools
-(`read_cells`, `write_cells`, `find_cells`, `calculate`) and saying under each answer which ones
-it used. `calculate` is the formula engine as a read-only calculator, and it earns its schema
+question; Apple's on-device foundation model answers it, reading the sheet through five tools
+(`read_cells`, `write_cells`, `find_cells`, `calculate`, `append_row`) and saying under each
+answer which ones it used. `calculate` is the formula engine as a read-only calculator, and it earns its schema
 tokens: a ~3B model reliably knows it should total a column and reliably cannot do the
 totalling — in testing it once wrote its wrong mental sum into a cell to have something to
 report. Every guard held (named undo, flash, the change chip), and the fix was still upstream:
-give it a calculator so "compute" never reaches for "write".
+give it a calculator so "compute" never reaches for "write". `append_row` earned its slot the
+same way: asked to *add* a row, the model overwrote the A1 header and scattered cells near the
+selection — picking references for new data is inference, so for appends the document picks the
+row and the model only supplies values.
 Nothing leaves the Mac: this is the `FoundationModels` framework, so it needs macOS 26 on Apple
 silicon with Apple Intelligence enabled, and the panel says so plainly when any of that is
 missing instead of rendering a dead input field.
@@ -613,7 +616,7 @@ part that must not fork: cell text reaches the model inside the same
 `<untrusted-spreadsheet-content>` envelope ([§5.8](#58-the-safety-model-in-one-page)), values are
 rendered by the same `CellText`, and ranges speak the same A1.
 
-The tool surface is four tools rather than the server's 25 because the on-device model is small —
+The tool surface is five tools rather than the server's 25 because the on-device model is small —
 a context window of a few thousand tokens pays for every schema before you type a word — and
 "chat with the open sheet" needs exactly read, write, find. Anything file-shaped (snapshots,
 workspace listing, other workbooks) remains the MCP server's job.

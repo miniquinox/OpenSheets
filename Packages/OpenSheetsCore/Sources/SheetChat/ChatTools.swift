@@ -3,14 +3,14 @@ import FoundationModels
 import SheetMCP
 import SheetModel
 
-/// The four tools the on-device model gets. Four, not the MCP's twenty-five, on purpose.
+/// The five tools the on-device model gets. Five, not the MCP's twenty-five, on purpose.
 ///
 /// The system model is a ~3B-parameter device model with a context window in the low thousands
 /// of tokens, and every tool's name, description and schema is spent from that window before the
-/// user has typed a word. Twenty-five tools would drown it. Read, write, find, calculate is the
-/// irreducible set for "chat with the sheet that is open": everything else the MCP offers —
-/// workspace listing, snapshots, file lifecycle — is either meaningless inside the app or
-/// belongs to the user's own UI.
+/// user has typed a word. Twenty-five tools would drown it. Read, write, find, calculate,
+/// append is the set for "chat with the sheet that is open" — the last two earned their slots
+/// by watching the model fail without them — and everything else the MCP offers is either
+/// meaningless inside the app or belongs to the user's own UI.
 ///
 /// Two contracts are inherited from the MCP surface so the app's two agent doors behave alike:
 /// **cell text leaves inside the untrusted envelope** (`UntrustedContent`, PLAN.md §7.3), and
@@ -183,6 +183,57 @@ public struct FindCellsTool: Tool {
         guard !query.isEmpty else { return "Error: empty search text." }
         let result = await document.find(query, maxMatches: ChatToolLimits.findMatches)
         return ChatToolText.rendered(result)
+    }
+}
+
+// MARK: - append_row
+
+/// `append_row` — adding data with no reference to get wrong.
+///
+/// The second live failure this surface absorbed: asked to "add a region", the model overwrote
+/// the A1 header, then dropped cells next to the user's selection at row 16, narrating success
+/// throughout. Reference-picking for *new* rows is pure inference, and inference is what a ~3B
+/// model does worst — so for appends the document picks the row and the columns, and the model
+/// only supplies values, in order.
+public struct AppendRowTool: Tool {
+    public let name = "append_row"
+    public let description = """
+    Add one new row of data at the bottom of the sheet's existing data. Give one value per     column, left to right, matching the headers. Use this to add entries; never pick cell     references for new data yourself. Call once per row.
+    """
+
+    @Generable
+    public struct Arguments: Sendable {
+        @Guide(
+            description: "One value per column, in order, e.g. [\"North\", \"120\", \"162005\"]. Use \"\" to leave a column blank."
+        )
+        public var values: [String]
+
+        public init(values: [String]) {
+            self.values = values
+        }
+    }
+
+    let document: any ChatDocument
+
+    public init(document: any ChatDocument) {
+        self.document = document
+    }
+
+    public func call(arguments: Arguments) async throws -> String {
+        guard !arguments.values.isEmpty else { return "Error: no values given." }
+        guard arguments.values.count <= ChatToolLimits.readColumns * 2 else {
+            return "Error: at most \(ChatToolLimits.readColumns * 2) columns per row."
+        }
+        do {
+            let outcome = try await document.appendRow(arguments.values)
+            var lines = ["Appended row \(outcome.rowNumber) (\(outcome.appliedCount) cells)."]
+            for refusal in outcome.refusals {
+                lines.append("Refused \(refusal)")
+            }
+            return lines.joined(separator: "\n")
+        } catch {
+            return "Error: \(error.localizedDescription)"
+        }
     }
 }
 

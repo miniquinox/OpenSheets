@@ -217,6 +217,7 @@ public final class SheetChatController {
                 WriteCellsTool(document: document),
                 FindCellsTool(document: document),
                 CalculateTool(document: document),
+                AppendRowTool(document: document),
             ],
             instructions: Self.instructions
         )
@@ -236,8 +237,10 @@ public final class SheetChatController {
 
     Use read_cells before answering questions about values; do not guess values. Never do \
     arithmetic yourself: for any total, average, or calculation, call calculate with a formula \
-    like =SUM(C2:C7), using the column letters from the headers line, and report its result. Use write_cells only when the user asked for the \
-    sheet to be changed — never to compute something. Ranges use A1 style, like B2:D10.
+    like =SUM(C2:C7), using the column letters from the headers line, and report its result. \
+    To add new rows of data, call append_row with one value per column — never choose cell \
+    references for new data. Use write_cells only to change existing cells the user asked to \
+    change — never to compute something. Ranges use A1 style, like B2:D10.
 
     Reply in plain short sentences. No markdown.
     """
@@ -249,6 +252,9 @@ public final class SheetChatController {
         var context = "[Sheet \"\(overview.activeSheetName)\""
         if let used = overview.usedRangeA1 {
             context += " \(used)"
+        }
+        if let next = overview.nextEmptyRow {
+            context += ", next empty row \(next)"
         }
         context += " of \(overview.fileName)"
         if overview.sheetNames.count > 1 {

@@ -170,6 +170,35 @@ struct ChatBridgeTests {
         #expect(summary?.cells[try #require(CellRef(a1: "B1"))]?.value == .number(42))
     }
 
+    // MARK: - Append
+
+    @Test func appendLandsBelowTheDataAsOneUndoStep() throws {
+        let model = try makeModel()
+        let bridge = DocumentChatBridge(model: model)
+        let outcome = try bridge.appendRow(["Imaginary", "5", "0"])
+        #expect(outcome.rowNumber == 5, "the data ends at row 4; the document picked 5")
+        #expect(outcome.appliedCount == 3)
+        let sheet = model.workbook[model.activeSheetID]
+        #expect(sheet?.cells[try #require(CellRef(a1: "A5"))]?.value == .text("Imaginary"))
+        #expect(sheet?.cells[try #require(CellRef(a1: "B5"))]?.value == .number(5))
+        #expect(model.undoName == "Apple Intelligence")
+        model.undo()
+        #expect(model.workbook[model.activeSheetID]?.usedRange == CellRange(a1: "A1:C4"))
+    }
+
+    @Test func consecutiveAppendsStack() throws {
+        let model = try makeModel()
+        let bridge = DocumentChatBridge(model: model)
+        #expect(try bridge.appendRow(["one"]).rowNumber == 5)
+        #expect(try bridge.appendRow(["two"]).rowNumber == 6)
+        #expect(try bridge.appendRow(["three"]).rowNumber == 7)
+    }
+
+    @Test func theOverviewNamesTheNextEmptyRow() throws {
+        let model = try makeModel()
+        #expect(DocumentChatBridge(model: model).overview().nextEmptyRow == 5)
+    }
+
     // MARK: - Calculate
 
     @Test func evaluateComputesAgainstTheLiveWorkbookAndWritesNothing() throws {

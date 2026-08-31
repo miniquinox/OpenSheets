@@ -161,6 +161,29 @@ struct ChatToolTests {
         #expect(output.contains("\(ChatToolLimits.editsPerCall)"))
     }
 
+    // MARK: - append_row
+
+    @Test func appendReportsTheRowTheDocumentChose() async throws {
+        let fake = FakeChatDocument()
+        fake.appendOutcome = ChatAppendOutcome(rowNumber: 8, appliedCount: 3, refusals: [])
+        let output = try await AppendRowTool(document: fake)
+            .call(arguments: .init(values: ["Imaginary", "5", "0"]))
+        #expect(fake.lastAppended == ["Imaginary", "5", "0"])
+        #expect(output == "Appended row 8 (3 cells).")
+    }
+
+    @Test func appendEchoesRefusalsAndRefusesEmptyRows() async throws {
+        let fake = FakeChatDocument()
+        fake.appendOutcome = ChatAppendOutcome(
+            rowNumber: 8, appliedCount: 1, refusals: ["B8: that formula does not parse"]
+        )
+        let output = try await AppendRowTool(document: fake)
+            .call(arguments: .init(values: ["x", "=SUM("]))
+        #expect(output.contains("Refused B8"))
+        let empty = try await AppendRowTool(document: fake).call(arguments: .init(values: []))
+        #expect(empty.hasPrefix("Error:"))
+    }
+
     // MARK: - calculate
 
     @Test func calculateComputesWithoutWritingAndWrapsTheResult() async throws {
@@ -233,6 +256,8 @@ final class FakeChatDocument: ChatDocument {
     var lastFind: (query: String, maxMatches: Int)?
     var evaluation = "0"
     var lastEvaluated: String?
+    var appendOutcome = ChatAppendOutcome(rowNumber: 8, appliedCount: 0, refusals: [])
+    var lastAppended: [String]?
 
     func overview() -> ChatWorkbookOverview {
         overviewValue
@@ -258,5 +283,10 @@ final class FakeChatDocument: ChatDocument {
     func evaluate(_ formulaSource: String) throws -> String {
         lastEvaluated = formulaSource
         return evaluation
+    }
+
+    func appendRow(_ values: [String]) throws -> ChatAppendOutcome {
+        lastAppended = values
+        return appendOutcome
     }
 }
