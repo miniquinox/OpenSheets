@@ -172,26 +172,33 @@ struct ChatBridgeTests {
 
     // MARK: - Append
 
-    @Test func appendLandsBelowTheDataAsOneUndoStep() throws {
+    @Test func aBatchOfRowsLandsBelowTheDataAsOneUndoStep() throws {
         let model = try makeModel()
         let bridge = DocumentChatBridge(model: model)
-        let outcome = try bridge.appendRow(["Imaginary", "5", "0"])
-        #expect(outcome.rowNumber == 5, "the data ends at row 4; the document picked 5")
-        #expect(outcome.appliedCount == 3)
+        let outcome = try bridge.appendRows([
+            ["Imaginary", "5", "0"],
+            ["Fictional", "6", "1"],
+            ["Mythical", "7", "2"],
+        ])
+        #expect(outcome.firstRow == 5, "the data ends at row 4; the document picked 5")
+        #expect(outcome.rowCount == 3)
+        #expect(outcome.appliedCount == 9)
         let sheet = model.workbook[model.activeSheetID]
         #expect(sheet?.cells[try #require(CellRef(a1: "A5"))]?.value == .text("Imaginary"))
-        #expect(sheet?.cells[try #require(CellRef(a1: "B5"))]?.value == .number(5))
+        #expect(sheet?.cells[try #require(CellRef(a1: "B6"))]?.value == .number(6))
+        #expect(sheet?.cells[try #require(CellRef(a1: "C7"))]?.value == .number(2))
+        // Twenty rows or three, the whole batch is ONE undo step.
         #expect(model.undoName == "Apple Intelligence")
         model.undo()
         #expect(model.workbook[model.activeSheetID]?.usedRange == CellRange(a1: "A1:C4"))
     }
 
-    @Test func consecutiveAppendsStack() throws {
+    @Test func consecutiveBatchesStack() throws {
         let model = try makeModel()
         let bridge = DocumentChatBridge(model: model)
-        #expect(try bridge.appendRow(["one"]).rowNumber == 5)
-        #expect(try bridge.appendRow(["two"]).rowNumber == 6)
-        #expect(try bridge.appendRow(["three"]).rowNumber == 7)
+        #expect(try bridge.appendRows([["one"]]).firstRow == 5)
+        #expect(try bridge.appendRows([["two"], ["three"]]).firstRow == 6)
+        #expect(try bridge.appendRows([["four"]]).firstRow == 8)
     }
 
     @Test func theOverviewNamesTheNextEmptyRow() throws {

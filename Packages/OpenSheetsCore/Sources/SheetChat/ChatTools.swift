@@ -74,7 +74,13 @@ public struct ReadCellsTool: Tool {
                 maxRows: ChatToolLimits.readRows,
                 maxColumns: ChatToolLimits.readColumns
             )
-            return ChatToolText.rendered(slice)
+            ChatLog.tools
+                .info(
+                    "read_cells \(arguments.range, privacy: .public) → \(slice.rows.count, privacy: .public) rows, truncated \(slice.truncatedRowCount, privacy: .public)r/\(slice.truncatedColumnCount, privacy: .public)c"
+                )
+            let rendered = ChatToolText.rendered(slice)
+            ChatLog.payload(ChatLog.tools, "read_cells result", rendered)
+            return rendered
         } catch {
             return "Error: \(error.localizedDescription)"
         }
@@ -145,6 +151,15 @@ public struct WriteCellsTool: Tool {
         }
         do {
             let outcome = try await document.applyEdits(edits, sheetName: sheetName)
+            ChatLog.tools
+                .info(
+                    "write_cells \(edits.count, privacy: .public) in → \(outcome.appliedCount, privacy: .public) applied (\(outcome.appliedRangeA1 ?? "—", privacy: .public)), \(outcome.refusals.count, privacy: .public) refused"
+                )
+            ChatLog.payload(
+                ChatLog.tools,
+                "write_cells edits",
+                edits.map { "\($0.refA1)=\($0.content)" }.joined(separator: " · ")
+            )
             return ChatToolText.rendered(outcome)
         } catch {
             return "Error: \(error.localizedDescription)"
@@ -182,34 +197,57 @@ public struct FindCellsTool: Tool {
         let query = arguments.query.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return "Error: empty search text." }
         let result = await document.find(query, maxMatches: ChatToolLimits.findMatches)
+        ChatLog.tools
+            .info(
+                "find_cells → \(result.matches.count, privacy: .public) matches, truncated \(result.truncated, privacy: .public)"
+            )
+        ChatLog.payload(ChatLog.tools, "find_cells query", query)
         return ChatToolText.rendered(result)
     }
 }
 
-// MARK: - append_row
+// MARK: - append_rows
 
-/// `append_row` — adding data with no reference to get wrong.
+/// `append_rows` — adding data with no reference to get wrong, and no loop to give up on.
 ///
-/// The second live failure this surface absorbed: asked to "add a region", the model overwrote
-/// the A1 header, then dropped cells next to the user's selection at row 16, narrating success
-/// throughout. Reference-picking for *new* rows is pure inference, and inference is what a ~3B
-/// model does worst — so for appends the document picks the row and the columns, and the model
-/// only supplies values, in order.
-public struct AppendRowTool: Tool {
-    public let name = "append_row"
+/// Two live failures shaped this tool, preserved here so nobody optimises them away. First:
+/// asked to "add a region", the model overwrote the A1 header and dropped cells next to the
+/// user's selection — reference-picking for new rows is pure inference, so the document picks
+/// the rows and columns. Second: as a one-row-per-call tool, "add 20 regions" meant twenty
+/// calls, and the model made a few and narrated twenty — a ~3B model does not loop reliably,
+/// so the batch travels in one call, lands as one undo step, and the result names exactly
+/// which rows exist now.
+public struct AppendRowsTool: Tool {
+    public let name = "append_rows"
     public let description = """
-    Add one new row of data at the bottom of the sheet's existing data. Give one value per     column, left to right, matching the headers. Use this to add entries; never pick cell     references for new data yourself. Call once per row.
+    Add new rows of data at the bottom of the sheet's existing data. Pass ALL requested rows \
+    in ONE call — each row is one array of values, left to right, matching the columns. Never \
+    pick cell references for new data yourself.
     """
+
+    /// Rows per call. Generous enough for "add 20 regions" twice over; small enough that a
+    /// runaway generation cannot pave the sheet.
+    public static let rowsPerCall = 40
 
     @Generable
     public struct Arguments: Sendable {
-        @Guide(
-            description: "One value per column, in order, e.g. [\"North\", \"120\", \"162005\"]. Use \"\" to leave a column blank."
-        )
-        public var values: [String]
+        @Generable
+        public struct Row: Sendable {
+            @Guide(
+                description: "One value per column, in order, e.g. [\"North\", \"120\", \"162005\"]. Use \"\" to leave a column blank."
+            )
+            public var values: [String]
 
-        public init(values: [String]) {
-            self.values = values
+            public init(values: [String]) {
+                self.values = values
+            }
+        }
+
+        @Guide(description: "Every row to add, one entry per row. Adding 20 rows means 20 entries in this one call.")
+        public var rows: [Row]
+
+        public init(rows: [Row]) {
+            self.rows = rows
         }
     }
 
@@ -220,13 +258,29 @@ public struct AppendRowTool: Tool {
     }
 
     public func call(arguments: Arguments) async throws -> String {
-        guard !arguments.values.isEmpty else { return "Error: no values given." }
-        guard arguments.values.count <= ChatToolLimits.readColumns * 2 else {
+        guard !arguments.rows.isEmpty else { return "Error: no rows given." }
+        guard arguments.rows.count <= Self.rowsPerCall else {
+            return "Error: at most \(Self.rowsPerCall) rows per call; add the rest in a second call."
+        }
+        if arguments.rows.contains(where: { $0.values.count > ChatToolLimits.readColumns * 2 }) {
             return "Error: at most \(ChatToolLimits.readColumns * 2) columns per row."
         }
         do {
-            let outcome = try await document.appendRow(arguments.values)
-            var lines = ["Appended row \(outcome.rowNumber) (\(outcome.appliedCount) cells)."]
+            let outcome = try await document.appendRows(arguments.rows.map(\.values))
+            ChatLog.tools
+                .info(
+                    "append_rows \(arguments.rows.count, privacy: .public) rows in → rows \(outcome.firstRow, privacy: .public)+\(outcome.rowCount, privacy: .public), \(outcome.appliedCount, privacy: .public) cells, \(outcome.refusals.count, privacy: .public) refused"
+                )
+            ChatLog.payload(
+                ChatLog.tools,
+                "append_rows values",
+                arguments.rows.map { $0.values.joined(separator: "|") }.joined(separator: " ; ")
+            )
+            let lastRow = outcome.firstRow + outcome.rowCount - 1
+            var lines = [outcome.rowCount == 1
+                ? "Appended row \(outcome.firstRow) (\(outcome.appliedCount) cells)."
+                :
+                "Appended rows \(outcome.firstRow)–\(lastRow) (\(outcome.rowCount) rows, \(outcome.appliedCount) cells)."]
             for refusal in outcome.refusals {
                 lines.append("Refused \(refusal)")
             }
@@ -276,6 +330,8 @@ public struct CalculateTool: Tool {
         guard !formula.isEmpty else { return "Error: empty formula." }
         do {
             let result = try await document.evaluate(formula)
+            ChatLog.tools.info("calculate \(formula, privacy: .public)")
+            ChatLog.payload(ChatLog.tools, "calculate result", result)
             // `=A1` computes to whatever text A1 holds, so a result is cell-derived data like
             // any read — enveloped, even though it is usually just a number.
             return UntrustedContent.wrap(

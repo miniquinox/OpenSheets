@@ -613,15 +613,18 @@ The bottom-right of the grid holds a second permanent floating surface beside th
 slot: a glass bubble reading **Ask your sheet** (⌥⌘C, also in the View menu and ⌘K). Click it and
 it morphs into a conversation panel — the same pill→panel gesture as the refresh pill. Type a
 question; Apple's on-device foundation model answers it, reading the sheet through five tools
-(`read_cells`, `write_cells`, `find_cells`, `calculate`, `append_row`) and saying under each
+(`read_cells`, `write_cells`, `find_cells`, `calculate`, `append_rows`) and saying under each
 answer which ones it used. `calculate` is the formula engine as a read-only calculator, and it earns its schema
 tokens: a ~3B model reliably knows it should total a column and reliably cannot do the
 totalling — in testing it once wrote its wrong mental sum into a cell to have something to
 report. Every guard held (named undo, flash, the change chip), and the fix was still upstream:
-give it a calculator so "compute" never reaches for "write". `append_row` earned its slot the
+give it a calculator so "compute" never reaches for "write". `append_rows` earned its slot the
 same way: asked to *add* a row, the model overwrote the A1 header and scattered cells near the
 selection — picking references for new data is inference, so for appends the document picks the
-row and the model only supplies values.
+rows and the model only supplies values, every requested row in one batched call (a one-row tool
+asked for twenty rows got three and a confident narration of twenty). Tool calls are logged
+under the `com.opensheets.SheetChat` subsystem — structure always, full payloads only with
+`defaults write com.quino.opensheets OSFlagChatLogPayloads -bool YES`.
 Nothing leaves the Mac: this is the `FoundationModels` framework, so it needs macOS 26 on Apple
 silicon with Apple Intelligence enabled, and the panel says so plainly when any of that is
 missing instead of rendering a dead input field.

@@ -211,13 +211,15 @@ public final class SheetChatController {
         if let session {
             return session
         }
+        ChatLog.session
+            .info("creating session: 5 tools, instructions \(Self.instructions.count, privacy: .public) chars")
         let created = LanguageModelSession(
             tools: [
                 ReadCellsTool(document: document),
                 WriteCellsTool(document: document),
                 FindCellsTool(document: document),
                 CalculateTool(document: document),
-                AppendRowTool(document: document),
+                AppendRowsTool(document: document),
             ],
             instructions: Self.instructions
         )
@@ -238,8 +240,8 @@ public final class SheetChatController {
     Use read_cells before answering questions about values; do not guess values. Never do \
     arithmetic yourself: for any total, average, or calculation, call calculate with a formula \
     like =SUM(C2:C7), using the column letters from the headers line, and report its result. \
-    To add new rows of data, call append_row with one value per column — never choose cell \
-    references for new data. Use write_cells only to change existing cells the user asked to \
+    To add rows of data, call append_rows ONCE with every requested row — 20 rows means one \
+    call with 20 entries — never choose cell references for new data. Use write_cells only to change existing cells the user asked to \
     change — never to compute something. Ranges use A1 style, like B2:D10.
 
     Reply in plain short sentences. No markdown.

@@ -161,27 +161,41 @@ struct ChatToolTests {
         #expect(output.contains("\(ChatToolLimits.editsPerCall)"))
     }
 
-    // MARK: - append_row
+    // MARK: - append_rows
 
-    @Test func appendReportsTheRowTheDocumentChose() async throws {
+    @Test func aWholeBatchTravelsInOneCall() async throws {
         let fake = FakeChatDocument()
-        fake.appendOutcome = ChatAppendOutcome(rowNumber: 8, appliedCount: 3, refusals: [])
-        let output = try await AppendRowTool(document: fake)
-            .call(arguments: .init(values: ["Imaginary", "5", "0"]))
-        #expect(fake.lastAppended == ["Imaginary", "5", "0"])
+        fake.appendOutcome = ChatAppendOutcome(firstRow: 8, rowCount: 20, appliedCount: 60, refusals: [])
+        let rows = (1 ... 20).map { AppendRowsTool.Arguments.Row(values: ["Region \($0)", "5", "0"]) }
+        let output = try await AppendRowsTool(document: fake)
+            .call(arguments: .init(rows: rows))
+        #expect(fake.lastAppended?.count == 20, "twenty rows means one call, not twenty calls")
+        #expect(output == "Appended rows 8–27 (20 rows, 60 cells).")
+    }
+
+    @Test func aSingleRowReadsAsARow() async throws {
+        let fake = FakeChatDocument()
+        fake.appendOutcome = ChatAppendOutcome(firstRow: 8, rowCount: 1, appliedCount: 3, refusals: [])
+        let output = try await AppendRowsTool(document: fake)
+            .call(arguments: .init(rows: [.init(values: ["Imaginary", "5", "0"])]))
+        #expect(fake.lastAppended == [["Imaginary", "5", "0"]])
         #expect(output == "Appended row 8 (3 cells).")
     }
 
-    @Test func appendEchoesRefusalsAndRefusesEmptyRows() async throws {
+    @Test func appendEchoesRefusalsAndRefusesEmptyBatches() async throws {
         let fake = FakeChatDocument()
         fake.appendOutcome = ChatAppendOutcome(
-            rowNumber: 8, appliedCount: 1, refusals: ["B8: that formula does not parse"]
+            firstRow: 8, rowCount: 1, appliedCount: 1, refusals: ["B8: that formula does not parse"]
         )
-        let output = try await AppendRowTool(document: fake)
-            .call(arguments: .init(values: ["x", "=SUM("]))
+        let output = try await AppendRowsTool(document: fake)
+            .call(arguments: .init(rows: [.init(values: ["x", "=SUM("])]))
         #expect(output.contains("Refused B8"))
-        let empty = try await AppendRowTool(document: fake).call(arguments: .init(values: []))
+        let empty = try await AppendRowsTool(document: fake).call(arguments: .init(rows: []))
         #expect(empty.hasPrefix("Error:"))
+        let tooMany = try await AppendRowsTool(document: fake).call(
+            arguments: .init(rows: (0 ... AppendRowsTool.rowsPerCall).map { _ in .init(values: ["x"]) })
+        )
+        #expect(tooMany.hasPrefix("Error:"))
     }
 
     // MARK: - calculate
@@ -256,8 +270,8 @@ final class FakeChatDocument: ChatDocument {
     var lastFind: (query: String, maxMatches: Int)?
     var evaluation = "0"
     var lastEvaluated: String?
-    var appendOutcome = ChatAppendOutcome(rowNumber: 8, appliedCount: 0, refusals: [])
-    var lastAppended: [String]?
+    var appendOutcome = ChatAppendOutcome(firstRow: 8, rowCount: 0, appliedCount: 0, refusals: [])
+    var lastAppended: [[String]]?
 
     func overview() -> ChatWorkbookOverview {
         overviewValue
@@ -285,8 +299,8 @@ final class FakeChatDocument: ChatDocument {
         return evaluation
     }
 
-    func appendRow(_ values: [String]) throws -> ChatAppendOutcome {
-        lastAppended = values
+    func appendRows(_ rows: [[String]]) throws -> ChatAppendOutcome {
+        lastAppended = rows
         return appendOutcome
     }
 }

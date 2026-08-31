@@ -227,19 +227,28 @@ public final class DocumentChatBridge: ChatDocument {
         return ChatFindResult(matches: matches, truncated: truncated)
     }
 
-    public func appendRow(_ values: [String]) throws -> ChatAppendOutcome {
+    public func appendRows(_ rows: [[String]]) throws -> ChatAppendOutcome {
         guard let model else { throw DocumentClosedError() }
         let sheet = try resolveSheet(named: nil, in: model)
         // Below the used range, starting at its leading column — an empty sheet appends at A1.
+        // Every row of the batch lands in one applyAssistantEdits call: one undo step, one
+        // flash, and a result the model cannot honestly misreport.
         let used = sheet.usedRange
-        let row = used.map { $0.end.row + 1 } ?? 0
+        let firstRow = used.map { $0.end.row + 1 } ?? 0
         let startColumn = used?.start.column ?? 0
-        let edits = values.enumerated().map { offset, value in
-            (ref: CellRef(row: row, column: startColumn + offset), text: value)
+        var edits: [(ref: CellRef, text: String)] = []
+        for (rowOffset, values) in rows.enumerated() {
+            for (columnOffset, value) in values.enumerated() {
+                edits.append((
+                    ref: CellRef(row: firstRow + rowOffset, column: startColumn + columnOffset),
+                    text: value
+                ))
+            }
         }
         let outcome = model.applyAssistantEdits(edits)
         return ChatAppendOutcome(
-            rowNumber: row + 1,
+            firstRow: firstRow + 1,
+            rowCount: rows.count,
             appliedCount: outcome.appliedRefs.count,
             refusals: outcome.refusals
         )

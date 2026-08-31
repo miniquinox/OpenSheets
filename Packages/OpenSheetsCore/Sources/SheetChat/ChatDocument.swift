@@ -33,11 +33,13 @@ public protocol ChatDocument: AnyObject, Sendable {
     /// Where something is, not what it says — mirrors the MCP `find` contract.
     func find(_ query: String, maxMatches: Int) -> ChatFindResult
 
-    /// Adds one row of values immediately below the sheet's data, the document choosing the
-    /// row and columns. Exists because reference-picking is the observed failure: asked to "add
-    /// a region", the model overwrote the A1 header and then scattered cells near the user's
-    /// selection. Appending has no reference for it to get wrong.
-    func appendRow(_ values: [String]) throws -> ChatAppendOutcome
+    /// Adds rows of values immediately below the sheet's data, the document choosing the rows
+    /// and columns. Exists because reference-picking is the observed failure: asked to "add a
+    /// region", the model overwrote the A1 header and scattered cells near the user's
+    /// selection. Batched — all rows in one call, one undo step — because the follow-up failure
+    /// was pacing: a one-row tool asked for "20 regions" means twenty calls, and the model made
+    /// a few and narrated twenty.
+    func appendRows(_ rows: [[String]]) throws -> ChatAppendOutcome
 
     /// Computes a formula against the live workbook without writing anything, and returns the
     /// result rendered as text — a number, `TRUE`, an error token like `#NAME?`, or a sentence
@@ -163,15 +165,17 @@ public struct ChatEditOutcome: Sendable, Hashable {
     }
 }
 
-/// What ``ChatDocument/appendRow(_:)`` did: which row the document chose, and what landed.
+/// What ``ChatDocument/appendRows(_:)`` did: which rows the document chose, and what landed.
 public struct ChatAppendOutcome: Sendable, Hashable {
     /// 1-based, as the user's row labels read.
-    public var rowNumber: Int
+    public var firstRow: Int
+    public var rowCount: Int
     public var appliedCount: Int
     public var refusals: [String]
 
-    public init(rowNumber: Int, appliedCount: Int, refusals: [String]) {
-        self.rowNumber = rowNumber
+    public init(firstRow: Int, rowCount: Int, appliedCount: Int, refusals: [String]) {
+        self.firstRow = firstRow
+        self.rowCount = rowCount
         self.appliedCount = appliedCount
         self.refusals = refusals
     }
