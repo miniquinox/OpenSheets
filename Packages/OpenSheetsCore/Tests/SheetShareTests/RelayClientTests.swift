@@ -366,10 +366,14 @@ struct RelayClientTests {
         #expect(await client.isOnline == false, "a socket the relay has not acknowledged is not online")
 
         try socket.deliver(RelayMessage.helloAck(version: RelayMessage.version))
-        await waitUntil("the client came online") { await client.isOnline }
+        // Wait on the log, not on `isOnline`. The flag is set before `.online` is yielded, and the
+        // log drains the stream from its own task — so waiting for the flag can arrive before the
+        // event this test is about to assert on has been collected. The event is the later of the
+        // two, which makes it the honest thing to wait for.
+        await waitUntil("the client reported itself online") { log.events.contains(.online) }
 
         #expect(log.events.contains(.connecting(attempt: 1)))
-        #expect(log.events.contains(.online))
+        #expect(await client.isOnline)
         await client.stop()
     }
 

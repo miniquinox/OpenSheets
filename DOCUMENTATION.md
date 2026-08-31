@@ -299,9 +299,11 @@ zero. That is why the engine is built lazily inside `start()` rather than in `in
 is only meaningful if constructing the object could have made it non-zero.
 
 The flag defaults off for a reason that is about the app, not the relay: the relay is deployed and
-answering, but **the Settings ▸ Cloud pane is not wired up yet** — no file in `App/` renders the
-GlassUI rows at this commit. Turning the flag on today gets you a service with nothing to drive it.
-Both facts are release gates in [§12.1](#121-release-gates-that-are-genuinely-open).
+answering, and the Settings ▸ Cloud pane exists and has been driven **once**, by hand, end to end —
+`App/LauncherScene.swift` renders it behind this flag, and on 2026-08-30 it created a link that
+served a real MCP call through the relay and then revoked it. What it has not had is a second pair of
+eyes or a soak, which is why the flag stays off. That gate is in
+[§12.1](#121-release-gates-that-are-genuinely-open).
 
 File tabs are **not** flagged. They replace the one-window-per-file architecture rather than adding
 to it, and a flag would mean maintaining two window models; the project's flag philosophy is "ship
@@ -1366,8 +1368,10 @@ split the tool rather than special-case the filter. A `read_write` link serves a
 ([§5.6](#56-all-25-tools)).
 
 **Status, stated rather than rounded up.** The relay is deployed and answering; the app-side stack is
-built and tested end to end against a real subprocess. The Settings ▸ Cloud pane is **not wired up**,
-`OSFlagCloudShare` defaults off, and no link has been pasted into a real client. See
+built and tested end to end against a real subprocess. The Settings ▸ Cloud pane is built and was
+**driven once on a screen** (link created, MCP call served through the relay, link revoked, 2026-08-30);
+`OSFlagCloudShare` defaults off pending a soak, and no link has yet been pasted into an actual
+hosted assistant (only a `curl` stand-in). See
 [§12.1](#121-release-gates-that-are-genuinely-open).
 
 ---
@@ -2749,10 +2753,19 @@ answering: `GET /health` on `https://opensheets-relay.opensheets-relay.workers.d
 origin is compiled in as `CloudShareConfiguration.standardRelayOrigin`. The placeholder origin
 survives only as a sentinel for a build deliberately pointed elsewhere. What is genuinely open:
 
-1. **The Settings ▸ Cloud pane is not wired up.** This is stronger than "screen-unverified": the
-   GlassUI components exist and their models are tested, but no file in `App/` renders them at this
-   commit, so there is no pane to open and no button to click. `grep -ri cloud App/` matches one
-   line, in `Flags.swift`. Until that lands, nobody can create a link through the UI.
+1. **The Settings ▸ Cloud pane has been driven once, by hand, and not since.** This gate has moved
+   twice. It first read "not wired up" — no file in `App/` rendered the GlassUI rows. That landed:
+   `App/LauncherScene.swift` draws the section behind `Flags.cloudShareEnabled` — the master toggle,
+   the status dot with its App-written sentence, the name/mode/**Create & Copy** row, and the link
+   list with copy, revoke and remove (`grep -ric cloud App/` matches 22 lines in `LauncherScene.swift`
+   and one in `Flags.swift`). Then, on 2026-08-30, it was exercised end to end on a screen against the
+   live relay: the flag was enabled, the pane opened, it reported **Online**, a read-only link was
+   created and copied, an external HTTPS client (plain `curl`, standing in for a hosted assistant)
+   ran `initialize` → `tools/list` → `describe` through the relay against a granted workbook and got
+   real data in the untrusted-content envelope, the row's "Last used" advanced, and **Revoke** turned
+   the same URL into the uniform 404. What stays open: that was one operator on one Mac, not a soak —
+   the pane's layout has been eyeballed at 460 pt but not across themes or with a long link list, and
+   `OSFlagCloudShare` stays off by default until it has been lived in rather than demonstrated.
 2. **Gemini's consumer surface is unverified.** Whether Spark custom apps accept a no-auth remote
    MCP server at all was not established by the research, and nothing has been tried against it.
    Gemini *Enterprise* is documented as accepting Streamable-HTTP-only servers with auth "None".
@@ -2814,14 +2827,17 @@ baseline recompute inherited the main actor and widened a window the document pu
 racing, which is why `DocumentModel` uses `Task.detached` there and says so at the call site. That
 fixed the common case rather than the class.
 
-`RelayClientTests.theClientIsOnlineOnlyAfterTheRelayAcknowledgesHello` has a narrower version of the
-same shape, and it is worth knowing about before it surprises someone. It waits on `client.isOnline`
-and then asserts on an event log that a **different** task drains, so the assertion can win the race
-against the drain. It was found when `CloudShareServiceTests` landed: twenty tests standing up
-SQLite stores, a relay client and an engine at once were enough of a load generator to widen the
-window. The fix applied was to mark the new suite `.serialized`, which costs about a tenth of a
-second and stops it generating load — not to fix the race, which lives in `RelayClient`'s test and
-is still there. The real fix is to wait on the event log rather than on the flag.
+`RelayClientTests.theClientIsOnlineOnlyAfterTheRelayAcknowledgesHello` had a narrower version of the
+same shape, and it is **fixed**. It waited on `client.isOnline` and then asserted on an event log
+that a **different** task drains, so the assertion could win the race against the drain. It was
+found when `CloudShareServiceTests` landed: twenty tests standing up SQLite stores, a relay client
+and an engine at once were enough of a load generator to widen the window. The first fix was to mark
+the new suite `.serialized`, which costs about a tenth of a second and stopped it *generating* the
+load — without touching the race, which lived in `RelayClient`'s test. The real fix has since landed:
+the test now waits on the event log rather than on the flag. `RelayClient` sets `isOnline` and *then*
+yields `.online`, so the log entry is strictly the later of the two and therefore the honest thing to
+wait for; the flag became the assertion instead of the trigger. Ten consecutive runs of the suite
+pass. The `.serialized` marking stays — not generating load is worth a tenth of a second on its own.
 
 `CellStore performance` — *"emitting a million references into a byte buffer allocates nothing per
 cell"* — asserts a 2.4 s wall-clock budget and is measured in **debug**, so a machine doing anything

@@ -21,7 +21,7 @@ The user-facing guide is [`docs/cloud-share.md`](../cloud-share.md).
 | A5 | 1 | the cloud status words and the share-link row, with no glass surface of their own |
 | A6 | 2 | the engine: relay socket, subprocess bridge, live revocation |
 | A7 | 3 | `CloudShareService` on `AppModel`, the flag, and the entitlement argued for |
-| A8 | 4 | Settings ▸ Cloud — **not merged.** Nothing in `App/` renders the rows yet |
+| A8 | 4 | Settings ▸ Cloud: the master toggle, the status sentence, the create row, the link list |
 | A9 | 4 | this page, `docs/cloud-share.md`, and the documentation truth pass |
 | A10 | 3 | the end-to-end suite that drives the whole local stack |
 | A11 | 5 | integration and final verification |
