@@ -186,6 +186,11 @@ public struct ChatBubble: View {
 /// The conversation. Fixed width like the diff panel, height capped so the transcript scrolls
 /// rather than the panel growing past the window, and the diff panel's own plain floating
 /// glass — the surface the rest of the app has already taught the eye to read text on.
+///
+/// The radius is ``DS/Radius/panel``, not ``DS/Radius/card``, and that is corner-stacking, not
+/// taste: this surface hugs the window's edge, and the window's own corner measures 16pt on a
+/// macOS 26 document window. A nested curve must not be rounder than the curve it sits inside —
+/// at 24 the panel out-rounded its own window, and it read as pasted on rather than part of it.
 public struct ChatPanel: View {
     private let state: ChatSurfaceState
     private let context: AppearanceContext
@@ -222,7 +227,7 @@ public struct ChatPanel: View {
             }
         }
         .frame(width: Metrics.width)
-        .glassCard(context: context)
+        .glassCard(context: context, radius: DS.Radius.panel)
         .onExitCommand { perform(.collapse) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sheet chat")

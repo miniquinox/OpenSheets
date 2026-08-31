@@ -329,7 +329,7 @@ enum ComponentCatalog {
         ),
         Entry(
             name: "ChatPanel", file: "Floating/ChatSurface.swift",
-            tier: .floating, signal: .neutral, shape: .card, expectedModifier: ".glassCard("
+            tier: .floating, signal: .neutral, shape: .panel, expectedModifier: ".glassCard("
         ),
         // `.none` because the launcher card is flush: it fills its window, so the corners are the
         // window's and it has no radius of its own. Same reason the toolbar and sidebar are `.none`.
