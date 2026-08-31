@@ -319,6 +319,16 @@ enum ComponentCatalog {
             name: "SnapshotBrowser", file: "Floating/SnapshotBrowser.swift",
             tier: .floating, signal: .neutral, shape: .card, expectedModifier: ".glassCard("
         ),
+        // The chat pair morphs like the sync surface's, but takes the floating tier at both
+        // sizes: an assistant waiting to be asked is an offer, not a signal.
+        Entry(
+            name: "ChatBubble", file: "Floating/ChatSurface.swift",
+            tier: .floating, signal: .neutral, shape: .capsule, expectedModifier: ".glassPill("
+        ),
+        Entry(
+            name: "ChatPanel", file: "Floating/ChatSurface.swift",
+            tier: .floating, signal: .neutral, shape: .card, expectedModifier: ".glassCard("
+        ),
         // `.none` because the launcher card is flush: it fills its window, so the corners are the
         // window's and it has no radius of its own. Same reason the toolbar and sidebar are `.none`.
         Entry(

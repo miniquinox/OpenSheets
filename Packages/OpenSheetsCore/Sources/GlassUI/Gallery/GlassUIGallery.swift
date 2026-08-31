@@ -34,6 +34,7 @@ public struct GlassUIGallery: View {
         case inspector
         case selectionStats
         case commandPalette
+        case chat
         case snapshotBrowser
         case launcher
         case syncChips
@@ -57,6 +58,7 @@ public struct GlassUIGallery: View {
             case .inspector: "Inspector"
             case .selectionStats: "Selection stats"
             case .commandPalette: "Command palette"
+            case .chat: "Sheet chat"
             case .snapshotBrowser: "Snapshot browser"
             case .launcher: "Launcher"
             case .syncChips: "Sync state chips"
@@ -80,6 +82,7 @@ public struct GlassUIGallery: View {
             case .inspector: "paintbrush"
             case .selectionStats: "sum"
             case .commandPalette: "command"
+            case .chat: "sparkles"
             case .snapshotBrowser: "clock.arrow.circlepath"
             case .launcher: "square.grid.2x2"
             case .syncChips: "dot.radiowaves.up.forward"
@@ -113,6 +116,7 @@ public struct GlassUIGallery: View {
     @State private var overrideIncreaseContrast: Bool
     @State private var overrideReduceMotion: Bool
     @State private var syncPhase: SyncSurface.Phase
+    @State private var chatPhase: ChatSurface.Phase = .panel
     @State private var statsVisible = SelectionStat.defaultVisible
     @State private var tabSelection: SheetID = 2
 
@@ -362,6 +366,8 @@ public struct GlassUIGallery: View {
             }
         case .commandPalette:
             CommandPalette(state: Mock.commandPalette, context: context) { _ in }
+        case .chat:
+            chatDemo
         case .snapshotBrowser:
             SnapshotBrowser(state: Mock.snapshots, context: context) { _ in }
         case .launcher:
@@ -399,6 +405,21 @@ public struct GlassUIGallery: View {
             }
             .buttonStyle(.bordered)
             .font(DS.Text.control)
+        }
+    }
+
+    /// The chat's own morph, driven the way the app drives it: expand on the bubble, collapse
+    /// on the chevron. Streaming and a notice row are in the mock so the states that only exist
+    /// mid-conversation can be reviewed without a model.
+    private var chatDemo: some View {
+        ChatSurface(phase: chatPhase, state: Mock.chat, context: context) { action in
+            withAnimation(DS.Motion.morph(context)) {
+                switch action {
+                case .expand: chatPhase = .panel
+                case .collapse: chatPhase = .bubble
+                default: break
+                }
+            }
         }
     }
 

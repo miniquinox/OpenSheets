@@ -9,6 +9,8 @@
   SelectionStatsPill     capsule    solid #FCFCFD border #00000026 @ 1.0pt
   CommandPalette         card       solid #FCFCFD border #00000026 @ 1.0pt
   SnapshotBrowser        card       solid #FCFCFD border #00000026 @ 1.0pt
+  ChatBubble             capsule    solid #FCFCFD border #00000026 @ 1.0pt
+  ChatPanel              card       solid #FCFCFD border #00000026 @ 1.0pt
   LauncherWindow         none       solid #FCFCFD border #00000026 @ 1.0pt
   RefreshPill            capsule    solid #DEECFD border #00000026 @ 1.0pt
   RefreshPill/conflict   capsule    solid #FCF3E2 border #00000026 @ 1.0pt

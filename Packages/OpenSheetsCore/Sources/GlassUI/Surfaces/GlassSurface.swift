@@ -293,6 +293,8 @@ public enum GlassMorphID: String, Sendable, Hashable, CaseIterable {
     case selectionStats
     /// The command palette's field and its results card.
     case commandPalette
+    /// The sheet-chat bubble and its conversation panel.
+    case chatSurface
 }
 
 public extension View {

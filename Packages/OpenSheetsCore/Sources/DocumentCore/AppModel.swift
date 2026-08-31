@@ -612,6 +612,15 @@ public enum Flags {
     /// directory watch — see `HandshakePublisherTests.theKillSwitchWithholdsBothHalves`.
     public static var handshakeEnabled: Bool { bool("OSFlagHandshake", default: true) }
 
+    /// The in-app Apple Intelligence chat — the bubble in the grid's bottom-right. **On.**
+    ///
+    /// A kill switch in the `handshakeEnabled` mould: this is the one feature that hands cell
+    /// text to a language model *inside* the process, and someone who wants that to never happen
+    /// should be one `defaults write` away from it, not one uninstall. Off costs nothing
+    /// structural — the bubble is withheld and the controller is never created, so no session,
+    /// no model assets, no tools.
+    public static var chatEnabled: Bool { bool("OSFlagChat", default: true) }
+
     /// Sheet add, remove and reorder. **Off**, and it must stay off in v0.1: A2's writer throws
     /// `SheetError.notImplemented` for all three rather than producing a package whose
     /// `[Content_Types].xml`, relationships and `workbook.xml` disagree (addendum §4). The tab

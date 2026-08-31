@@ -5,6 +5,7 @@ import Foundation
 import GlassUI
 import GridKit
 import Observation
+import SheetChat
 import SheetFormat
 import SheetFormula
 import SheetMCP
@@ -112,9 +113,28 @@ public final class DocumentModel {
     /// `File ▸ Restore snapshot…` — PLAN.md §1.2 step 8, the way out when the agent got it wrong.
     /// On the model rather than in the window's `@State` so the menu bar can reach it.
     public var isPresentingSnapshots = false
+    /// The sheet chat's expanded state. On the model for the same reason as the palette's bit:
+    /// the menu bar (⌥⌘C), ⌘K and the bubble itself all drive it. Expanding prewarms the model,
+    /// so the first answer is loading weights while the user is still typing the question.
+    public var isChatVisible = false {
+        didSet { if isChatVisible, !oldValue { chat.prewarm() } }
+    }
 
     /// The imperative handle on the grid — flash, scroll, begin edit.
     public let grid = GridController()
+
+    /// This document's conversation with the on-device model. Created on first touch: a document
+    /// that never opens the chat never builds tools, never checks availability, never loads a
+    /// session. `@ObservationIgnored` because the controller is `@Observable` itself — views
+    /// track its `messages`, not the identity of the box it lives in.
+    public var chat: SheetChatController {
+        if let chatController { return chatController }
+        let controller = SheetChatController(document: DocumentChatBridge(model: self))
+        chatController = controller
+        return controller
+    }
+
+    @ObservationIgnored private var chatController: SheetChatController?
 
     // MARK: - Machinery
 
@@ -693,6 +713,107 @@ public final class DocumentModel {
         recalculate(changed: [target])
         commit(edit)
         return true
+    }
+
+    /// ``commitEdit(at:text:advance:selectionBefore:)``'s batch sibling, for the in-app
+    /// assistant: many cells, any sheet, **one undo step**, and the selection stays put.
+    ///
+    /// The same pipeline as typing — parse, refuse an uncompilable formula, write through
+    /// ``WorkbookEditor``, recalculate, ``commit(_:staleness:)`` — because an assistant with its
+    /// own cheaper write path is an assistant whose writes skip whatever the pipeline learns
+    /// next. The differences from typing are the ones batching forces: refusals collect per cell
+    /// instead of aborting the batch (the model needs to hear "F7 failed" *and* have F8 land),
+    /// and the undo entry is named for the agent, so the menu reads "Undo Apple Intelligence".
+    ///
+    /// The flash is the accountability half: the same highlight an external Claude edit gets,
+    /// so a cell changed by the chat is never a cell that changed silently.
+    @discardableResult
+    public func applyAssistantEdits(
+        _ edits: [(ref: CellRef, text: String)],
+        on sheetID: SheetID? = nil,
+        name: String = "Apple Intelligence"
+    ) -> AssistantEditOutcome {
+        guard isEditable else {
+            return AssistantEditOutcome(appliedRefs: [], refusals: ["everything: the document is read-only right now"])
+        }
+        let targetSheetID = sheetID ?? activeSheetID
+        guard let sheet = workbook[targetSheetID] else {
+            return AssistantEditOutcome(appliedRefs: [], refusals: ["everything: that sheet no longer exists"])
+        }
+
+        var refusals: [String] = []
+        var cells: [CellRef: Cell?] = [:]
+        var styles = workbook.styles
+        var formulasChanged = false
+
+        for (ref, text) in edits {
+            if text.count > Limits.maxCellTextLength {
+                refusals.append("\(ref.a1String): a cell holds at most \(Limits.maxCellTextLength.formatted()) characters")
+                continue
+            }
+            let styleID = sheet.cells[ref]?.styleID ?? sheet.effectiveStyleID(at: ref)
+            let format = styles.numberFormat(for: styleID)
+            let parsed = CellInputParser.parse(text, format: format, dateSystem: workbook.meta.dateSystem)
+
+            var cell = sheet.cells[ref] ?? Cell(value: .empty, styleID: styleID)
+            cell.styleID = styleID
+            cell.flags.remove(.staleCache)
+
+            let target = SheetCell(sheet: targetSheetID, ref: ref)
+            if let source = parsed.formula {
+                guard engine.setFormula(source, at: target, in: workbook) else {
+                    refusals.append("\(ref.a1String): that formula does not parse")
+                    continue
+                }
+                if sheet.cells[ref]?.formula != source { cell.value = .empty }
+                cell.formula = source
+                formulasChanged = true
+            } else {
+                if cell.isFormula {
+                    engine.setFormula(nil, at: target, in: workbook)
+                    formulasChanged = true
+                }
+                cell.formula = nil
+                cell.value = parsed.value
+            }
+            if let formatID = parsed.suggestedNumberFormatID {
+                cell.styleID = styles.derive(cell.styleID) { $0.numberFormatID = formatID }
+            }
+            cells[ref] = cell
+        }
+
+        guard !cells.isEmpty else {
+            return AssistantEditOutcome(appliedRefs: [], refusals: refusals)
+        }
+
+        let stylesBefore = workbook.styles
+        workbook.styles = styles
+        guard var edit = WorkbookEditor.setCells(
+            cells,
+            on: targetSheetID,
+            in: &workbook,
+            selectionBefore: selection,
+            selectionAfter: selection,
+            name: name,
+            formulasChanged: formulasChanged
+        ) else {
+            // Every write matched what was already there. Not a refusal — the sheet says what
+            // the model asked it to say — just nothing to record.
+            workbook.styles = stylesBefore
+            return AssistantEditOutcome(appliedRefs: [], refusals: refusals)
+        }
+        if stylesBefore != styles {
+            edit.styles = (stylesBefore, styles)
+            edit.stylesChanged = true
+        }
+
+        let changed = changedCells(in: edit)
+        recalculate(changed: changed)
+        commit(edit)
+        let refs = Set(changed.filter { $0.sheet == targetSheetID }.map(\.ref))
+        if targetSheetID == activeSheetID { grid.flash(refs) }
+        let ordered = refs.sorted { ($0.row, $0.column) < ($1.row, $1.column) }
+        return AssistantEditOutcome(appliedRefs: ordered, refusals: refusals)
     }
 
     /// Delete / Backspace. `ranges` defaults to the selection; the grid passes its own, which is

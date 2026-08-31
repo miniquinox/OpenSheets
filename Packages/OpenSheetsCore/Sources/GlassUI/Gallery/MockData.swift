@@ -245,6 +245,34 @@ public enum Mock {
         ]
     )
 
+    /// A conversation mid-flight: an answered question with its tool note, a dropped-context
+    /// notice, and a streaming reply — the three states that only exist while a model is
+    /// attached, which is exactly why the gallery needs them mocked.
+    public static let chat = ChatSurfaceState(
+        messages: [
+            ChatMessage(id: 0, role: .user, text: "What do the selected cells add up to?"),
+            ChatMessage(
+                id: 1,
+                role: .assistant,
+                text: "F2:F16 totals $1,284,905.28 — an average of $85,660.35 across 14 numeric cells.",
+                toolNote: "via read_cells"
+            ),
+            ChatMessage(
+                id: 2,
+                role: .notice,
+                text: "Earlier messages were dropped — the on-device model ran out of room."
+            ),
+            ChatMessage(id: 3, role: .user, text: "Round the totals column to whole dollars."),
+            ChatMessage(id: 4, role: .assistant, text: "", isStreaming: true),
+        ],
+        isResponding: true,
+        suggestions: [
+            "What's in this sheet?",
+            "Any cells that look wrong?",
+            "Total the selected column",
+        ]
+    )
+
     // MARK: Floating
 
     public static let commandPalette = CommandPaletteState(

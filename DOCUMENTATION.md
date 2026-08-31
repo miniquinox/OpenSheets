@@ -268,6 +268,7 @@ without a relaunch.
 | `OSFlagChangeTracking` | **on** | the changes chip and panel, the grid's standing tints, Set Checkpoint, and the baseline machinery behind all three. Off means no diffing happens at all — the flag removes the cost, not just the controls. |
 | `OSFlagExplorer` | **on** | the Files panel. Off, `AppModel` withholds the tree's storage *and* its roots, so it holds no nodes and starts no listing — the object still exists, because an empty `@Observable` costs a pointer and two hosts take a non-optional reference. |
 | `OSFlagHandshake` | **on** | both halves of the app↔agent handshake: publishing what is open for `get_selection`, and acting on `reveal_range` requests. See below. |
+| `OSFlagChat` | **on** | the in-app Apple Intelligence chat ([§3.6](#36-ask-your-sheet--the-in-app-apple-intelligence-chat)). Off withholds the bubble and never creates the controller, so no session, no tools and no model assets are touched. A kill switch in `OSFlagHandshake`'s mould: this is the one feature that hands cell text to a language model inside the process, and switching that off should not require an uninstall. |
 | `OSFlagSheetStructure` | **off** | adding/removing/reordering sheets — refused in v0.1 |
 
 `OSFlagHandshake` is a **kill switch rather than a rollout gate**, and it is the one flag here whose
@@ -287,8 +288,8 @@ File tabs are **not** flagged. They replace the one-window-per-file architecture
 to it, and a flag would mean maintaining two window models; the project's flag philosophy is "ship
 unfinished work dark", not "keep finished work optional".
 
-*(Derived from `Sources/DocumentCore/AppModel.swift:557–595`, cross-checked against
-`App/Flags.swift`'s `summary`, which lists exactly these eight. `PLAN.md` §11's "default off" is
+*(Derived from `Sources/DocumentCore/AppModel.swift`'s `Flags`, cross-checked against
+`App/Flags.swift`'s `summary`, which lists exactly these nine. `PLAN.md` §11's "default off" is
 stale; the source above is authoritative. **Auto-refresh has no flag** — earlier revisions of this
 table and of `README.md` listed an `OSFlagAutoRefresh`, and no code has ever read that key. It is a
 per-document `DocumentSession.Options.autoRefresh`, defaulting to true, reachable through
@@ -583,6 +584,44 @@ writes until you checkpoint.
 > the tints on a screen**, and no keystroke has ever been sent to them: the environment they were
 > built in had neither assistive access nor screen recording. Treat the pixels as
 > implemented-and-render-tested, not as demonstrated.
+
+### 3.6 Ask your sheet — the in-app Apple Intelligence chat
+
+The bottom-right of the grid holds a second permanent floating surface beside the stats pill's
+slot: a glass bubble reading **Ask your sheet** (⌥⌘C, also in the View menu and ⌘K). Click it and
+it morphs into a conversation panel — the same pill→panel gesture as the refresh pill. Type a
+question; Apple's on-device foundation model answers it, reading the sheet through three tools
+(`read_cells`, `write_cells`, `find_cells`) and saying under each answer which ones it used.
+Nothing leaves the Mac: this is the `FoundationModels` framework, so it needs macOS 26 on Apple
+silicon with Apple Intelligence enabled, and the panel says so plainly when any of that is
+missing instead of rendering a dead input field.
+
+**It is deliberately not the MCP server in a trench coat.** The MCP server is the door for an
+agent *outside* the process: it reads the file from disk and writes it atomically, and the app
+notices through the watcher like any other external edit. Routing the in-app model through that
+door would mean it reads a file your unsaved edits are not in, its writes land as "external
+changes" that clear your undo stack, and every cell costs a serialise → fsync → watch → re-parse
+round trip. So the chat's tools call the **live document** instead: reads see exactly what you
+see, and an edit is one undo step named *Apple Intelligence* — ⌘Z reverses the whole batch — with
+the changed cells flashing the way an external agent's edits do. What the two doors share is the
+part that must not fork: cell text reaches the model inside the same
+`<untrusted-spreadsheet-content>` envelope ([§5.8](#58-the-safety-model-in-one-page)), values are
+rendered by the same `CellText`, and ranges speak the same A1.
+
+The tool surface is three tools rather than the server's 25 because the on-device model is small —
+a context window of a few thousand tokens pays for every schema before you type a word — and
+"chat with the open sheet" needs exactly read, write, find. Anything file-shaped (snapshots,
+workspace listing, other workbooks) remains the MCP server's job.
+
+`OSFlagChat` ([§2.6](#26-feature-flags)) withholds the whole feature: no bubble, no controller,
+no session, no model assets touched.
+
+> **Verified where it can be.** The tool layer, the prompt framing, the envelope's
+> forged-delimiter defence and the live-document bridge (unsaved edits visible, one named undo
+> step, per-cell refusals) are pinned by `SheetChatTests` and
+> `DocumentCoreTests/ChatBridgeTests`. One real round trip through Apple Intelligence — model,
+> tools and all — lives in `LiveModelTests`, gated behind `OPENSHEETS_LIVE_MODEL=1` because it
+> needs a machine with the model enabled.
 
 ---
 

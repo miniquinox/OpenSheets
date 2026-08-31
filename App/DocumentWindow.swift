@@ -1004,7 +1004,8 @@ private struct DocumentPane<TitleBar: View>: View {
             canRefresh: model.syncState == .stale || model.syncState == .synced,
             canSave: model.syncState.allowsSaving && model.hasUnsavedEdits,
             isTrackingChanges: Flags.changeTrackingEnabled,
-            hasTabs: tabs.tabs.count > 1
+            hasTabs: tabs.tabs.count > 1,
+            hasChat: Flags.chatEnabled
         )
         paletteState.sections = built.sections
         paletteCommands = built.commands
@@ -1051,6 +1052,8 @@ private struct DocumentPane<TitleBar: View>: View {
             tabs.activateNext()
         case .previousTab:
             tabs.activatePrevious()
+        case .toggleChat:
+            model.isChatVisible.toggle()
         }
     }
 

@@ -25,6 +25,7 @@ extension DocumentCore.Flags {
             ("sheetStructure", sheetStructureEditing),
             ("explorer", explorerEnabled),
             ("handshake", handshakeEnabled),
+            ("chat", chatEnabled),
         ]
         return states.map { "\($0.0)=\($0.1 ? "on" : "off")" }.joined(separator: " ")
     }

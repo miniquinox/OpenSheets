@@ -31,6 +31,7 @@ honest list.
 | 203 functions, including dynamic arrays | All 500+ Excel functions |
 | File-watch → diff → refresh loop | Real-time multi-user collaboration |
 | MCP server so Claude edits *structurally* | VBA / macro execution (never) |
+| "Ask your sheet" — an on-device Apple Intelligence chat over the *live* document, edits one ⌘Z away | A cloud assistant of our own, or anything that sends a cell off the Mac |
 | Connect to Claude from Settings — the server ships in the app, registration is one click, no terminal | An agent that edits Claude's own config — `~/.claude.json` stays on the deny list |
 | Agents discover the Files panel — the folders you pinned, the tabs you have open — instead of asking you to paste a path | A hosted bridge to your local files for browser-based assistants |
 | Byte-preserving round-trip of parts we don't model | Reimplementing OOXML in full |
@@ -56,6 +57,7 @@ Packages/OpenSheetsCore/          ~95% of the code lives here
     GlassUI/                      design tokens and every glass surface
     SheetStore/                   file watcher, snapshots, workspace grants, directory listing, SQLite
     SheetMCP/                     the 25-tool MCP surface and the CLI
+    SheetChat/                    in-app Apple Intelligence chat: on-device model, 3 tools
     DocumentCore/                 the wiring layer: AppModel, DocumentModel, window rules
     TestSupport/                  builders, fakes, matchers
 Fixtures/                         the golden corpus everything is tested against
