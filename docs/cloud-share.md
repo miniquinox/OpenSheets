@@ -12,12 +12,13 @@ ran — in a local subprocess on the owner's machine, in the mode that cannot mi
 > **Status, honestly.** The relay is deployed and answering
 > (`https://opensheets-relay.opensheets-relay.workers.dev/health` → `{"ok":true}`), and the whole
 > app-side stack — token, wire protocol, device identity, relay client, subprocess bridge, engine,
-> service, and the GlassUI rows — is built and tested. **The Settings ▸ Cloud pane itself is not
-> wired up yet**: nothing in `App/` renders those rows at this commit, so there is currently no
-> button to click. `OSFlagCloudShare` also defaults off. Both are named as open gates in
+> service, and the GlassUI rows — is built and tested. The Settings ▸ Cloud pane is built too:
+> `App/LauncherScene.swift` renders the toggle, the status sentence, the create row and the link
+> list behind the flag. **What nobody has done is open it.** `OSFlagCloudShare` also defaults off.
+> Both are named as open gates in
 > [DOCUMENTATION.md §12.1](../DOCUMENTATION.md#121-release-gates-that-are-genuinely-open). What
 > follows describes the feature as designed and built; the owner flow in §4 is the flow the pane
-> will drive, not a flow anyone has driven on a screen.
+> drives, not a flow anyone has driven on a screen.
 
 ---
 
@@ -207,8 +208,10 @@ caller gets the clean offline error from §7 rather than a timeout.
 Stated plainly rather than rounded up, and repeated in
 [DOCUMENTATION.md §12.1](../DOCUMENTATION.md#121-release-gates-that-are-genuinely-open):
 
-- **The Settings ▸ Cloud pane is not wired up.** The GlassUI rows exist and their models are tested;
-  no `App/` file renders them yet, so no human has created a link by clicking anything.
+- **The Settings ▸ Cloud pane has never been opened.** It is built — `App/LauncherScene.swift`
+  renders the toggle, the status sentence, the create row and the link list behind the flag — and
+  its rows are pinned by model tests. What has not happened is a screen: no window has been drawn,
+  and no human has created a link by clicking anything.
 - **No link has been pasted into a real client.** The end-to-end suite drives a fake relay socket
   into the real subprocess against a real staged database, which proves the local stack. It does not
   prove that claude.ai's connector form accepts this URL.

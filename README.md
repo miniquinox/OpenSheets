@@ -18,9 +18,9 @@ honest list.
 
 **Cloud Share is built but dark.** The relay is deployed and answering, and the whole app-side
 stack — token, wire protocol, device identity, relay client, subprocess bridge, engine and service —
-is written and tested. The Settings ▸ Cloud pane that would drive it is **not wired up yet**, and
-`OSFlagCloudShare` defaults off. [docs/cloud-share.md](docs/cloud-share.md) is the guide and states
-what is not verified.
+is written and tested. The Settings ▸ Cloud pane that drives it is built but has **never been opened
+on a screen**, and `OSFlagCloudShare` defaults off. [docs/cloud-share.md](docs/cloud-share.md) is
+the guide and states what is not verified.
 
 **Full documentation: [DOCUMENTATION.md](DOCUMENTATION.md).**
 
@@ -160,7 +160,7 @@ defaults write com.quino.opensheets OSFlagCloudShare     -bool YES  # defaults t
 `OSFlagCloudShare` gates whether Cloud Share **exists**: off, `AppModel.share` is `nil`, so there is
 no object to start and nothing to switch on. The owner's own switch is a second, separate default
 (`OSCloudShareEnabled`, also off), which gates whether the service *connects*. Turning the flag on
-today gets you a service with no pane to drive it — see
+today gets you the Settings ▸ Cloud pane, which nobody has yet seen drawn — see
 [docs/cloud-share.md](docs/cloud-share.md).
 
 `OSFlagChangeTracking` gates the whole green/amber/red story — the changes chip, its panel, the
