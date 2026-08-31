@@ -133,6 +133,26 @@ public final class Database: Sendable {
                 """)
             try db.create(index: "recent_file_open_sequence", on: "recent_file", columns: ["open_sequence"])
         }
+
+        migrator.registerMigration("v3-share-links") { db in
+            // Cloud Share's issued links. `url` holds the whole capability URL in plaintext,
+            // because Copy has to work months later and `token_hash` is one-way — see
+            // `ShareLinkRecord.url` for the other half of that bargain, which is the deny-list
+            // entry covering this directory.
+            try db.create(table: "share_link") { table in
+                table.column("id", .text).primaryKey()
+                table.column("name", .text).notNull()
+                table.column("url", .text).notNull()
+                // Unique because the relay routes on this hash: two rows sharing one would be a
+                // link that revokes only half of itself.
+                table.column("token_hash", .text).notNull().unique()
+                table.column("mode", .text).notNull().defaults(to: ShareLinkMode.readOnly.rawValue)
+                table.column("created_at", .datetime).notNull()
+                table.column("revoked_at", .datetime)
+                table.column("last_used_at", .datetime)
+            }
+            try db.create(index: "index_share_link_on_created_at", on: "share_link", columns: ["created_at"])
+        }
         return migrator
     }
 
@@ -412,6 +432,93 @@ extension Database: SnapshotIndexing {
             compressedByteCount: row["compressed_byte_count"],
             contentHash: row["content_hash"],
             summary: row["summary"]
+        )
+    }
+}
+
+extension Database: ShareLinkStoring {
+    public func insert(_ record: ShareLinkRecord) throws {
+        try write("insert share_link") { db in
+            try db.execute(
+                sql: """
+                INSERT INTO share_link
+                    (id, name, url, token_hash, mode, created_at, revoked_at, last_used_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    record.id.rawValue, record.name, record.url, record.tokenHash,
+                    record.mode.rawValue, record.createdAt, record.revokedAt, record.lastUsedAt,
+                ]
+            )
+        }
+    }
+
+    public func all() throws -> [ShareLinkRecord] {
+        try run("read share_link") { db in
+            // `created_at` alone leaves a same-millisecond tie for SQLite to break however it
+            // likes — the bug `v2-recent-file-sequence` fixed for recents. The id settles it.
+            try Row
+                .fetchAll(db, sql: "SELECT * FROM share_link ORDER BY created_at DESC, id DESC")
+                .compactMap(Database.shareLink(from:))
+        }
+    }
+
+    public func record(id: ULID) throws -> ShareLinkRecord? {
+        try run("read share_link") { db in
+            try Row.fetchOne(db, sql: "SELECT * FROM share_link WHERE id = ?", arguments: [id.rawValue])
+                .flatMap(Database.shareLink(from:))
+        }
+    }
+
+    public func revoke(id: ULID, at date: Date) throws {
+        try write("revoke share_link") { db in
+            // `AND revoked_at IS NULL` makes revoking twice keep the first moment, which is the
+            // one that is true: a link stopped answering when it first stopped answering.
+            try db.execute(
+                sql: "UPDATE share_link SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+                arguments: [date, id.rawValue]
+            )
+        }
+    }
+
+    public func delete(id: ULID) throws {
+        try write("delete share_link") { db in
+            try db.execute(sql: "DELETE FROM share_link WHERE id = ?", arguments: [id.rawValue])
+        }
+    }
+
+    public func touchLastUsed(id: ULID, at date: Date) throws {
+        try write("touch share_link") { db in
+            try db.execute(
+                sql: "UPDATE share_link SET last_used_at = ? WHERE id = ?",
+                arguments: [date, id.rawValue]
+            )
+        }
+    }
+
+    public func activeRecord(tokenHash: String) throws -> ShareLinkRecord? {
+        try run("read share_link") { db in
+            try Row.fetchOne(
+                db,
+                sql: "SELECT * FROM share_link WHERE token_hash = ? AND revoked_at IS NULL",
+                arguments: [tokenHash]
+            ).flatMap(Database.shareLink(from:))
+        }
+    }
+
+    private static func shareLink(from row: Row) -> ShareLinkRecord? {
+        guard let raw: String = row["id"], let id = ULID(rawValue: raw) else { return nil }
+        return ShareLinkRecord(
+            id: id,
+            name: row["name"],
+            url: row["url"],
+            tokenHash: row["token_hash"],
+            // An unreadable mode falls back to the *narrower* one. A row written by a future
+            // version with a mode this build does not know must not be read as write access.
+            mode: ShareLinkMode(rawValue: row["mode"] ?? "") ?? .readOnly,
+            createdAt: row["created_at"],
+            revokedAt: row["revoked_at"],
+            lastUsedAt: row["last_used_at"]
         )
     }
 }
