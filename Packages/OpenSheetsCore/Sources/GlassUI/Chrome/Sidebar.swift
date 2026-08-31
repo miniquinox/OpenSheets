@@ -238,6 +238,10 @@ public enum SidebarAction: Sendable, Hashable {
     case grantWorkspace
     case revokeWorkspace
     case copyMCPSetupCommand
+    /// Opens the app's Settings window. The panel's status sentences point at
+    /// "Settings ▸ Claude (⌘,)" — this is the click that goes where the sentence points,
+    /// because naming a destination without offering the door is a scavenger hunt.
+    case openSettings
     case showFeedEntry(String)
     /// Forwarded verbatim from the files section. Wrapped rather than flattened into eight more
     /// cases so that the explorer's vocabulary stays the explorer's: the sidebar is a courier
@@ -492,6 +496,16 @@ public struct ClaudePanel: View {
                 .foregroundStyle(DS.Chrome.accent)
             Text("Claude").dsSectionLabel()
             Spacer(minLength: 0)
+            Button {
+                perform(.openSettings)
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DS.Chrome.secondary)
+            }
+            .buttonStyle(.plain)
+            .hoverTitle("Open Settings (⌘,)")
+            .accessibilityLabel("Open Settings")
         }
     }
 

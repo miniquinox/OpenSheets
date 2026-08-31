@@ -39,6 +39,10 @@ struct SidebarColumn: View {
     /// selection, and one process-wide "selected row" would make the two windows argue.
     @State private var explorerSelection: String?
 
+    /// The public route to the Settings scene — the gear in the Claude panel goes where the
+    /// panel's own status sentences point.
+    @Environment(\.openSettings) private var openSettings
+
     var body: some View {
         Sidebar(state: state, context: context, topInset: topInset) { action in
             perform(action)
@@ -204,6 +208,8 @@ struct SidebarColumn: View {
             if let grant = app.grants.first(where: { $0.path == model.workspaceURL.path(percentEncoded: false) }) {
                 app.revokeGrant(grant)
             }
+        case .openSettings:
+            openSettings()
         case .copyMCPSetupCommand:
             NSPasteboard.general.clearContents()
             // The instance property, not the static: the static assumes `opensheets-mcp` is on
