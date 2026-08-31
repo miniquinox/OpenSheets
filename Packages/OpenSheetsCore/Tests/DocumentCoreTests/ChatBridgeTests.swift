@@ -206,6 +206,64 @@ struct ChatBridgeTests {
         #expect(DocumentChatBridge(model: model).overview().nextEmptyRow == 5)
     }
 
+    // MARK: - Transform
+
+    @Test func aTransformRewritesEveryNonEmptyCellAsOneUndoStep() throws {
+        let model = try makeModel()
+        let outcome = try DocumentChatBridge(model: model).transformCells(
+            range: "B2:B3", sheetName: nil, expression: "x * 10"
+        )
+        #expect(outcome.appliedCount == 2)
+        #expect(outcome.appliedRangeA1 == "B2:B3")
+        let sheet = model.workbook[model.activeSheetID]
+        #expect(sheet?.cells[try #require(CellRef(a1: "B2"))]?.value == .number(100))
+        #expect(sheet?.cells[try #require(CellRef(a1: "B3"))]?.value == .number(200))
+        #expect(model.undoName == "Apple Intelligence")
+        model.undo()
+        #expect(model.workbook[model.activeSheetID]?.cells[try #require(CellRef(a1: "B2"))]?.value == .number(10))
+    }
+
+    @Test func textCellsAreRefusedNotMangledAndEmptyCellsAreSkipped() throws {
+        let model = try makeModel()
+        // A1:B2 spans the "Region"/"Units" headers, one label, one number — and B1 area blanks.
+        let outcome = try DocumentChatBridge(model: model).transformCells(
+            range: "A1:B2", sheetName: nil, expression: "x * 2"
+        )
+        #expect(outcome.appliedCount == 1, "only B2 is numeric")
+        #expect(outcome.refusals.count == 3, "the three text cells refuse with #VALUE!")
+        #expect(outcome.refusals.allSatisfy { $0.contains("#VALUE!") })
+        let sheet = model.workbook[model.activeSheetID]
+        #expect(sheet?.cells[try #require(CellRef(a1: "A2"))]?.value == .text("North"), "text survived")
+    }
+
+    @Test func aColumnHeaderNameIsARange() throws {
+        let model = try makeModel()
+        let bridge = DocumentChatBridge(model: model)
+        // "Units" is B1's text; the name resolves to that column's data rows, header excluded —
+        // the model was watched asking transform_cells for the range "Revenue".
+        let outcome = try bridge.transformCells(
+            range: "units", sheetName: nil, expression: "x * 10"
+        )
+        #expect(outcome.appliedCount == 2)
+        #expect(outcome.appliedRangeA1 == "B2:B3")
+        let slice = try bridge.readRange(sheetName: nil, rangeA1: "Revenue", maxRows: 10, maxColumns: 10)
+        #expect(slice.rangeA1 == "C2:C4", "read ranges resolve header names the same way")
+        let sheet = model.workbook[model.activeSheetID]
+        #expect(
+            sheet?.cells[try #require(CellRef(a1: "B1"))]?.value == .text("Units"),
+            "the header itself is untouched"
+        )
+    }
+
+    @Test func aNameThatMatchesNoHeaderStillThrows() throws {
+        let model = try makeModel()
+        #expect(throws: SheetError.self) {
+            try DocumentChatBridge(model: model).readRange(
+                sheetName: nil, rangeA1: "Profit", maxRows: 1, maxColumns: 1
+            )
+        }
+    }
+
     // MARK: - Calculate
 
     @Test func evaluateComputesAgainstTheLiveWorkbookAndWritesNothing() throws {

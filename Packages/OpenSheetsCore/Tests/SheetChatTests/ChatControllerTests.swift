@@ -70,6 +70,18 @@ struct ChatControllerTests {
         #expect(SheetChatController.toolNote(in: transcript, after: 0) == "via read_cells, write_cells")
     }
 
+    @Test func aReadOnlyTurnSaysNoCellsChanged() {
+        let transcript = Transcript(entries: [
+            .toolCalls(Transcript.ToolCalls([
+                Transcript.ToolCall(id: "1", toolName: "calculate", arguments: GeneratedContent("{}")),
+            ])),
+        ])
+        #expect(
+            SheetChatController.toolNote(in: transcript, after: 0) == "via calculate · no cells changed",
+            "a narrated edit over a read-only turn must indict itself"
+        )
+    }
+
     @Test func theToolNoteOnlyCountsEntriesAfterThePrompt() {
         let transcript = Transcript(entries: [
             .toolCalls(Transcript.ToolCalls([

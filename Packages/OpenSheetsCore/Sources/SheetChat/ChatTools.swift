@@ -3,14 +3,14 @@ import FoundationModels
 import SheetMCP
 import SheetModel
 
-/// The five tools the on-device model gets. Five, not the MCP's twenty-five, on purpose.
+/// The six tools the on-device model gets. Six, not the MCP's twenty-five, on purpose.
 ///
 /// The system model is a ~3B-parameter device model with a context window in the low thousands
 /// of tokens, and every tool's name, description and schema is spent from that window before the
 /// user has typed a word. Twenty-five tools would drown it. Read, write, find, calculate,
-/// append is the set for "chat with the sheet that is open" — the last two earned their slots
-/// by watching the model fail without them — and everything else the MCP offers is either
-/// meaningless inside the app or belongs to the user's own UI.
+/// append, transform is the set for "chat with the sheet that is open" — the last three earned
+/// their slots by watching the model fail without them — and everything else the MCP offers is
+/// either meaningless inside the app or belongs to the user's own UI.
 ///
 /// Two contracts are inherited from the MCP surface so the app's two agent doors behave alike:
 /// **cell text leaves inside the untrusted envelope** (`UntrustedContent`, PLAN.md §7.3), and
@@ -39,14 +39,14 @@ public enum ChatToolLimits {
 /// `read_cells` — the values the user is looking at, as a labelled TSV window.
 public struct ReadCellsTool: Tool {
     public let name = "read_cells"
-    public let description = """
-    Read cell values from the open spreadsheet. Returns rows of tab-separated display values \
-    with row numbers and column letters. Large ranges are truncated; read narrower ranges.
-    """
+    // Every description below is spent from the model's ~4k-token window on every single
+    // message, before the user has typed a word — six fat descriptions were watched pushing a
+    // real turn over the edge. One sentence each; the war stories live in the doc comments.
+    public let description = "Read cell values from a range of the open sheet."
 
     @Generable
     public struct Arguments: Sendable {
-        @Guide(description: "A1 range to read, e.g. \"B2:D20\" or \"Sales!A1:C10\".")
+        @Guide(description: "A1 range, e.g. \"B2:D20\".")
         public var range: String
 
         public init(range: String) {
@@ -61,6 +61,7 @@ public struct ReadCellsTool: Tool {
     }
 
     public func call(arguments: Arguments) async throws -> String {
+        ChatLog.tools.info("read_cells called: \(arguments.range, privacy: .public)")
         // Validated here, not just in the document: the fake in the tests holds this contract
         // too, and the model deserves the correction even when the document would also refuse.
         let parsed = A1Notation.split(arguments.range.trimmingCharacters(in: .whitespaces))
@@ -92,20 +93,15 @@ public struct ReadCellsTool: Tool {
 /// `write_cells` — the one door edits come through.
 public struct WriteCellsTool: Tool {
     public let name = "write_cells"
-    public let description = """
-    Write values or formulas into cells of the open spreadsheet. Content starting with '=' is a \
-    formula. Only use this when the user asked for a change. The user can undo it with one ⌘Z.
-    """
+    public let description = "Write values or formulas ('=…') into specific cells the user asked to change."
 
     @Generable
     public struct Arguments: Sendable {
         @Generable
         public struct Edit: Sendable {
-            @Guide(description: "The cell to write, e.g. \"F7\".")
+            @Guide(description: "The cell, e.g. \"F7\".")
             public var ref: String
-            @Guide(
-                description: "The new content: text, a number, or a formula starting with '='. Empty clears the cell."
-            )
+            @Guide(description: "Text, a number, or a formula starting with '='.")
             public var content: String
 
             public init(ref: String, content: String) {
@@ -129,6 +125,7 @@ public struct WriteCellsTool: Tool {
     }
 
     public func call(arguments: Arguments) async throws -> String {
+        ChatLog.tools.info("write_cells called: \(arguments.edits.count, privacy: .public) edits")
         guard !arguments.edits.isEmpty else { return "Error: no edits given." }
         guard arguments.edits.count <= ChatToolLimits.editsPerCall else {
             return "Error: at most \(ChatToolLimits.editsPerCall) cells per call; split the change up."
@@ -172,14 +169,11 @@ public struct WriteCellsTool: Tool {
 /// `find_cells` — where something is, not what it says. References are cheap; contents are not.
 public struct FindCellsTool: Tool {
     public let name = "find_cells"
-    public let description = """
-    Find cells whose value or formula contains the given text. Returns cell references like \
-    Sales!B7. Use read_cells afterwards to see the values.
-    """
+    public let description = "Find cells containing the given text; returns references like B7."
 
     @Generable
     public struct Arguments: Sendable {
-        @Guide(description: "The text to search for, case-insensitive.")
+        @Guide(description: "Text to search for.")
         public var query: String
 
         public init(query: String) {
@@ -194,6 +188,7 @@ public struct FindCellsTool: Tool {
     }
 
     public func call(arguments: Arguments) async throws -> String {
+        ChatLog.tools.info("find_cells called")
         let query = arguments.query.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return "Error: empty search text." }
         let result = await document.find(query, maxMatches: ChatToolLimits.findMatches)
@@ -219,11 +214,7 @@ public struct FindCellsTool: Tool {
 /// which rows exist now.
 public struct AppendRowsTool: Tool {
     public let name = "append_rows"
-    public let description = """
-    Add new rows of data at the bottom of the sheet's existing data. Pass ALL requested rows \
-    in ONE call — each row is one array of values, left to right, matching the columns. Never \
-    pick cell references for new data yourself.
-    """
+    public let description = "Add rows below the data. Pass ALL requested rows in this ONE call."
 
     /// Rows per call. Generous enough for "add 20 regions" twice over; small enough that a
     /// runaway generation cannot pave the sheet.
@@ -243,7 +234,7 @@ public struct AppendRowsTool: Tool {
             }
         }
 
-        @Guide(description: "Every row to add, one entry per row. Adding 20 rows means 20 entries in this one call.")
+        @Guide(description: "Every row to add — 20 rows means 20 entries here.")
         public var rows: [Row]
 
         public init(rows: [Row]) {
@@ -258,6 +249,7 @@ public struct AppendRowsTool: Tool {
     }
 
     public func call(arguments: Arguments) async throws -> String {
+        ChatLog.tools.info("append_rows called: \(arguments.rows.count, privacy: .public) rows")
         guard !arguments.rows.isEmpty else { return "Error: no rows given." }
         guard arguments.rows.count <= Self.rowsPerCall else {
             return "Error: at most \(Self.rowsPerCall) rows per call; add the rest in a second call."
@@ -291,6 +283,82 @@ public struct AppendRowsTool: Tool {
     }
 }
 
+// MARK: - transform_cells
+
+/// `transform_cells` — bulk edits as a rule, not as arithmetic.
+///
+/// The fourth live failure: "change all revenue to be in the billions" needs nine divisions,
+/// so the model — which cannot divide — called the read-only calculator and narrated a
+/// conversion while the grid sat unchanged. Here it states the rule once (`x / 1000000000`);
+/// the document substitutes every cell's reference for `x`, computes with the engine, and
+/// writes the results as one undo step.
+public struct TransformCellsTool: Tool {
+    public let name = "transform_cells"
+    public let description = "Change every cell in a range by one rule of x (each cell's current value), e.g. x / 1000."
+
+    @Generable
+    public struct Arguments: Sendable {
+        @Guide(description: "A1 range to change, e.g. \"C2:C10\".")
+        public var range: String
+        @Guide(description: "The rule, using x as the current value, e.g. \"x / 1000\".")
+        public var formula: String
+
+        public init(range: String, formula: String) {
+            self.range = range
+            self.formula = formula
+        }
+    }
+
+    let document: any ChatDocument
+
+    public init(document: any ChatDocument) {
+        self.document = document
+    }
+
+    public func call(arguments: Arguments) async throws -> String {
+        ChatLog.tools
+            .info(
+                "transform_cells called: range \(arguments.range, privacy: .public), rule \(arguments.formula, privacy: .public)"
+            )
+        var formula = arguments.formula.trimmingCharacters(in: .whitespaces)
+        if formula.hasPrefix("=") {
+            formula = String(formula.dropFirst())
+        }
+        let parsed = A1Notation.split(arguments.range.trimmingCharacters(in: .whitespaces))
+        if !formula.contains(/\b[xX]\b/) {
+            // The model was watched writing the rule as a formula for the range's FIRST cell —
+            // "=C2*1000000000" for C2:C10 — which is exactly Excel's fill-down mental model,
+            // and then retrying that identical call every second, forever, against a rejection
+            // it cannot learn from mid-turn. Be liberal: the first cell's own reference means x.
+            var rewritten: String?
+            if let rangeText = parsed?.rangeText,
+               let range = CellRange(a1: rangeText.uppercased()),
+               let refToken = try? Regex("\\b\(range.start.a1String)\\b").ignoresCase() {
+                let candidate = formula.replacing(refToken, with: "x")
+                if candidate.contains(/\b[xX]\b/) {
+                    rewritten = candidate
+                }
+            }
+            guard let accepted = rewritten else {
+                return "Error: write the rule using x for each cell's current value, e.g. \"x / 1000\"."
+            }
+            formula = accepted
+        }
+        do {
+            let outcome = try await document.transformCells(
+                range: parsed?.rangeText ?? arguments.range, sheetName: parsed?.sheetName, expression: formula
+            )
+            ChatLog.tools
+                .info(
+                    "transform_cells \(arguments.range, privacy: .public) by \(formula, privacy: .public) → \(outcome.appliedCount, privacy: .public) applied (\(outcome.appliedRangeA1 ?? "—", privacy: .public)), \(outcome.refusals.count, privacy: .public) refused"
+                )
+            return ChatToolText.rendered(outcome)
+        } catch {
+            return "Error: \(error.localizedDescription)"
+        }
+    }
+}
+
 // MARK: - calculate
 
 /// `calculate` — the model's calculator, because it does not have one of its own.
@@ -303,15 +371,11 @@ public struct AppendRowsTool: Tool {
 /// it against the live workbook, and nothing is written anywhere.
 public struct CalculateTool: Tool {
     public let name = "calculate"
-    public let description = """
-    Compute a spreadsheet formula against the open sheet and return the result, writing \
-    nothing. Use this for EVERY total, average, count, or any arithmetic — never calculate \
-    numbers yourself. Example: {"formula": "=SUM(C2:C7)"}.
-    """
+    public let description = "Compute a formula and return the result, changing nothing. Use for ALL arithmetic."
 
     @Generable
     public struct Arguments: Sendable {
-        @Guide(description: "The formula to compute, e.g. \"=SUM(C2:C7)\" or \"=AVERAGE(Sales!B2:B10)\".")
+        @Guide(description: "The formula, e.g. \"=SUM(C2:C7)\".")
         public var formula: String
 
         public init(formula: String) {
@@ -326,11 +390,12 @@ public struct CalculateTool: Tool {
     }
 
     public func call(arguments: Arguments) async throws -> String {
+        ChatLog.tools.info("calculate called: \(arguments.formula, privacy: .public)")
         let formula = arguments.formula.trimmingCharacters(in: .whitespaces)
         guard !formula.isEmpty else { return "Error: empty formula." }
         do {
             let result = try await document.evaluate(formula)
-            ChatLog.tools.info("calculate \(formula, privacy: .public)")
+            ChatLog.tools.info("calculate result ready")
             ChatLog.payload(ChatLog.tools, "calculate result", result)
             // `=A1` computes to whatever text A1 holds, so a result is cell-derived data like
             // any read — enveloped, even though it is usually just a number.

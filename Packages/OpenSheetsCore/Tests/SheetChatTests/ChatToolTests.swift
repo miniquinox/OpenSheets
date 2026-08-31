@@ -198,6 +198,38 @@ struct ChatToolTests {
         #expect(tooMany.hasPrefix("Error:"))
     }
 
+    // MARK: - transform_cells
+
+    @Test func aTransformStatesTheRuleOnceAndTheDocumentDoesTheRest() async throws {
+        let fake = FakeChatDocument()
+        fake.editOutcome = ChatEditOutcome(appliedCount: 9, appliedRangeA1: "C2:C10", refusals: [])
+        let output = try await TransformCellsTool(document: fake)
+            .call(arguments: .init(range: "C2:C10", formula: "x / 1000000000"))
+        #expect(fake.lastTransform?.rangeA1 == "C2:C10")
+        #expect(fake.lastTransform?.expression == "x / 1000000000")
+        #expect(output.contains("Wrote 9 cells (C2:C10)."))
+    }
+
+    @Test func theFirstCellsOwnReferenceMeansX() async throws {
+        // "=C2*1000000000" for C2:C10 is Excel's fill-down mental model, and the model was
+        // watched retrying exactly that spelling every second, forever, against a rejection.
+        let fake = FakeChatDocument()
+        fake.editOutcome = ChatEditOutcome(appliedCount: 9, appliedRangeA1: "C2:C10", refusals: [])
+        _ = try await TransformCellsTool(document: fake)
+            .call(arguments: .init(range: "C2:C10", formula: "=C2*1000000000"))
+        #expect(fake.lastTransform?.expression == "x*1000000000")
+    }
+
+    @Test func aRuleWithoutThePlaceholderIsTaughtTheShape() async throws {
+        let fake = FakeChatDocument()
+        // "D5" is neither x nor the range's first cell — nothing to interpret, so teach.
+        let output = try await TransformCellsTool(document: fake)
+            .call(arguments: .init(range: "C2:C10", formula: "D5 / 1000"))
+        #expect(output.hasPrefix("Error:"))
+        #expect(output.contains("x for each cell"))
+        #expect(fake.lastTransform == nil)
+    }
+
     // MARK: - calculate
 
     @Test func calculateComputesWithoutWritingAndWrapsTheResult() async throws {
@@ -268,6 +300,7 @@ final class FakeChatDocument: ChatDocument {
     var lastRead: (sheetName: String?, rangeA1: String, maxRows: Int, maxColumns: Int)?
     var lastEdits: (edits: [ChatCellEdit], sheetName: String?)?
     var lastFind: (query: String, maxMatches: Int)?
+    var lastTransform: (rangeA1: String, sheetName: String?, expression: String)?
     var evaluation = "0"
     var lastEvaluated: String?
     var appendOutcome = ChatAppendOutcome(firstRow: 8, rowCount: 0, appliedCount: 0, refusals: [])
@@ -302,5 +335,10 @@ final class FakeChatDocument: ChatDocument {
     func appendRows(_ rows: [[String]]) throws -> ChatAppendOutcome {
         lastAppended = rows
         return appendOutcome
+    }
+
+    func transformCells(range rangeA1: String, sheetName: String?, expression: String) throws -> ChatEditOutcome {
+        lastTransform = (rangeA1, sheetName, expression)
+        return editOutcome
     }
 }

@@ -41,6 +41,14 @@ public protocol ChatDocument: AnyObject, Sendable {
     /// a few and narrated twenty.
     func appendRows(_ rows: [[String]]) throws -> ChatAppendOutcome
 
+    /// Rewrites every non-empty cell in a range by an expression of its current value —
+    /// `x / 1000000000` — the document substituting each cell's reference for `x`, computing
+    /// with the engine, and writing the results as one undo step. Exists because "convert all
+    /// revenue to billions" through write_cells would require the model to compute nine new
+    /// values itself; watched live, it called the read-only calculator instead and narrated a
+    /// conversion that never happened.
+    func transformCells(range rangeA1: String, sheetName: String?, expression: String) throws -> ChatEditOutcome
+
     /// Computes a formula against the live workbook without writing anything, and returns the
     /// result rendered as text — a number, `TRUE`, an error token like `#NAME?`, or a sentence
     /// for a formula the engine cannot evaluate. The model's calculator: it exists so that

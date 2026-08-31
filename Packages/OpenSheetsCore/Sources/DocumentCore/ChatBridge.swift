@@ -50,6 +50,9 @@ public final class DocumentChatBridge: ChatDocument {
     /// Cells `find` walks before giving up, `SelectionStatistics.cellBudget`'s reasoning at a
     /// tool's timescale: column A alone is a million cells and a chat reply must not eat them.
     static let findCellBudget = 200_000
+    /// Cells one transform may rewrite. A column of a real table fits; "transform column A"
+    /// on a million-row sheet stops at the cap and says so.
+    static let transformCellCap = 1000
 
     public init(model: DocumentModel) {
         self.model = model
@@ -111,9 +114,7 @@ public final class DocumentChatBridge: ChatDocument {
         guard let model else { throw DocumentClosedError() }
         let workbook = model.workbook
         let sheet = try resolveSheet(named: sheetName, in: model)
-        guard let range = CellRange(a1: rangeA1.uppercased()) else {
-            throw SheetError.invalidCellReference(text: rangeA1)
-        }
+        let range = try resolveRange(rangeA1, in: sheet)
 
         let lastRow = min(range.end.row, range.start.row + maxRows - 1)
         let lastColumn = min(range.end.column, range.start.column + maxColumns - 1)
@@ -254,6 +255,62 @@ public final class DocumentChatBridge: ChatDocument {
         )
     }
 
+    public func transformCells(
+        range rangeA1: String, sheetName: String?, expression: String
+    ) throws -> ChatEditOutcome {
+        guard let model else { throw DocumentClosedError() }
+        let sheet = try resolveSheet(named: sheetName, in: model)
+        let range = try resolveRange(rangeA1, in: sheet)
+        let source = expression.hasPrefix("=") ? String(expression.dropFirst()) : expression
+
+        var edits: [(ref: CellRef, text: String)] = []
+        var refusals: [String] = []
+        var walked = 0
+        var capped = false
+        sheet.cells.forEachCell(in: range) { ref, cell in
+            guard !cell.isBlank, !capped else { return }
+            walked += 1
+            if walked > Self.transformCellCap {
+                capped = true
+                return
+            }
+            // The placeholder is a lone `x`, substituted with this cell's own reference and
+            // handed to the engine — the model states the rule once, the app does the
+            // arithmetic nine (or nine hundred) times. `\b` keeps refs like `X2` intact.
+            let perCell = source.replacing(/\b[xX]\b/) { _ in ref.a1String }
+            switch model.evaluateFormula(perCell) {
+            case let .value(.error(code)):
+                refusals.append("\(ref.a1String): \(code.xlsxToken)")
+            case let .value(value):
+                edits.append((ref: ref, text: CellText.plain(
+                    Cell(value: value), styles: model.workbook.styles,
+                    dateSystem: model.workbook.meta.dateSystem
+                )))
+            case let .keepCached(reason):
+                refusals.append("\(ref.a1String): \(reason.message)")
+            }
+        }
+        if capped {
+            refusals.append("stopped after \(Self.transformCellCap) cells; transform a narrower range")
+        }
+
+        let outcome = model.applyAssistantEdits(edits, on: sheet.id)
+        var applied: CellRange?
+        if let firstRef = outcome.appliedRefs.first {
+            let rows = outcome.appliedRefs.map(\.row)
+            let columns = outcome.appliedRefs.map(\.column)
+            applied = CellRange(
+                rows: (rows.min() ?? firstRef.row) ... (rows.max() ?? firstRef.row),
+                columns: (columns.min() ?? firstRef.column) ... (columns.max() ?? firstRef.column)
+            )
+        }
+        return ChatEditOutcome(
+            appliedCount: outcome.appliedRefs.count,
+            appliedRangeA1: applied?.a1String(),
+            refusals: refusals + outcome.refusals
+        )
+    }
+
     public func evaluate(_ formulaSource: String) throws -> String {
         guard let model else { throw DocumentClosedError() }
         let source = formulaSource.hasPrefix("=") ? String(formulaSource.dropFirst()) : formulaSource
@@ -272,6 +329,27 @@ public final class DocumentChatBridge: ChatDocument {
     }
 
     // MARK: - Helpers
+
+    /// An A1 range, or a **column header's name** — the model was watched handing
+    /// `transform_cells` the range "Revenue", which is exactly how a person thinks of a column.
+    /// A header match resolves to that column's data rows (header excluded); A1 still wins, so
+    /// a sheet with a header literally named "C2" behaves predictably.
+    private func resolveRange(_ text: String, in sheet: Sheet) throws -> CellRange {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if let range = CellRange(a1: trimmed.uppercased()) {
+            return range
+        }
+        if let used = sheet.usedRange, used.rowCount > 1 {
+            for column in used.columns {
+                let header = sheet.cells[CellRef(row: used.start.row, column: column)]
+                    .map { CellText.plain($0, styles: Workbook.blank().styles) } ?? ""
+                if header.compare(trimmed, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame {
+                    return CellRange(rows: (used.start.row + 1) ... used.end.row, columns: column ... column)
+                }
+            }
+        }
+        throw SheetError.invalidCellReference(text: text)
+    }
 
     private func resolveSheet(named name: String?, in model: DocumentModel) throws -> Sheet {
         if let name {
