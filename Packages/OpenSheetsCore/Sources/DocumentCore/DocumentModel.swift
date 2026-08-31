@@ -1,5 +1,5 @@
 #if canImport(AppKit)
-import AppKit
+    import AppKit
 #endif
 import Foundation
 import GlassUI
@@ -53,7 +53,11 @@ public final class DocumentModel {
 
     public private(set) var workbook: Workbook
     public var activeSheetID: SheetID {
-        didSet { if activeSheetID != oldValue { selection = GridSelection() } }
+        didSet {
+            if activeSheetID != oldValue {
+                selection = GridSelection()
+            }
+        }
     }
 
     public var selection = GridSelection() {
@@ -117,7 +121,11 @@ public final class DocumentModel {
     /// the menu bar (⌥⌘C), ⌘K and the bubble itself all drive it. Expanding prewarms the model,
     /// so the first answer is loading weights while the user is still typing the question.
     public var isChatVisible = false {
-        didSet { if isChatVisible, !oldValue { chat.prewarm() } }
+        didSet {
+            if isChatVisible, !oldValue {
+                chat.prewarm()
+            }
+        }
     }
 
     /// The imperative handle on the grid — flash, scroll, begin edit.
@@ -128,7 +136,9 @@ public final class DocumentModel {
     /// session. `@ObservationIgnored` because the controller is `@Observable` itself — views
     /// track its `messages`, not the identity of the box it lives in.
     public var chat: SheetChatController {
-        if let chatController { return chatController }
+        if let chatController {
+            return chatController
+        }
         let controller = SheetChatController(document: DocumentChatBridge(model: self))
         chatController = controller
         return controller
@@ -252,12 +262,16 @@ public final class DocumentModel {
         case let .stateChanged(_, to):
             let wasEditable = isEditable
             syncState = to
-            if to == .synced { clearPendingChanges() }
+            if to == .synced {
+                clearPendingChanges()
+            }
             // The state decides ``isEditable``, and the formula bar and the toolbar both render
             // from it. Without this, a file that goes read-only under the app leaves a bar that
             // still takes the caret and a toolbar that still offers Bold — controls that look
             // live and refuse on use, which is the worst of both.
-            if isEditable != wasEditable { refreshSelectionDerived() }
+            if isEditable != wasEditable {
+                refreshSelectionDerived()
+            }
         case let .refreshed(diff):
             await applyRefresh(diff)
         case .saved:
@@ -328,9 +342,13 @@ public final class DocumentModel {
         // Said once, quietly, in the one place that survives the refresh. The diff panel would be
         // the obvious home for it, but the panel is gone by the time it is true — the whole point
         // is that the file on disk has just become the source of truth.
-        if hadUndo { entry.summary += " · undo history cleared" }
+        if hadUndo {
+            entry.summary += " · undo history cleared"
+        }
         feed.insert(entry, at: 0)
-        if feed.count > 50 { feed.removeLast(feed.count - 50) }
+        if feed.count > 50 {
+            feed.removeLast(feed.count - 50)
+        }
 
         // A style-only difference must not flash: the point of the flash is "the agent changed
         // this number", and a reformat is not that.
@@ -363,7 +381,9 @@ public final class DocumentModel {
     }
 
     /// Unsaved actions, for the conflict banner's "you have 3 unsaved edits".
-    public var localEditCount: Int { undoStack.depthUsed }
+    public var localEditCount: Int {
+        undoStack.depthUsed
+    }
 
     /// Grow the pill into the panel. PLAN.md §1.2 step 6.
     public func showDiffPanel() {
@@ -474,9 +494,13 @@ public final class DocumentModel {
         case let .rowsResized(rows, height):
             resizeRows(rows, to: height)
         case let .autoFitColumns(_, suggested):
-            for (column, width) in suggested { resizeColumns(column ... column, to: width) }
+            for (column, width) in suggested {
+                resizeColumns(column ... column, to: width)
+            }
         case let .autoFitRows(_, suggested):
-            for (row, height) in suggested { resizeRows(row ... row, to: height) }
+            for (row, height) in suggested {
+                resizeRows(row ... row, to: height)
+            }
         case let .activateHyperlink(ref, link):
             pendingHyperlink = (ref, link)
         case let .zoomChanged(value):
@@ -491,7 +515,9 @@ public final class DocumentModel {
     /// action. The window presents it; clearing it is the answer.
     public var pendingHyperlink: (ref: CellRef, link: Hyperlink)?
 
-    public func clearPendingHyperlink() { pendingHyperlink = nil }
+    public func clearPendingHyperlink() {
+        pendingHyperlink = nil
+    }
 
     /// Set for one refresh, so the diff panel can say the undo stack went with it.
     public private(set) var refreshClearedUndo = false
@@ -666,9 +692,13 @@ public final class DocumentModel {
             // then click a cell"* into an undo step named "Typing" that undoes nothing. Literals
             // already avoid this — `WorkbookEditor.setCells` drops a write that changes nothing —
             // and this is the same rule reaching the case that could not see it.
-            if !isUnchanged { cell.value = .empty }
+            if !isUnchanged {
+                cell.value = .empty
+            }
         } else {
-            if cell.isFormula { engine.setFormula(nil, at: target, in: workbook) }
+            if cell.isFormula {
+                engine.setFormula(nil, at: target, in: workbook)
+            }
             cell.formula = nil
             cell.value = parsed.value
             if text.count > Limits.maxCellTextLength {
@@ -748,7 +778,8 @@ public final class DocumentModel {
 
         for (ref, text) in edits {
             if text.count > Limits.maxCellTextLength {
-                refusals.append("\(ref.a1String): a cell holds at most \(Limits.maxCellTextLength.formatted()) characters")
+                refusals
+                    .append("\(ref.a1String): a cell holds at most \(Limits.maxCellTextLength.formatted()) characters")
                 continue
             }
             let styleID = sheet.cells[ref]?.styleID ?? sheet.effectiveStyleID(at: ref)
@@ -765,7 +796,9 @@ public final class DocumentModel {
                     refusals.append("\(ref.a1String): that formula does not parse")
                     continue
                 }
-                if sheet.cells[ref]?.formula != source { cell.value = .empty }
+                if sheet.cells[ref]?.formula != source {
+                    cell.value = .empty
+                }
                 cell.formula = source
                 formulasChanged = true
             } else {
@@ -811,9 +844,30 @@ public final class DocumentModel {
         recalculate(changed: changed)
         commit(edit)
         let refs = Set(changed.filter { $0.sheet == targetSheetID }.map(\.ref))
-        if targetSheetID == activeSheetID { grid.flash(refs) }
+        if targetSheetID == activeSheetID {
+            grid.flash(refs)
+        }
         let ordered = refs.sorted { ($0.row, $0.column) < ($1.row, $1.column) }
         return AssistantEditOutcome(appliedRefs: ordered, refusals: refusals)
+    }
+
+    /// "What would this formula give?" — the engine's dry-run evaluate, against the live
+    /// workbook, writing nothing.
+    ///
+    /// This exists because of one observed failure: asked for a column's total, the on-device
+    /// model — a ~3B network that cannot do arithmetic — *wrote its wrong mental sum into a
+    /// cell* to have something to report. Every guard held (named undo, flash, change chip),
+    /// but the honest fix is upstream: give the model the same calculator the formula bar's
+    /// live preview uses, so "compute" never has a reason to reach for "write".
+    ///
+    /// Anchored at the selection's active cell, so relative references resolve the way they
+    /// would if the user typed the formula where they are looking.
+    public func evaluateFormula(_ source: String) -> CellOutcome {
+        engine.evaluate(
+            source,
+            at: SheetCell(sheet: activeSheetID, ref: selection.active),
+            in: workbook
+        )
     }
 
     /// Delete / Backspace. `ranges` defaults to the selection; the grid passes its own, which is
@@ -831,42 +885,46 @@ public final class DocumentModel {
     public func paste(_ mode: WorkbookEditor.PasteMode = .everything) {
         guard isEditable else { return }
         #if canImport(AppKit)
-        guard let payload = Clipboard.read(
-            at: selection.active, dateSystem: workbook.meta.dateSystem
-        ) else { return }
-        guard let edit = WorkbookEditor.paste(
-            payload,
-            at: selection.activeRange,
-            mode: mode,
-            on: activeSheetID,
-            in: &workbook,
-            selection: selection
-        ) else { return }
-        recalculate(changed: changedCells(in: edit))
-        commit(edit)
+            guard let payload = Clipboard.read(
+                at: selection.active, dateSystem: workbook.meta.dateSystem
+            ) else { return }
+            guard let edit = WorkbookEditor.paste(
+                payload,
+                at: selection.activeRange,
+                mode: mode,
+                on: activeSheetID,
+                in: &workbook,
+                selection: selection
+            ) else { return }
+            recalculate(changed: changedCells(in: edit))
+            commit(edit)
         #endif
     }
 
     public func copy(cut: Bool = false) {
         #if canImport(AppKit)
-        guard let sheet = workbook[activeSheetID] else { return }
-        let range = selection.boundingRange
-        let payload = ClipboardPayload.capture(
-            range, from: sheet, styles: workbook.styles, wasCut: cut
-        )
-        let formatter = CellFormatter(
-            styles: workbook.styles, dateSystem: workbook.meta.dateSystem, theme: .light
-        )
-        let text = payload.tabSeparatedText { cell in
-            guard let cell else { return "" }
-            // A cut or copy of a formula puts the *formula* on the text pasteboard, because that
-            // is what a person pasting into a terminal or another spreadsheet means by copying it.
-            if let formula = cell.formula { return "=" + formula }
-            return formatter.display(of: cell, styleID: cell.styleID).text
-        }
-        Clipboard.write(payload, text: text)
-        if cut { clearContents() }
-        refreshToolbar()
+            guard let sheet = workbook[activeSheetID] else { return }
+            let range = selection.boundingRange
+            let payload = ClipboardPayload.capture(
+                range, from: sheet, styles: workbook.styles, wasCut: cut
+            )
+            let formatter = CellFormatter(
+                styles: workbook.styles, dateSystem: workbook.meta.dateSystem, theme: .light
+            )
+            let text = payload.tabSeparatedText { cell in
+                guard let cell else { return "" }
+                // A cut or copy of a formula puts the *formula* on the text pasteboard, because that
+                // is what a person pasting into a terminal or another spreadsheet means by copying it.
+                if let formula = cell.formula {
+                    return "=" + formula
+                }
+                return formatter.display(of: cell, styleID: cell.styleID).text
+            }
+            Clipboard.write(payload, text: text)
+            if cut {
+                clearContents()
+            }
+            refreshToolbar()
         #endif
     }
 
@@ -883,14 +941,13 @@ public final class DocumentModel {
     public func structural(_ kind: StructuralEdit.Kind) {
         guard isEditable else { return }
         let range = selection.boundingRange
-        let edit: StructuralEdit
-        switch kind {
-        case .insertRows: edit = .insertRows(at: range.start.row, count: range.rowCount, on: activeSheetID)
-        case .deleteRows: edit = .deleteRows(at: range.start.row, count: range.rowCount, on: activeSheetID)
+        let edit: StructuralEdit = switch kind {
+        case .insertRows: .insertRows(at: range.start.row, count: range.rowCount, on: activeSheetID)
+        case .deleteRows: .deleteRows(at: range.start.row, count: range.rowCount, on: activeSheetID)
         case .insertColumns:
-            edit = .insertColumns(at: range.start.column, count: range.columnCount, on: activeSheetID)
+            .insertColumns(at: range.start.column, count: range.columnCount, on: activeSheetID)
         case .deleteColumns:
-            edit = .deleteColumns(at: range.start.column, count: range.columnCount, on: activeSheetID)
+            .deleteColumns(at: range.start.column, count: range.columnCount, on: activeSheetID)
         }
         do {
             guard let recorded = try WorkbookEditor.structural(
@@ -1020,7 +1077,9 @@ public final class DocumentModel {
         )
         edit.regions = []
         commit(edit)
-        if visibility == .visible { activeSheetID = id }
+        if visibility == .visible {
+            activeSheetID = id
+        }
     }
 
     public func toggleFrozenPanes() {
@@ -1114,10 +1173,16 @@ public final class DocumentModel {
         for id in edit.affectedSheets where !edit.regions.isEmpty {
             guard let sheet = workbook[id] else { continue }
             edits.note(sheet, edit.regions)
-            if edit.formulasChanged { edits.noteCellsChanged(in: sheet, formulasChanged: true) }
+            if edit.formulasChanged {
+                edits.noteCellsChanged(in: sheet, formulasChanged: true)
+            }
         }
-        if edit.stylesChanged { edits.noteStylesChanged() }
-        if edit.metadataChanged { edits.noteWorkbookMetadataChanged() }
+        if edit.stylesChanged {
+            edits.noteStylesChanged()
+        }
+        if edit.metadataChanged {
+            edits.noteWorkbookMetadataChanged()
+        }
     }
 
     private func changedCells(in edit: DocumentEdit) -> Set<SheetCell> {
@@ -1225,7 +1290,9 @@ public final class DocumentModel {
             ),
             at: 0
         )
-        if feed.count > 50 { feed.removeLast(feed.count - 50) }
+        if feed.count > 50 {
+            feed.removeLast(feed.count - 50)
+        }
     }
 
     /// Records that opening this file granted its parent folder (PLAN.md §1.1).
@@ -1308,7 +1375,9 @@ public final class DocumentModel {
     public private(set) var baselineComputeCount = 0
 
     /// Aggregate counts for the title-bar chip. Zero-filled while there is no diff.
-    public var baselineCounts: BaselineCounts { BaselineTracker.counts(for: baselineDiff) }
+    public var baselineCounts: BaselineCounts {
+        BaselineTracker.counts(for: baselineDiff)
+    }
 
     /// PLAN.md §1.2 step 8. Marks here as the new *before*.
     ///
@@ -1610,9 +1679,13 @@ public final class DocumentModel {
         workbook.meta.readOnlyReason == nil && !syncState.isBlocked && syncState != .reloading
     }
 
-    public var hasUnsavedEdits: Bool { !edits.isEmpty }
+    public var hasUnsavedEdits: Bool {
+        !edits.isEmpty
+    }
 
-    public var activeSheet: Sheet? { workbook[activeSheetID] }
+    public var activeSheet: Sheet? {
+        workbook[activeSheetID]
+    }
 
     private func refreshUndoState() {
         canUndo = undoStack.canUndo
@@ -1668,7 +1741,9 @@ public final class DocumentModel {
     /// the parser is how a currency column turns into a column of text.
     public func editText(at ref: CellRef) -> String {
         guard let sheet = workbook[activeSheetID], let cell = sheet.cells[ref] else { return "" }
-        if let formula = cell.formula { return "=" + formula }
+        if let formula = cell.formula {
+            return "=" + formula
+        }
         let formatter = CellFormatter(
             styles: workbook.styles, dateSystem: workbook.meta.dateSystem, theme: .light
         )
@@ -1683,7 +1758,9 @@ public final class DocumentModel {
     /// refused.
     public func formulaBarText(at ref: CellRef) -> String {
         guard let sheet = workbook[activeSheetID] else { return "" }
-        if let owner = sheet.spillOwner(of: ref), owner.owns(ref) { return editText(at: owner.anchor) }
+        if let owner = sheet.spillOwner(of: ref), owner.owns(ref) {
+            return editText(at: owner.anchor)
+        }
         return editText(at: ref)
     }
 
@@ -1705,7 +1782,7 @@ public final class DocumentModel {
         if let refusal = workbook[activeSheetID]?.editRefusal(at: ref) {
             noteEditRefusal(refusal)
             #if canImport(AppKit)
-            NSSound.beep()
+                NSSound.beep()
             #endif
             return false
         }
@@ -1744,7 +1821,9 @@ public final class DocumentModel {
     public func formulaBarTextChanged(_ text: String) {
         guard formulaBar.text != text else { return }
         formulaBar.text = text
-        if grid.isEditing { grid.editorText = text }
+        if grid.isEditing {
+            grid.editorText = text
+        }
     }
 
     /// Return, Tab, or the tick.
@@ -1767,7 +1846,9 @@ public final class DocumentModel {
         // navigator, which is what makes Return skip a hidden row and step out of a merge. That
         // is the same split `GridNavigator.advance` makes, and the same one the in-cell editor
         // gets for free through `GridHostView.finishEdit`.
-        if let advance, selection.isSingleCell { grid.advance(advance, from: selection) }
+        if let advance, selection.isSingleCell {
+            grid.advance(advance, from: selection)
+        }
         return true
     }
 
@@ -1906,9 +1987,9 @@ public final class DocumentModel {
 
     private var pasteboardHasContent: Bool {
         #if canImport(AppKit)
-        Clipboard.hasContent()
+            Clipboard.hasContent()
         #else
-        false
+            false
         #endif
     }
 
@@ -1960,12 +2041,22 @@ public final class DocumentModel {
     }
 
     private func choice(_ format: NumberFormat) -> NumberFormatChoice {
-        if format.isGeneral { return .general }
-        if format.kind == .text { return .text }
-        if format.isDateTime { return .date }
+        if format.isGeneral {
+            return .general
+        }
+        if format.kind == .text {
+            return .text
+        }
+        if format.isDateTime {
+            return .date
+        }
         let code = format.formatCode
-        if code.contains("%") { return .percent }
-        if code.contains("E+") || code.contains("E-") { return .scientific }
+        if code.contains("%") {
+            return .percent
+        }
+        if code.contains("E+") || code.contains("E-") {
+            return .scientific
+        }
         if code.contains("$") || code.contains("€") || code.contains("£") || code.contains("¥") {
             return .currency
         }

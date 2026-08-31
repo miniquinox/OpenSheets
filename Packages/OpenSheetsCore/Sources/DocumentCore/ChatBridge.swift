@@ -1,5 +1,6 @@
 import Foundation
 import SheetChat
+import SheetFormula
 import SheetMCP
 import SheetModel
 
@@ -67,9 +68,14 @@ public final class DocumentChatBridge: ChatDocument {
 
         var headers: [String] = []
         if let sheet, let used {
+            // Labelled `C: Revenue`, not bare `Revenue`: the observed failure mode is the model
+            // *guessing* a column letter for a header it was told about — summing D because it
+            // assumed, and reporting a confident 0. With the letter in the line, name→letter is
+            // a lookup, not an inference.
             for column in used.columns.prefix(Self.headerColumnCap) {
                 let cell = sheet.cells[CellRef(row: used.start.row, column: column)]
-                headers.append(cell.map { Self.plain($0, in: workbook) } ?? "")
+                let text = cell.map { Self.plain($0, in: workbook) } ?? ""
+                headers.append(text.isEmpty ? "" : "\(CellRef.columnLetters(column)): \(text)")
             }
             // A header row of blanks frames nothing; spend the tokens on the question instead.
             if headers.allSatisfy(\.isEmpty) {
@@ -218,6 +224,23 @@ public final class DocumentChatBridge: ChatDocument {
             }
         }
         return ChatFindResult(matches: matches, truncated: truncated)
+    }
+
+    public func evaluate(_ formulaSource: String) throws -> String {
+        guard let model else { throw DocumentClosedError() }
+        let source = formulaSource.hasPrefix("=") ? String(formulaSource.dropFirst()) : formulaSource
+        switch model.evaluateFormula(source) {
+        case let .value(value):
+            // Rendered like a read: the result of `=A1` is whatever text A1 holds, and text
+            // from a cell is untrusted wherever it surfaces.
+            return CellText.plain(
+                Cell(value: value),
+                styles: model.workbook.styles,
+                dateSystem: model.workbook.meta.dateSystem
+            )
+        case let .keepCached(reason):
+            return reason.message
+        }
     }
 
     // MARK: - Helpers

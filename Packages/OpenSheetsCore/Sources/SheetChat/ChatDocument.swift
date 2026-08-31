@@ -32,6 +32,13 @@ public protocol ChatDocument: AnyObject, Sendable {
 
     /// Where something is, not what it says — mirrors the MCP `find` contract.
     func find(_ query: String, maxMatches: Int) -> ChatFindResult
+
+    /// Computes a formula against the live workbook without writing anything, and returns the
+    /// result rendered as text — a number, `TRUE`, an error token like `#NAME?`, or a sentence
+    /// for a formula the engine cannot evaluate. The model's calculator: it exists so that
+    /// "what do these add up to" is never answered by a 3B network's mental arithmetic, and
+    /// never by a write.
+    func evaluate(_ formulaSource: String) throws -> String
 }
 
 /// The trusted context line the controller writes ahead of each prompt.

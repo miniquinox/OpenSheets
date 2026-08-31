@@ -57,7 +57,7 @@ struct ChatBridgeTests {
         #expect(overview.sheetNames == ["Sales", "Summary"])
         #expect(overview.usedRangeA1 == "A1:C4")
         #expect(overview.selectionA1 == "A1")
-        #expect(overview.headerCells == ["Region", "Units", "Revenue"])
+        #expect(overview.headerCells == ["A: Region", "B: Units", "C: Revenue"])
         #expect(overview.isEditable)
     }
 
@@ -168,6 +168,26 @@ struct ChatBridgeTests {
         #expect(model.activeSheetID == salesID, "the user's view does not jump")
         let summary = model.workbook.sheet(named: "Summary")
         #expect(summary?.cells[try #require(CellRef(a1: "B1"))]?.value == .number(42))
+    }
+
+    // MARK: - Calculate
+
+    @Test func evaluateComputesAgainstTheLiveWorkbookAndWritesNothing() throws {
+        let model = try makeModel()
+        let bridge = DocumentChatBridge(model: model)
+        #expect(try bridge.evaluate("=SUM(C2:C3)") == "4600")
+        #expect(try bridge.evaluate("SUM(B2:B3)") == "30", "the leading '=' is optional")
+        // An unsaved edit is part of the answer — the calculator sees the screen, not the disk.
+        #expect(model.commitEdit(at: try #require(CellRef(a1: "B2")), text: "100"))
+        #expect(try bridge.evaluate("=SUM(B2:B3)") == "120")
+        #expect(!model.canUndo || model.undoName != "Apple Intelligence", "nothing was written")
+        #expect(model.workbook[model.activeSheetID]?.usedRange == CellRange(a1: "A1:C4"))
+    }
+
+    @Test func evaluateReportsErrorsAsTokensNotThrows() throws {
+        let model = try makeModel()
+        let bridge = DocumentChatBridge(model: model)
+        #expect(try bridge.evaluate("=NOSUCHFUNCTION(1)") == "#NAME?")
     }
 
     // MARK: - Find

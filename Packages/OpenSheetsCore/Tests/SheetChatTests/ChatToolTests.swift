@@ -161,6 +161,27 @@ struct ChatToolTests {
         #expect(output.contains("\(ChatToolLimits.editsPerCall)"))
     }
 
+    // MARK: - calculate
+
+    @Test func calculateComputesWithoutWritingAndWrapsTheResult() async throws {
+        let fake = FakeChatDocument()
+        fake.evaluation = "972029"
+        let output = try await CalculateTool(document: fake)
+            .call(arguments: .init(formula: "=SUM(C2:C7)"))
+        #expect(fake.lastEvaluated == "=SUM(C2:C7)")
+        #expect(output.contains("=SUM(C2:C7) = 972029"))
+        #expect(output.contains("<untrusted-spreadsheet-content>"), "=A1 can compute to cell text")
+        #expect(fake.lastEdits == nil, "computing writes nothing")
+    }
+
+    @Test func calculateHandsBackTheEnginesErrorToken() async throws {
+        let fake = FakeChatDocument()
+        fake.evaluation = "#NAME?"
+        let output = try await CalculateTool(document: fake)
+            .call(arguments: .init(formula: "=SUMM(C2:C7)"))
+        #expect(output.contains("#NAME?"), "the token teaches the model its formula was wrong")
+    }
+
     // MARK: - find_cells
 
     @Test func findRendersQualifiedReferences() async throws {
@@ -210,6 +231,8 @@ final class FakeChatDocument: ChatDocument {
     var lastRead: (sheetName: String?, rangeA1: String, maxRows: Int, maxColumns: Int)?
     var lastEdits: (edits: [ChatCellEdit], sheetName: String?)?
     var lastFind: (query: String, maxMatches: Int)?
+    var evaluation = "0"
+    var lastEvaluated: String?
 
     func overview() -> ChatWorkbookOverview {
         overviewValue
@@ -230,5 +253,10 @@ final class FakeChatDocument: ChatDocument {
     func find(_ query: String, maxMatches: Int) -> ChatFindResult {
         lastFind = (query, maxMatches)
         return findResult
+    }
+
+    func evaluate(_ formulaSource: String) throws -> String {
+        lastEvaluated = formulaSource
+        return evaluation
     }
 }

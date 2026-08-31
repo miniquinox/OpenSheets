@@ -3,14 +3,14 @@ import FoundationModels
 import SheetMCP
 import SheetModel
 
-/// The three tools the on-device model gets. Three, not the MCP's twenty-five, on purpose.
+/// The four tools the on-device model gets. Four, not the MCP's twenty-five, on purpose.
 ///
 /// The system model is a ~3B-parameter device model with a context window in the low thousands
 /// of tokens, and every tool's name, description and schema is spent from that window before the
-/// user has typed a word. Twenty-five tools would drown it. Read, write, find is the irreducible
-/// set for "chat with the sheet that is open": everything else the MCP offers — workspace
-/// listing, snapshots, file lifecycle — is either meaningless inside the app or belongs to the
-/// user's own UI.
+/// user has typed a word. Twenty-five tools would drown it. Read, write, find, calculate is the
+/// irreducible set for "chat with the sheet that is open": everything else the MCP offers —
+/// workspace listing, snapshots, file lifecycle — is either meaningless inside the app or
+/// belongs to the user's own UI.
 ///
 /// Two contracts are inherited from the MCP surface so the app's two agent doors behave alike:
 /// **cell text leaves inside the untrusted envelope** (`UntrustedContent`, PLAN.md §7.3), and
@@ -183,6 +183,56 @@ public struct FindCellsTool: Tool {
         guard !query.isEmpty else { return "Error: empty search text." }
         let result = await document.find(query, maxMatches: ChatToolLimits.findMatches)
         return ChatToolText.rendered(result)
+    }
+}
+
+// MARK: - calculate
+
+/// `calculate` — the model's calculator, because it does not have one of its own.
+///
+/// This tool exists because of one live failure, preserved here so nobody optimises it away:
+/// asked for a column's total, the on-device model summed six numbers in its head, got it
+/// wrong, and then **wrote the wrong answer into a cell** so it would have something to point
+/// at. A ~3B model reliably knows *that* it should total a column and reliably cannot do the
+/// totalling. Playing to that: any arithmetic becomes a formula, the app's own engine computes
+/// it against the live workbook, and nothing is written anywhere.
+public struct CalculateTool: Tool {
+    public let name = "calculate"
+    public let description = """
+    Compute a spreadsheet formula against the open sheet and return the result, writing \
+    nothing. Use this for EVERY total, average, count, or any arithmetic — never calculate \
+    numbers yourself. Example: {"formula": "=SUM(C2:C7)"}.
+    """
+
+    @Generable
+    public struct Arguments: Sendable {
+        @Guide(description: "The formula to compute, e.g. \"=SUM(C2:C7)\" or \"=AVERAGE(Sales!B2:B10)\".")
+        public var formula: String
+
+        public init(formula: String) {
+            self.formula = formula
+        }
+    }
+
+    let document: any ChatDocument
+
+    public init(document: any ChatDocument) {
+        self.document = document
+    }
+
+    public func call(arguments: Arguments) async throws -> String {
+        let formula = arguments.formula.trimmingCharacters(in: .whitespaces)
+        guard !formula.isEmpty else { return "Error: empty formula." }
+        do {
+            let result = try await document.evaluate(formula)
+            // `=A1` computes to whatever text A1 holds, so a result is cell-derived data like
+            // any read — enveloped, even though it is usually just a number.
+            return UntrustedContent.wrap(
+                "\(UntrustedContent.inlineCell(formula)) = \(UntrustedContent.inlineCell(result))"
+            )
+        } catch {
+            return "Error: \(error.localizedDescription)"
+        }
     }
 }
 
