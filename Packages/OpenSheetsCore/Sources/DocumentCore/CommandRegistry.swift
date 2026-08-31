@@ -26,6 +26,9 @@ public enum PaletteCommand: Sendable, Hashable {
     case toggleChangeHighlights
     case nextTab
     case previousTab
+    /// The sheet chat, PLAN.md §4's "ask Claude" slot in the palette — filled by the on-device
+    /// model, since it is the assistant that lives inside the window.
+    case toggleChat
 }
 
 /// Builds the palette's sections for a query.
@@ -40,13 +43,16 @@ public enum CommandRegistry {
     ///   - hasTabs: whether there is more than one tab to move between. Same reasoning as the
     ///     menu bar's `Next Tab`, which disables below two: a palette entry that reliably does
     ///     nothing teaches people not to trust the palette.
+    ///   - hasChat: `Flags.chatEnabled`. Absent, not disabled, when off — same §1.10 reasoning
+    ///     as the tracking commands.
     public static func actions(
         canUndo: Bool,
         canRedo: Bool,
         canRefresh: Bool,
         canSave: Bool,
         isTrackingChanges: Bool = false,
-        hasTabs: Bool = false
+        hasTabs: Bool = false,
+        hasChat: Bool = false
     ) -> [(item: CommandItem, command: PaletteCommand)] {
         var built: [(item: CommandItem, command: PaletteCommand)] = [
             (
@@ -117,6 +123,17 @@ public enum CommandRegistry {
             )
         }
 
+        if hasChat {
+            built.append(
+                (
+                    CommandItem(
+                        id: "chat", title: "Ask your sheet", symbol: "sparkles", shortcut: "⌥⌘C"
+                    ),
+                    .toggleChat
+                )
+            )
+        }
+
         if hasTabs {
             built.append(
                 (
@@ -151,7 +168,8 @@ public enum CommandRegistry {
         canRefresh: Bool,
         canSave: Bool,
         isTrackingChanges: Bool = false,
-        hasTabs: Bool = false
+        hasTabs: Bool = false,
+        hasChat: Bool = false
     ) -> (sections: [CommandSection], commands: [String: PaletteCommand]) {
         var sections: [CommandSection] = []
         var commands: [String: PaletteCommand] = [:]
@@ -195,7 +213,7 @@ public enum CommandRegistry {
 
         let actionPairs = actions(
             canUndo: canUndo, canRedo: canRedo, canRefresh: canRefresh, canSave: canSave,
-            isTrackingChanges: isTrackingChanges, hasTabs: hasTabs
+            isTrackingChanges: isTrackingChanges, hasTabs: hasTabs, hasChat: hasChat
         )
         for pair in actionPairs { commands[pair.item.id] = pair.command }
         let rankedActions = CommandFuzzy.rank(actionPairs.map(\.item), query: query, by: \.title)

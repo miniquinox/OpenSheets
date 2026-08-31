@@ -138,6 +138,14 @@ struct DocumentCommands: Commands {
             Button(highlightsTitle) { document?.isChangeHighlightingEnabled.toggle() }
                 .keyboardShortcut("h", modifiers: [.command, .shift])
                 .disabled(document == nil || !Flags.changeTrackingEnabled)
+            // Absent rather than disabled when the flag is off, like the checkpoint commands:
+            // the flag's promise is the pre-feature app, and a greyed-out menu item named after
+            // a switched-off assistant is still the assistant, advertising itself.
+            if Flags.chatEnabled {
+                Button(chatTitle) { document?.isChatVisible.toggle() }
+                    .keyboardShortcut("c", modifiers: [.command, .option])
+                    .disabled(document == nil)
+            }
             Divider()
             Button("Actual Size") { document?.zoom = 1 }
                 .keyboardShortcut("0", modifiers: [.command, .option])
@@ -190,6 +198,11 @@ struct DocumentCommands: Commands {
             : "Show Change Highlights"
     }
 
+    /// Same toggle-title rule as the highlights: named for what it will do.
+    private var chatTitle: String {
+        document?.isChatVisible == true ? "Hide Sheet Chat" : "Show Sheet Chat"
+    }
+
     /// ⌘1…⌘9. Nine because ⌘0 is Show Sidebar and because nobody counts tabs past nine by eye.
     private static let directTabShortcuts = 9
     private static let digits: [KeyEquivalent] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
@@ -225,7 +238,9 @@ struct DocumentCommands: Commands {
         var workbook = Workbook.blank()
         workbook.meta.sourceFormat = .xlsx
         var tracker = WorkbookEditTracker()
-        if let sheet = workbook.sheets.first { tracker.noteSheetReplaced(sheet) }
+        if let sheet = workbook.sheets.first {
+            tracker.noteSheetReplaced(sheet)
+        }
         guard let bytes = try? XLSXWriter.data(for: workbook, edits: tracker) else { return }
         guard (try? app.store.suppressor.write(bytes, to: destination)) != nil else { return }
         // The save panel is the consent gesture: the user just chose this folder to put a file in.

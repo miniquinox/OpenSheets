@@ -106,7 +106,9 @@ public struct RefreshPill: View {
     }
 
     /// Chosen against the tint, not the colour scheme — see ``DS/Signal/inkOnTint(_:_:)``.
-    private var ink: Color { DS.Signal.inkOnTint(notice.signal, context) }
+    private var ink: Color {
+        DS.Signal.inkOnTint(notice.signal, context)
+    }
 
     public var body: some View {
         Button { perform(.expand) } label: {
@@ -183,7 +185,9 @@ public struct DiffPanel: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            if !changedSheets.isEmpty { sheetChips }
+            if !changedSheets.isEmpty {
+                sheetChips
+            }
             Divider().overlay(DS.Chrome.separator(context))
             changeList
             Divider().overlay(DS.Chrome.separator(context))
@@ -199,7 +203,10 @@ public struct DiffPanel: View {
         // to be reading sit on top of it. The first screenshot of this panel made that decision
         // for us. The signal is still carried — by the sparkle in the header and by the accent on
         // Refresh — it is just no longer carried by 160,000 square points of colour.
-        .glassCard(context: context)
+        // ``DS/Radius/panel``, not ``DS/Radius/card``, for the chat panel's reason: this surface
+        // works the window-edge corner, and the window's own curve is 16pt — a nested curve must
+        // not out-round the one it sits inside.
+        .glassCard(context: context, radius: DS.Radius.panel)
         .animation(DS.Motion.settle, value: changeSet)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Changes on disk")

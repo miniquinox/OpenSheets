@@ -84,7 +84,9 @@ struct DocumentWindow: View {
     /// stamp is later than the refresh, is the reason the dot goes out.
     @State private var agentDotClock = Date()
 
-    private var context: AppearanceContext { appearance.context(for: colorScheme) }
+    private var context: AppearanceContext {
+        appearance.context(for: colorScheme)
+    }
 
     var body: some View {
         content
@@ -113,7 +115,11 @@ struct DocumentWindow: View {
                 closeRequest?.title ?? "",
                 isPresented: Binding(
                     get: { closeRequest != nil },
-                    set: { if !$0 { closeRequest = nil } }
+                    set: {
+                        if !$0 {
+                            closeRequest = nil
+                        }
+                    }
                 ),
                 presenting: closeRequest
             ) { request in
@@ -560,10 +566,14 @@ struct DocumentWindow: View {
             dismiss()
             return
         }
-        for id in ids { tabs.close(id) }
+        for id in ids {
+            tabs.close(id)
+        }
         // §1.2 step 9. A workspace window with no tabs is a window with nothing in it, and
         // leaving it on screen would mean the launcher can never come back.
-        if tabs.isEmpty { dismiss() }
+        if tabs.isEmpty {
+            dismiss()
+        }
     }
 
     /// ⌘W. Reached from the menu bar through ``OpenActions/closeActiveTab``, because the confirm
@@ -701,6 +711,10 @@ private struct DocumentPane<TitleBar: View>: View {
     /// The measured height of the anchored chrome, handed to the grid as a scroll inset so the
     /// two can never disagree about where row 1 begins.
     @State private var chromeHeight: CGFloat = 0
+    /// The sheet tab plate's height, measured like `chromeHeight`: the floating agents' collapsed
+    /// shapes sit this much higher, so their gap to the plate's hairline equals their gap to the
+    /// window's right edge — the two boundaries the eye actually measures them against.
+    @State private var plateHeight: CGFloat = 0
 
     var body: some View {
         Group {
@@ -850,7 +864,21 @@ private struct DocumentPane<TitleBar: View>: View {
             VStack(spacing: 0) {
                 GridPane(model: model, context: context, chromeInset: chromeHeight)
                 SheetTabPlate(model: model, context: context)
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.height
+                    } action: { height in
+                        plateHeight = height
+                    }
             }
+            // The agent surfaces float on the *document area*, not inside the grid, so their
+            // margins answer to the window. One rule, two phases: a collapsed pill or bubble
+            // rests in the grid's corner, lifted clear of the tab plate so its gap to the
+            // plate's hairline equals its gap to the window's right edge; an expanded panel
+            // drops to one `floatingInset` off the window's bottom, over the plate's empty end —
+            // the system-HUD plane, where the volume control lives. Straddling was tried and
+            // looked broken: a bubble crossing the plate's hairline reads as misaligned even
+            // when its margins measure equal, because the eye measures to the nearest line.
+            .overlay(alignment: .bottomTrailing) { floatingAgents }
             if model.isInspectorVisible {
                 InspectorColumn(model: model, context: context, topInset: chromeHeight)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -913,6 +941,45 @@ private struct DocumentPane<TitleBar: View>: View {
         }
     }
 
+    /// The sync surface and the sheet chat, sharing the document-area corner — see the overlay
+    /// site for the two-phase rule. Not one `GlassCluster`: the app asking for a decision and an
+    /// assistant waiting to be asked are different statements, and must never merge into one lens.
+    private var floatingAgents: some View {
+        HStack(alignment: .bottom, spacing: DS.Space.xxl) {
+            if let changeSet = model.changeSet {
+                SyncSurface(
+                    phase: model.syncPhase,
+                    changeSet: changeSet,
+                    filteredSheet: model.diffSheetFilter,
+                    context: context
+                ) { action in
+                    Task { await model.handle(action) }
+                }
+                .padding(.bottom, model.syncPhase == .panel ? 0 : plateHeight)
+            }
+
+            if Flags.chatEnabled {
+                ChatSurface(
+                    phase: model.isChatVisible ? .panel : .bubble,
+                    state: model.chat.surfaceState,
+                    context: context
+                ) { action in
+                    switch action {
+                    case .expand: model.isChatVisible = true
+                    case .collapse: model.isChatVisible = false
+                    case let .send(text): model.chat.send(text)
+                    case .stop: model.chat.stop()
+                    case .clear: model.chat.clearConversation()
+                    }
+                }
+                .padding(.bottom, model.isChatVisible ? 0 : plateHeight)
+            }
+        }
+        .padding(DS.Space.floatingInset)
+        .animation(DS.Motion.morph(context), value: model.isChatVisible)
+        .animation(DS.Motion.morph(context), value: model.syncPhase)
+    }
+
     // MARK: - States
 
     private var emptyState: EmptyStateModel? {
@@ -950,8 +1017,11 @@ private struct DocumentPane<TitleBar: View>: View {
     private func handle(_ empty: EmptyStateModel, _ action: EmptyStateAction) {
         switch action {
         case .primary:
-            if model.syncState == .missing { isPresentingSaveAs = true }
-            else { NSWorkspace.shared.activateFileViewerSelecting([model.url]) }
+            if model.syncState == .missing {
+                isPresentingSaveAs = true
+            } else {
+                NSWorkspace.shared.activateFileViewerSelecting([model.url])
+            }
         case .secondary:
             dismiss()
         case .showTechnicalDetail:
@@ -1004,7 +1074,8 @@ private struct DocumentPane<TitleBar: View>: View {
             canRefresh: model.syncState == .stale || model.syncState == .synced,
             canSave: model.syncState.allowsSaving && model.hasUnsavedEdits,
             isTrackingChanges: Flags.changeTrackingEnabled,
-            hasTabs: tabs.tabs.count > 1
+            hasTabs: tabs.tabs.count > 1,
+            hasChat: Flags.chatEnabled
         )
         paletteState.sections = built.sections
         paletteCommands = built.commands
@@ -1051,6 +1122,8 @@ private struct DocumentPane<TitleBar: View>: View {
             tabs.activateNext()
         case .previousTab:
             tabs.activatePrevious()
+        case .toggleChat:
+            model.isChatVisible.toggle()
         }
     }
 
@@ -1058,7 +1131,9 @@ private struct DocumentPane<TitleBar: View>: View {
         guard let defined = model.workbook.definedName(name) ?? model.workbook.definedNames[name],
               let target = defined.target
         else { return }
-        if let sheet = target.sheet { model.activeSheetID = sheet }
+        if let sheet = target.sheet {
+            model.activeSheetID = sheet
+        }
         model.selection.select(target.range, active: target.range.start)
         model.grid.scroll(to: target.range.start)
     }

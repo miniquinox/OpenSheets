@@ -26,6 +26,7 @@ extension DocumentCore.Flags {
             ("explorer", explorerEnabled),
             ("handshake", handshakeEnabled),
             ("cloudShare", cloudShareEnabled),
+            ("chat", chatEnabled),
         ]
         return states.map { "\($0.0)=\($0.1 ? "on" : "off")" }.joined(separator: " ")
     }

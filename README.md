@@ -37,6 +37,7 @@ the guide and states what is not verified.
 | 203 functions, including dynamic arrays | All 500+ Excel functions |
 | File-watch → diff → refresh loop | Real-time multi-user collaboration |
 | MCP server so Claude edits *structurally* | VBA / macro execution (never) |
+| "Ask your sheet" — an on-device Apple Intelligence chat over the *live* document, edits one ⌘Z away | A cloud assistant of our own, or anything that sends a cell off the Mac |
 | Connect to Claude from Settings — the server ships in the app, registration is one click, no terminal | An agent that edits Claude's own config — `~/.claude.json` stays on the deny list |
 | Agents discover the Files panel — the folders you pinned, the tabs you have open — instead of asking you to paste a path | Link expiry dates, per-recipient folder scoping, or accounts — a share link is revocable, not fine-grained |
 | **Cloud Share** — an opt-in, revocable relay that routes bytes and grants nothing, so a browser-based assistant can reach the folders you granted ([docs/cloud-share.md](docs/cloud-share.md)) | End-to-end encryption to that assistant — the relay terminates TLS, and we say so rather than implying otherwise |
@@ -64,6 +65,7 @@ Packages/OpenSheetsCore/          ~95% of the code lives here
     SheetStore/                   file watcher, snapshots, workspace grants, directory listing, SQLite
     SheetMCP/                     the 25-tool MCP surface and the CLI
     SheetShare/                   Cloud Share: token, wire protocol, relay socket, subprocess bridge
+    SheetChat/                    in-app Apple Intelligence chat: on-device model, 5 tools
     DocumentCore/                 the wiring layer: AppModel, DocumentModel, window rules
     TestSupport/                  builders, fakes, matchers
 Relay/                            the Cloud Share relay — a Cloudflare Worker, TypeScript, its own toolchain

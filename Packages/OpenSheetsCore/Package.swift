@@ -41,6 +41,7 @@ let package = Package(
         .library(name: "SheetStore", targets: ["SheetStore"]),
         .library(name: "SheetMCP", targets: ["SheetMCP"]),
         .library(name: "SheetShare", targets: ["SheetShare"]),
+        .library(name: "SheetChat", targets: ["SheetChat"]),
         .library(name: "DocumentCore", targets: ["DocumentCore"]),
         .library(name: "TestSupport", targets: ["TestSupport"]),
         // A9's binaries. Build with `swift build -c release --product opensheets-mcp`; the
@@ -60,6 +61,7 @@ let package = Package(
                 "SheetStore",
                 "SheetMCP",
                 "SheetShare",
+                "SheetChat",
                 "DocumentCore",
             ]
         ),
@@ -111,6 +113,20 @@ let package = Package(
             swiftSettings: strictSettings
         ),
 
+        // The in-app assistant: Apple's on-device foundation model, with tools bridged to the
+        // *live* document rather than to the file. It sits beside `SheetMCP` deliberately — the
+        // MCP server is the surface for an agent outside the process reaching the file on disk,
+        // and this is the surface for the model inside the process reaching the open workbook.
+        // It borrows `SheetMCP`'s untrusted-content envelope so both agent surfaces make the
+        // same promise about cell text, and `GlassUI` for the value types its transcript renders
+        // into. It does not depend on `DocumentCore`: the document arrives through the
+        // `ChatDocument` protocol, which is what keeps the model logic testable with a fake.
+        .target(
+            name: "SheetChat",
+            dependencies: ["SheetModel", "SheetMCP", "GlassUI"],
+            swiftSettings: strictSettings
+        ),
+
         // MARK: - Wave 2
 
         // A8's document model. The one place that imports every other target at once: it is where
@@ -134,6 +150,7 @@ let package = Package(
             dependencies: [
                 "SheetModel", "SheetFormat", "SheetFormula", "GridKit", "GlassUI", "SheetStore", "SheetMCP",
                 "SheetShare",
+                "SheetChat",
             ],
             swiftSettings: strictSettings
         ),
@@ -182,6 +199,7 @@ let package = Package(
         ),
         .testTarget(name: "SheetMCPTests", dependencies: ["SheetMCP", "TestSupport"], swiftSettings: strictSettings),
         .testTarget(name: "SheetShareTests", dependencies: ["SheetShare", "TestSupport"], swiftSettings: strictSettings),
+        .testTarget(name: "SheetChatTests", dependencies: ["SheetChat", "TestSupport"], swiftSettings: strictSettings),
         .testTarget(
             name: "DocumentCoreTests",
             dependencies: ["DocumentCore", "MiniZip", "SheetMCP", "TestSupport"],

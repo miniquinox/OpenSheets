@@ -211,9 +211,9 @@ public struct GlassCluster<Content: View>: View {
 
 // MARK: - Entry points
 
-public extension View {
+extension View {
     /// Chrome glass in an explicit shape.
-    func glassSurface(
+    public func glassSurface(
         _ tier: GlassTier,
         in shape: some Shape,
         context: AppearanceContext,
@@ -223,7 +223,7 @@ public extension View {
     }
 
     /// A floating capsule: the stats pill, the refresh pill, the sync chip.
-    func glassPill(context: AppearanceContext, signal: DS.SignalKind = .neutral) -> some View {
+    public func glassPill(context: AppearanceContext, signal: DS.SignalKind = .neutral) -> some View {
         modifier(
             GlassSurface(
                 shape: Capsule(style: .continuous),
@@ -235,7 +235,7 @@ public extension View {
     }
 
     /// A floating card at ``DS/Radius/card``: the diff panel, the command palette, the launcher.
-    func glassCard(
+    public func glassCard(
         context: AppearanceContext,
         radius: CGFloat = DS.Radius.card,
         signal: DS.SignalKind = .neutral
@@ -251,7 +251,7 @@ public extension View {
     }
 
     /// An edge-anchored chrome bar: the toolbar, the formula bar, the tab bar, the sidebar.
-    func glassChrome(context: AppearanceContext, radius: CGFloat = DS.Radius.panel) -> some View {
+    public func glassChrome(context: AppearanceContext, radius: CGFloat = DS.Radius.panel) -> some View {
         modifier(
             GlassSurface(
                 shape: DS.Radius.shape(radius),
@@ -272,7 +272,7 @@ public extension View {
     ///
     /// The fill is the grid canvas, not a material, because §3's whole discipline is that there
     /// is exactly one opaque plane and this is it.
-    func gridPlane(_ context: AppearanceContext) -> some View {
+    public func gridPlane(_ context: AppearanceContext) -> some View {
         background(GridTheme.resolved(context).canvas.color)
             .backgroundExtensionEffect()
     }
@@ -293,12 +293,14 @@ public enum GlassMorphID: String, Sendable, Hashable, CaseIterable {
     case selectionStats
     /// The command palette's field and its results card.
     case commandPalette
+    /// The sheet-chat bubble and its conversation panel.
+    case chatSurface
 }
 
-public extension View {
+extension View {
     /// Marks this view as one end of a morph. Both ends must use the same id **and** be inside
     /// the same ``GlassCluster``, or the system has nothing to interpolate between.
-    func glassMorph(_ id: GlassMorphID, in namespace: Namespace.ID) -> some View {
+    public func glassMorph(_ id: GlassMorphID, in namespace: Namespace.ID) -> some View {
         glassEffectID(id, in: namespace)
     }
 
@@ -311,7 +313,7 @@ public extension View {
     /// Under `reduceMotion` it becomes `.identity`, which leaves the two shapes to cross-fade.
     /// Somebody who has asked the system for less motion should not be handed the app's most
     /// motion-heavy moment as a reward for using its best feature.
-    func glassMorphTransition(_ context: AppearanceContext) -> some View {
+    public func glassMorphTransition(_ context: AppearanceContext) -> some View {
         glassEffectTransition(context.reduceMotion ? .identity : .matchedGeometry)
     }
 }
