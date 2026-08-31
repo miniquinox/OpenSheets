@@ -851,6 +851,13 @@ private struct DocumentPane<TitleBar: View>: View {
                 GridPane(model: model, context: context, chromeInset: chromeHeight)
                 SheetTabPlate(model: model, context: context)
             }
+            // The chat floats on the *document area*, not inside the grid, so its margins answer
+            // to the window: one `floatingInset` from the right edge and the same from the
+            // bottom, over the tab plate's empty end — the system-HUD plane, where the volume
+            // control lives. Inside the grid it hung 20pt above the plate's hairline: a right
+            // margin measured against the window next to a bottom margin measured against a
+            // boundary the eye cannot name.
+            .overlay(alignment: .bottomTrailing) { chatSurface }
             if model.isInspectorVisible {
                 InspectorColumn(model: model, context: context, topInset: chromeHeight)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -910,6 +917,29 @@ private struct DocumentPane<TitleBar: View>: View {
             // this note is anchored *to* the formula bar rather than floating below it.
             .padding(.top, chromeHeight + DS.Space.s)
             .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
+    /// The sheet chat, in the document area's bottom-trailing corner — see the overlay site for
+    /// why it lives here and not in `GridPane`. Absent, not disabled, when the flag is off.
+    @ViewBuilder
+    private var chatSurface: some View {
+        if Flags.chatEnabled {
+            ChatSurface(
+                phase: model.isChatVisible ? .panel : .bubble,
+                state: model.chat.surfaceState,
+                context: context
+            ) { action in
+                switch action {
+                case .expand: model.isChatVisible = true
+                case .collapse: model.isChatVisible = false
+                case let .send(text): model.chat.send(text)
+                case .stop: model.chat.stop()
+                case .clear: model.chat.clearConversation()
+                }
+            }
+            .padding(DS.Space.floatingInset)
+            .animation(DS.Motion.morph(context), value: model.isChatVisible)
         }
     }
 
