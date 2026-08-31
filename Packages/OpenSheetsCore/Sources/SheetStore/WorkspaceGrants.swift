@@ -32,6 +32,9 @@ public struct DenyList: Sendable, Hashable {
         directories: [
             "~/.ssh", "~/.aws", "~/.config/gh", "~/Library/Keychains", "~/.gnupg",
             "~/.kube", "~/.docker", "~/Library/Cookies", "~/Library/Application Support/Google/Chrome",
+            // Our own store: share-link URLs are kept there in plaintext, next to the snapshots
+            // and the database, so an agent must not be able to read the links that grant it.
+            "~/Library/Application Support/OpenSheets",
             "/etc/ssh", "/private/etc/ssh", "/var/db/shadow", "/private/var/db/shadow",
         ],
         files: [
@@ -43,6 +46,24 @@ public struct DenyList: Sendable, Hashable {
 
     /// Nothing denied. For tests that are checking grant containment on its own.
     public static let empty = DenyList(directories: [], files: [], filenamePatterns: [])
+
+    /// This list, plus `directory` and everything inside it.
+    ///
+    /// ``standard`` names the store as a tilde-relative string, which is what keeps it a
+    /// constant and is correct for every real install — and for the staged-`HOME` subprocess
+    /// tests, where `~` is the staged home. A store configured to live somewhere else is
+    /// covered by composing here rather than by editing the constant, which matters because
+    /// composing can only ever deny *more*, and the list only bears changes in that direction.
+    ///
+    /// The path is canonicalised on the way in, so an entry given as `/var/…` still matches a
+    /// checked path that resolves to `/private/var/…`.
+    public func denying(directory: URL) -> DenyList {
+        var composed = self
+        composed.directories.append(
+            (try? PathCanonicalizer.canonicalize(directory)) ?? directory.path(percentEncoded: false)
+        )
+        return composed
+    }
 
     /// The rule that denies `canonicalPath`, or `nil`.
     ///

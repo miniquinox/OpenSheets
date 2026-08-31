@@ -670,6 +670,138 @@ struct ComponentModelTests {
         #expect(Mock.sheetSummaries.contains { $0.name == "Q4" })
         #expect(Mock.fileInfo.sheetCount == Mock.tabs.count)
     }
+
+    // MARK: - Cloud share
+
+    @Test("Every cloud-share status names itself, and no two share a word")
+    func cloudShareStatusesNameThemselves() {
+        for status in CloudShareStatus.allCases {
+            #expect(!status.label.isEmpty, "\(status.rawValue) rendered without a word")
+        }
+        // Four states telling four stories need four words, or the status row is telling some of
+        // them with the same face.
+        let labels = CloudShareStatus.allCases.map(\.label)
+        #expect(Set(labels).count == labels.count)
+
+        // The count is pinned rather than derived so that a fifth case cannot arrive without
+        // someone deciding what it is called and what colour it is. `revokedPending` in
+        // particular does not belong here — revocation is per-link, and the compiler will not
+        // stop anyone from hoisting it.
+        #expect(CloudShareStatus.allCases.count == 4)
+    }
+
+    @Test("Only a live socket takes the accent, and nothing here is fatal")
+    func cloudShareStatusSignalsAreCalibrated() {
+        #expect(CloudShareStatus.disabled.signal == .neutral)
+        #expect(CloudShareStatus.connecting.signal == .neutral)
+        #expect(CloudShareStatus.online.signal == .agent)
+        // Amber, not red: the client reconnects on its own, and the word says so. A state that
+        // heals itself must never wear the ink reserved for one that will not.
+        #expect(CloudShareStatus.offline.signal == .conflict)
+        #expect(
+            CloudShareStatus.offline.label.contains("retrying"),
+            "the offline word has to say the drop is temporary, because its colour no longer does"
+        )
+        #expect(
+            !CloudShareStatus.allCases.contains { $0.signal == .failure },
+            "nothing about a relay connection is a failure the user has to act on"
+        )
+    }
+
+    @Test("The status raw value is the state's own name, so a log reads like the pane")
+    func cloudShareStatusRawValuesAreStable() {
+        #expect(
+            CloudShareStatus.allCases.map(\.rawValue) == [
+                "disabled", "connecting", "online", "offline",
+            ]
+        )
+    }
+
+    @Test("The share-link row model round-trips its fields and compares by value")
+    func shareLinkRowModelRoundTrips() {
+        let live = ShareLinkRowModel(
+            id: "lnk_7f3a",
+            name: "Priya",
+            modeWord: "Read only",
+            urlDisplay: "https://share.opensheets.app/s/7f3a…9c21",
+            createdDetail: "Created 2 days ago",
+            lastUsedDetail: "Last used 10 minutes ago",
+            isRevoked: false
+        )
+        #expect(live.id == "lnk_7f3a")
+        #expect(live.modeWord == "Read only")
+        #expect(!live.isRevoked)
+        #expect(live.rejection == nil, "rejection defaults to nothing, because nothing has failed")
+
+        // Equality is field-by-field, so the Settings pane re-renders exactly when something it
+        // shows has changed and never on a no-op poll of the link list.
+        var copy = live
+        #expect(copy == live)
+        copy.lastUsedDetail = "Last used just now"
+        #expect(copy != live)
+
+        var revoked = live
+        revoked.isRevoked = true
+        #expect(revoked != live)
+        #expect(revoked.id == live.id, "revoking a link does not make it a different link")
+    }
+
+    @Test("A rejection is carried on the row it belongs to, not on the section")
+    func shareLinkRejectionIsPerRow() {
+        let refused = ShareLinkRowModel(
+            id: "lnk_7f3a",
+            name: "Q4 review",
+            modeWord: "Read & write",
+            urlDisplay: "https://share.opensheets.app/s/7f3a…9c21",
+            createdDetail: "Created just now",
+            lastUsedDetail: "Never used",
+            isRevoked: false,
+            rejection: "The relay did not answer, so this link was not revoked. Try again."
+        )
+        #expect(refused.rejection?.contains("not revoked") == true)
+        // One link failing to die says nothing about whether the Mac is reachable, which is why
+        // this string lives here and CloudShareStatus has no case for it.
+        #expect(!CloudShareStatus.allCases.map(\.label).contains(Self.revokedStatusWord))
+    }
+
+    @Test("The detail line joins what there is and never leaves a dangling separator")
+    func shareLinkDetailLineJoinsCleanly() {
+        var model = ShareLinkRowModel(
+            id: "lnk_7f3a",
+            name: "Priya",
+            modeWord: "Read only",
+            urlDisplay: "https://share.opensheets.app/s/7f3a…9c21",
+            createdDetail: "Created 2 days ago",
+            lastUsedDetail: "Last used 10 minutes ago",
+            isRevoked: false
+        )
+        #expect(model.detailLine == "Created 2 days ago · Last used 10 minutes ago")
+
+        // The case that produces "Created 2 days ago · " if the join is naive — an App layer with
+        // nothing to say about last use passes an empty string rather than inventing a sentence.
+        model.lastUsedDetail = ""
+        #expect(model.detailLine == "Created 2 days ago")
+        #expect(!model.detailLine.hasSuffix("·"))
+
+        model.createdDetail = ""
+        #expect(model.detailLine.isEmpty, "with nothing to say the row draws no detail line at all")
+    }
+
+    @Test("A share-link row emits three intents and no verbs")
+    func shareLinkActionsAreIntents() {
+        // The row asks; it never does. The pasteboard write, the revoke call and the list edit are
+        // all App-layer work, which is what keeps this component renderable in a test.
+        let actions: [ShareLinkRowAction] = [.copy, .revoke, .remove]
+        #expect(Set(actions.map(String.init(describing:))).count == 3)
+        #expect(ShareLinkRowAction.copy != ShareLinkRowAction.revoke)
+    }
+
+    /// The word a revoked link wears in the row, restated here rather than imported.
+    ///
+    /// Deliberately a second copy: the point of the assertion above is that this word is *not* a
+    /// ``CloudShareStatus`` case, and a test that read it off the type it is checking against
+    /// could not tell the difference.
+    private static let revokedStatusWord = "Revoked"
 }
 
 /// What a toolbar control says on hover.

@@ -19,3 +19,15 @@ only your own brief.
 
 **Model change requests** go in [`MODEL-CHANGE-REQUESTS.md`](MODEL-CHANGE-REQUESTS.md) — never
 edit `SheetModel` yourself after Wave 0.
+
+## Per-feature tracking
+
+The table above is the original v0.1 build. Features built since then get their own plan under
+`.claude/plans/` and their own tracking page here — who owned which new file, and what the next
+person to touch it needs to know. **Their agent numbering is local to the feature and does not
+relate to the A0–A10 above.**
+
+| Feature | Tracking page | Plan |
+| --- | --- | --- |
+| File tabs & change tracking | [`T-tabs-tracking.md`](T-tabs-tracking.md) | `.claude/plans/file-tabs-and-change-tracking.md` |
+| Cloud Share | [`T-cloud-share-tracking.md`](T-cloud-share-tracking.md) | `.claude/plans/cloud-share-remote-mcp.md` |

@@ -64,46 +64,9 @@ public enum OpenSheetsCLI {
         console: ConsoleWriter = .standard,
         configuration: SheetStore.Configuration = .standard()
     ) async -> Int32 {
-        var options = Options()
-        var positional: [String] = []
-        var index = 0
-        while index < arguments.count {
-            let argument = arguments[index]
-            index += 1
-            switch argument {
-            case "--json": options.json = true
-            case "--preview", "--dry-run": options.preview = true
-            case "--formulas": options.formulas = true
-            case "--detailed": options.format = "detailed"
-            case "--delete": options.delete = true
-            case "--recursive", "-r": options.recursive = true
-            case "--no-header": options.hasHeader = false
-            case "--header": options.hasHeader = true
-            case "--allow-formulas": options.allowFormulas = true
-            case "--sheet":
-                guard index < arguments.count else {
-                    console.err("--sheet needs a value")
-                    return ExitCode.usage
-                }
-                options.sheet = arguments[index]
-                index += 1
-            case "--limit":
-                guard index < arguments.count, let value = Int(arguments[index]) else {
-                    console.err("--limit needs a number")
-                    return ExitCode.usage
-                }
-                options.limit = value
-                index += 1
-            case "-h", "--help": positional = ["help"] + positional
-            case "-v", "--version": positional = ["version"]
-            default:
-                guard !argument.hasPrefix("--") else {
-                    console.err("unknown option \(argument)")
-                    return ExitCode.usage
-                }
-                positional.append(argument)
-            }
-        }
+        guard let parsed = parse(arguments, console: console) else { return ExitCode.usage }
+        let options = parsed.options
+        let positional = parsed.positional
 
         guard let command = positional.first else {
             console.out(usage)
@@ -115,7 +78,20 @@ public enum OpenSheetsCLI {
         case "help": console.out(usage); return ExitCode.success
         case "version": console.out("opensheets \(MCPServer.serverVersion)"); return ExitCode.success
         case "tools": return listTools(console: console, options: options)
-        case "serve": return await serve(configuration: configuration, console: console)
+        case "serve":
+            // Everything after `serve` has already been recognised as an option or it would not
+            // have got here; a leftover *word* is a typo the server must not swallow. `serve`
+            // then blocks until the client hangs up, so a silently-ignored argument would look
+            // like it took effect — the one mistake this command cannot afford, given that one
+            // of its arguments decides whether writes are on the table.
+            guard rest.isEmpty else {
+                console.err("serve takes no arguments except --read-only; "
+                    + "did not understand \(rest.joined(separator: " "))")
+                return ExitCode.usage
+            }
+            return await serve(
+                configuration: configuration, console: console, registry: options.serveRegistry
+            )
         default: break
         }
 
@@ -633,7 +609,17 @@ public enum OpenSheetsCLI {
 
     // MARK: - serve
 
-    private static func serve(configuration: SheetStore.Configuration, console: ConsoleWriter) async -> Int32 {
+    /// Runs the MCP server on stdin/stdout until the client hangs up.
+    ///
+    /// `registry` is the whole of what `--read-only` means. Nothing downstream re-checks the flag:
+    /// a tool that is not in the registry is not in `tools/list` and is not callable, and the
+    /// server needs no notion of a mode to enforce. That is deliberate — a mode flag consulted in
+    /// two places is a mode flag that can be consulted in only one of them.
+    private static func serve(
+        configuration: SheetStore.Configuration,
+        console: ConsoleWriter,
+        registry: ToolRegistry = .standard
+    ) async -> Int32 {
         // Claim standard output *first*, before anything that could print. From here on, every
         // other writer in the process lands on stderr. See `ProtocolStream`.
         let stream = ProtocolStream.claimStdout()
@@ -642,6 +628,7 @@ public enum OpenSheetsCLI {
             let store = try SheetStore(mode: .mcpServer, configuration: configuration)
             let broker = DocumentBroker(store: store, log: log)
             let server = MCPServer(
+                registry: registry,
                 context: ToolContext(
                     broker: broker,
                     log: log,
@@ -651,7 +638,8 @@ public enum OpenSheetsCLI {
                 log: log
             )
             log.write("opensheets-mcp \(MCPServer.serverVersion) ready; "
-                + "\(store.grants.activeGrants().count) granted folders")
+                + "\(store.grants.activeGrants().count) granted folders; "
+                + "\(registry.tools.count) tools")
             await server.run(readingFrom: STDIN_FILENO)
             await broker.closeAll()
             return ExitCode.success
@@ -665,7 +653,69 @@ public enum OpenSheetsCLI {
 
     // MARK: - Plumbing
 
-    private struct Options {
+    /// A command line, read.
+    ///
+    /// Split out of ``run(arguments:console:configuration:)`` so the reading can be tested apart
+    /// from the doing. That matters for exactly one command: `serve` claims file descriptor 1 and
+    /// then blocks on stdin until the client hangs up, so "did `--read-only` take effect?" is a
+    /// question no test can answer by running it. Asking ``parse(_:console:)`` instead asks the
+    /// same code the server asks, which is the only kind of seam worth having — a second copy of
+    /// the parsing rules would be free to be right here and wrong there.
+    struct Invocation {
+        var options: Options
+        var positional: [String]
+    }
+
+    /// Reads `arguments` into options and positional words.
+    ///
+    /// Returns `nil` when the command line itself was wrong, having already said so on `console`;
+    /// the caller's job is then only to return ``ExitCode/usage``.
+    static func parse(_ arguments: [String], console: ConsoleWriter) -> Invocation? {
+        var options = Options()
+        var positional: [String] = []
+        var index = 0
+        while index < arguments.count {
+            let argument = arguments[index]
+            index += 1
+            switch argument {
+            case "--json": options.json = true
+            case "--preview", "--dry-run": options.preview = true
+            case "--formulas": options.formulas = true
+            case "--detailed": options.format = "detailed"
+            case "--delete": options.delete = true
+            case "--recursive", "-r": options.recursive = true
+            case "--no-header": options.hasHeader = false
+            case "--header": options.hasHeader = true
+            case "--allow-formulas": options.allowFormulas = true
+            case "--read-only": options.readOnly = true
+            case "--sheet":
+                guard index < arguments.count else {
+                    console.err("--sheet needs a value")
+                    return nil
+                }
+                options.sheet = arguments[index]
+                index += 1
+            case "--limit":
+                guard index < arguments.count, let value = Int(arguments[index]) else {
+                    console.err("--limit needs a number")
+                    return nil
+                }
+                options.limit = value
+                index += 1
+            case "-h", "--help": positional = ["help"] + positional
+            case "-v", "--version": positional = ["version"]
+            default:
+                guard !argument.hasPrefix("--") else {
+                    console.err("unknown option \(argument)")
+                    return nil
+                }
+                positional.append(argument)
+            }
+        }
+        return Invocation(options: options, positional: positional)
+    }
+
+    struct Options {
         var json = false
         var preview = false
         var formulas = false
@@ -679,6 +729,15 @@ public enum OpenSheetsCLI {
         /// `sort`: `nil` means "whatever `describe` would guess", which is the tool's default.
         var hasHeader: Bool?
         var allowFormulas = false
+        /// `serve --read-only`: advertise and accept only the tools that read.
+        var readOnly = false
+
+        /// The tool surface `serve` exposes.
+        ///
+        /// The choice is a property rather than an `if` at the call site so that the flag and the
+        /// registry it selects are one expression that a test can evaluate without starting a
+        /// server. ``ToolRegistry/readOnly`` does the filtering, on the schema annotation.
+        var serveRegistry: ToolRegistry { readOnly ? .readOnly : .standard }
 
         /// The `sheet` argument every tool takes, when one was given.
         var sheetArgument: [String: JSONValue] {
@@ -755,6 +814,7 @@ public enum OpenSheetsCLI {
           --header / --no-header
                             `sort`: whether the first row is a header (default: guess)
           --allow-formulas  `sort`: sort a range that holds formulas, translating them
+          --read-only       `serve`: advertise and accept only the tools that read
           --preview         Report what would change without writing
           --json            Machine-readable output
           --version, --help

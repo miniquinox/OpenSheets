@@ -10,11 +10,17 @@ The file is the API.
 **Status: v0.1, pre-release.** The app opens and renders `.xlsx` and `.csv`, watches the file for
 external changes, and edits through a 25-tool MCP server — including creating a workbook from
 scratch, trashing one recoverably, and opening a file in the app from a terminal. The package
-builds and its 1,720 tests pass. Several release gates are genuinely open — notably that nothing
+builds and its 1,862 tests pass. Several release gates are genuinely open — notably that nothing
 we write has ever been opened in Microsoft Excel, and that the Settings ▸ Claude pane has never
 been driven on a screen. See
 [DOCUMENTATION.md §12](DOCUMENTATION.md#12-known-limitations-and-what-is-not-done) for the full,
 honest list.
+
+**Cloud Share is built but dark.** The relay is deployed and answering, and the whole app-side
+stack — token, wire protocol, device identity, relay client, subprocess bridge, engine and service —
+is written and tested. The Settings ▸ Cloud pane that drives it is built but has **never been opened
+on a screen**, and `OSFlagCloudShare` defaults off. [docs/cloud-share.md](docs/cloud-share.md) is
+the guide and states what is not verified.
 
 **Full documentation: [DOCUMENTATION.md](DOCUMENTATION.md).**
 
@@ -32,7 +38,8 @@ honest list.
 | File-watch → diff → refresh loop | Real-time multi-user collaboration |
 | MCP server so Claude edits *structurally* | VBA / macro execution (never) |
 | Connect to Claude from Settings — the server ships in the app, registration is one click, no terminal | An agent that edits Claude's own config — `~/.claude.json` stays on the deny list |
-| Agents discover the Files panel — the folders you pinned, the tabs you have open — instead of asking you to paste a path | A hosted bridge to your local files for browser-based assistants |
+| Agents discover the Files panel — the folders you pinned, the tabs you have open — instead of asking you to paste a path | Link expiry dates, per-recipient folder scoping, or accounts — a share link is revocable, not fine-grained |
+| **Cloud Share** — an opt-in, revocable relay that routes bytes and grants nothing, so a browser-based assistant can reach the folders you granted ([docs/cloud-share.md](docs/cloud-share.md)) | End-to-end encryption to that assistant — the relay terminates TLS, and we say so rather than implying otherwise |
 | Byte-preserving round-trip of parts we don't model | Reimplementing OOXML in full |
 
 The bet: **visualisation and sync fidelity are the product.** Depth comes from Claude.
@@ -56,12 +63,19 @@ Packages/OpenSheetsCore/          ~95% of the code lives here
     GlassUI/                      design tokens and every glass surface
     SheetStore/                   file watcher, snapshots, workspace grants, directory listing, SQLite
     SheetMCP/                     the 25-tool MCP surface and the CLI
+    SheetShare/                   Cloud Share: token, wire protocol, relay socket, subprocess bridge
     DocumentCore/                 the wiring layer: AppModel, DocumentModel, window rules
     TestSupport/                  builders, fakes, matchers
+Relay/                            the Cloud Share relay — a Cloudflare Worker, TypeScript, its own toolchain
 Fixtures/                         the golden corpus everything is tested against
 Scripts/                          build, test, benchmark
 docs/agents/                      one brief per agent, with scope and ownership
 ```
+
+`Relay/` is the one directory that is not Swift. It is versioned here rather than in its own
+repository because the wire contract is a single artifact implemented twice, and two repositories
+would let the halves drift. It is never imported by the Swift package, and it does not touch the
+"one SwiftPM dependency" rule.
 
 **Every new source file goes in a SwiftPM target.** Adding a file there requires editing no
 manifest, which is what keeps eleven people out of one `project.pbxproj`. See PLAN.md §2.1.
@@ -140,7 +154,14 @@ defaults write com.quino.opensheets OSFlagChangeTracking -bool NO   # defaults t
 defaults write com.quino.opensheets OSFlagExplorer       -bool NO   # defaults to YES
 defaults write com.quino.opensheets OSFlagHandshake      -bool NO   # defaults to YES
 defaults write com.quino.opensheets OSFlagSheetStructure -bool YES
+defaults write com.quino.opensheets OSFlagCloudShare     -bool YES  # defaults to NO
 ```
+
+`OSFlagCloudShare` gates whether Cloud Share **exists**: off, `AppModel.share` is `nil`, so there is
+no object to start and nothing to switch on. The owner's own switch is a second, separate default
+(`OSCloudShareEnabled`, also off), which gates whether the service *connects*. Turning the flag on
+today gets you the Settings ▸ Cloud pane, which nobody has yet seen drawn — see
+[docs/cloud-share.md](docs/cloud-share.md).
 
 `OSFlagChangeTracking` gates the whole green/amber/red story — the changes chip, its panel, the
 grid tints and Set Checkpoint. Off, the app does none of the diffing either: the flag removes the
@@ -175,6 +196,12 @@ It is a per-document option that defaults to on. See
 - A hostile `.xlsx` is a real attack surface, so the parser caps decompressed bytes, compression
   ratio, entry count, XML depth, and sheet dimensions — and rejects external entities outright
   (PLAN.md §7.4).
+- **Cloud Share does not move that boundary.** A share link reaches your Mac through a relay that
+  stores token hashes and routes bytes; the grant check, the deny-list and the untrusted-content
+  envelope all still run in a local subprocess that cannot mint a grant. What we cannot promise, we
+  state: the relay terminates TLS, so content transits it in plaintext per hop, and anyone holding
+  an active link can read every workbook in every folder you granted
+  ([docs/cloud-share.md](docs/cloud-share.md)).
 
 ---
 

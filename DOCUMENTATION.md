@@ -7,7 +7,7 @@ The loop: you open a file → Claude Code edits it in your terminal → OpenShee
 exactly what changed, and lets you accept it. No Microsoft account, no plugin store, no cloud.
 The file is the API.
 
-> **Status: v0.1, pre-release.** The package builds and its 1,720 tests pass. The app builds and
+> **Status: v0.1, pre-release.** The package builds and its 1,862 tests pass. The app builds and
 > runs. Several release gates in [§12](#12-known-limitations-and-what-is-not-done) are genuinely
 > open, and this document names every one of them rather than rounding up.
 
@@ -53,10 +53,14 @@ So OpenSheets is deliberately **not** trying to out-feature Excel:
 | Common spreadsheet functions (203 implemented — [§7](#7-formula-support)) | All 500+ Excel functions |
 | File-watch → diff → refresh loop | Real-time multi-user collaboration |
 | MCP server so Claude edits *structurally* | VBA / macro execution (never) |
+| **Cloud Share** — an opt-in, revocable relay so a browser-based assistant reaches your granted folders ([§5.9](#59-client-compatibility), [docs/cloud-share.md](docs/cloud-share.md)) | End-to-end encryption to that assistant; link expiry; per-recipient folder scoping; accounts |
 | Byte-preserving round-trip of parts we don't model | Reimplementing OOXML in full |
 
 *(Source: `PLAN.md` §0. The function-count cell is corrected against the code — see the note in
-[§7](#7-formula-support).)*
+[§7](#7-formula-support). The Cloud Share row was added on 2026-08-30 and **reverses a stated
+non-goal**: `README.md` and `PLAN.md` both said a hosted bridge was something we deliberately did
+not build. [§5.9](#59-client-compatibility) keeps that argument and answers it, rather than deleting
+it.)*
 
 **The bet: visualisation and sync fidelity are the product. Depth comes from Claude.**
 
@@ -269,6 +273,7 @@ without a relaunch.
 | `OSFlagExplorer` | **on** | the Files panel. Off, `AppModel` withholds the tree's storage *and* its roots, so it holds no nodes and starts no listing — the object still exists, because an empty `@Observable` costs a pointer and two hosts take a non-optional reference. |
 | `OSFlagHandshake` | **on** | both halves of the app↔agent handshake: publishing what is open for `get_selection`, and acting on `reveal_range` requests. See below. |
 | `OSFlagSheetStructure` | **off** | adding/removing/reordering sheets — refused in v0.1 |
+| `OSFlagCloudShare` | **off** | whether Cloud Share **exists** ([§5.9](#59-client-compatibility)). Off, `AppModel.share` is `nil`: no service object, so no socket, no Keychain read, no `share_link` query and no subprocess. See below — it is a second kill switch, and it is paired with a user-facing default rather than being one. |
 
 `OSFlagHandshake` is a **kill switch rather than a rollout gate**, and it is the one flag here whose
 reason is not "this is unfinished". Everything else in the app acts on the user's input or the file's
@@ -283,12 +288,29 @@ Off costs nothing, and that is structural rather than asserted: `AppModel.startH
 returns before either object is constructed, so there is no timer, no file descriptor and no directory
 watch. `HandshakePublisherTests.theKillSwitchWithholdsBothHalves` is what holds that down.
 
+`OSFlagCloudShare` is the same kind of switch and it comes in a pair, which is the part worth
+understanding. **The flag gates existence; the user's own switch gates connecting.** With the flag
+off there is no `CloudShareService` at all. With the flag on but `OSCloudShareEnabled` off — that
+second one is a plain `UserDefaults` boolean the owner sets from Settings, not a developer flag —
+the service object exists so a pane can draw a switch, but `startIfEnabled()` returns before an
+engine is constructed. `CloudShareServiceTests` hands the service a share-link store and a
+device-identity store that *count what they are asked for*, and with the toggle off both counts are
+zero. That is why the engine is built lazily inside `start()` rather than in `init`: a count of zero
+is only meaningful if constructing the object could have made it non-zero.
+
+The flag defaults off for a reason that is about the app, not the relay: the relay is deployed and
+answering, and the Settings ▸ Cloud pane exists and has been driven **once**, by hand, end to end —
+`App/LauncherScene.swift` renders it behind this flag, and on 2026-08-30 it created a link that
+served a real MCP call through the relay and then revoked it. What it has not had is a second pair of
+eyes or a soak, which is why the flag stays off. That gate is in
+[§12.1](#121-release-gates-that-are-genuinely-open).
+
 File tabs are **not** flagged. They replace the one-window-per-file architecture rather than adding
 to it, and a flag would mean maintaining two window models; the project's flag philosophy is "ship
 unfinished work dark", not "keep finished work optional".
 
-*(Derived from `Sources/DocumentCore/AppModel.swift:557–595`, cross-checked against
-`App/Flags.swift`'s `summary`, which lists exactly these eight. `PLAN.md` §11's "default off" is
+*(Derived from `Sources/DocumentCore/AppModel.swift:613–676`, cross-checked against
+`App/Flags.swift`'s `summary`, which lists exactly these nine. `PLAN.md` §11's "default off" is
 stale; the source above is authoritative. **Auto-refresh has no flag** — earlier revisions of this
 table and of `README.md` listed an `OSFlagAutoRefresh`, and no code has ever read that key. It is a
 per-document `DocumentSession.Options.autoRefresh`, defaulting to true, reachable through
@@ -593,7 +615,7 @@ writes until you checkpoint.
 │  OpenSheetsApp · DocumentWindow · LauncherScene · SidebarColumn · GridPane ·          │
 │  DocumentCommands · Flags · WindowSupport · WorkspaceExplorerSupport ·                │
 │  WorkspaceTabsSupport · Assets · entitlements                                         │
-│  10 Swift files, 3,786 lines.                                                         │
+│  10 Swift files, 3,921 lines.                                                         │
 └───────────────────────────────────────┬──────────────────────────────────────────────┘
                                         │ imports
 ┌───────────────────────────────────────▼──────────────────────────────────────────────┐
@@ -606,22 +628,41 @@ writes until you checkpoint.
 │  ┌───────┼───────┬───────────┬──────────┬──────────┬───────────┬──────────┐           │
 │  ▼       ▼       ▼           ▼          ▼          ▼           ▼          ▼           │
 │ MiniZip  SheetFormat  SheetFormula  GridKit   GlassUI   SheetStore   SheetMCP          │
-│                                                                          │            │
-│                                        ┌─────────────────────────────────┘            │
+│                                                 │                        │            │
+│                                            SheetShare ──┐                │            │
+│                                     (Cloud Share; leaf) │                │            │
+│                                        ┌────────────────┴────────────────┘            │
 │                                        ▼                                              │
 │                                  DocumentCore  ← the only layer that imports          │
 │                                                  every other one                      │
 └───────────────────────────────────────────────────────────────────────────────────────┘
-                                        │
-                    ┌───────────────────┴────────────────────┐
-                    ▼                                        ▼
+                                        │                          ▲
+                    ┌───────────────────┴────────────────────┐     │ wss:// (opt-in, off by default)
+                    ▼                                        ▼     │
         CLI/opensheets  (a 2-line shim)      CLI/opensheets-mcp  (a 2-line shim)
+                                                                   │
+                                                    ┌──────────────┴──────────────┐
+                                                    │  Relay/  — a Cloudflare      │
+                                                    │  Worker, TypeScript, its own │
+                                                    │  toolchain. Routes bytes,    │
+                                                    │  stores hashes, grants       │
+                                                    │  nothing. Never imported by  │
+                                                    │  the Swift package.          │
+                                                    └──────────────────────────────┘
 ```
+
+`SheetShare` is a leaf: it depends on `SheetModel` and `SheetStore` and on nothing else, and
+`DocumentCore` gained one edge to it. The socket lives there rather than in `SheetMCP` on purpose —
+`SheetMCP` still makes no network request of any kind, and the sentence in
+[§9.4](#94-parser-hardening) that says so is still literally true.
 
 ### 4.1 What each target owns
 
 Line counts from `find <dir> -name '*.swift' -exec cat {} + | wc -l`; test counts from
-`grep -c '@Test'` over the matching test target.
+`grep -rhoE '^ *@Test' <test dir> | wc -l`. The anchor in that pattern is not decoration: a bare
+`grep -o '@Test'` now returns **1,864**, two more than the suite has, because two doc comments in
+`SheetShareTests` mention `@Test(arguments:)` in prose. Anchored to the start of a line it returns
+1,862, which is what the runner reports.
 
 | Target | Lines | Files | Tests | Owns |
 | --- | ---: | ---: | ---: | --- |
@@ -630,17 +671,19 @@ Line counts from `find <dir> -name '*.swift' -exec cat {} + | wc -l`; test count
 | `SheetFormat` | 7,655 | 26 | 174 | xlsx and csv, read and write. The hardened XML pull parser, the surgical writer, dialect and encoding sniffing. |
 | `SheetFormula` | 9,062 | 31 | 155 | Lexer, parser, dependency graph, evaluator, 203 functions, reference transforms. |
 | `GridKit` | 7,861 | 27 | 196 | The virtualised AppKit grid renderer, geometry, text layout cache, selection, panes, flash. |
-| `GlassUI` | 12,358 | 37 | 153 | Design tokens (`DS`), every glass surface, the appearance context, the component gallery. |
-| `SheetStore` | 6,289 | 23 | 180 | File watcher, the sync state machine, atomic writes, fingerprints, snapshots, workspace grants, the directory lister and walker, SQLite. |
-| `SheetMCP` | 7,981 | 29 | 190 | The **25-tool** surface, the JSON-RPC server (stdio only), the CLI, the untrusted-content envelope, `describe`'s profiler, the file lifecycle, the handshake's server half. |
-| `DocumentCore` | 8,262 | 26 | 288 | Wave-2 wiring: `AppModel`, `DocumentModel`, window rules, the theme bridge, `Flags`, the workspace tree, the handshake's app half, the Claude connector. |
+| `GlassUI` | 12,635 | 38 | 160 | Design tokens (`DS`), every glass surface, the appearance context, the component gallery, the Cloud Share status words and share-link row. |
+| `SheetStore` | 6,519 | 24 | 201 | File watcher, the sync state machine, atomic writes, fingerprints, snapshots, workspace grants, the deny-list, the directory lister and walker, SQLite, the `share_link` table. |
+| `SheetMCP` | 8,062 | 29 | 204 | The **25-tool** surface, the read-only registry filter, the JSON-RPC server (stdio only), the CLI, the untrusted-content envelope, `describe`'s profiler, the file lifecycle, the handshake's server half. |
+| `SheetShare` | 2,363 | 7 | 80 | **Cloud Share.** Share tokens, wire contract A, device identity (Keychain), the relay WebSocket client, the per-link subprocess bridge, the engine. A leaf on `SheetModel` + `SheetStore`; the only Swift target that opens a socket. |
+| `DocumentCore` | 8,738 | 27 | 308 | Wave-2 wiring: `AppModel`, `DocumentModel`, window rules, the theme bridge, `Flags`, the workspace tree, the handshake's app half, the Claude connector, `CloudShareService`. |
 | `TestSupport` | 4,348 | 11 | 121 | Builders, fakes, matchers, the fixture library, the benchmark harness. Ships in the package so every test target can use it without a cycle. |
-| `opensheets` / `opensheets-mcp` | 33 | 2 | — | Shims over `SheetMCP.OpenSheetsCLI` — 14 and 19 lines, mostly comment. |
-| **Package total** | **72,729** | **235** | **1,720** | |
-| `App/` | 3,920 | 10 | 0 | SwiftUI scenes and menus only. |
+| `opensheets` / `opensheets-mcp` | 39 | 2 | — | Shims over `SheetMCP.OpenSheetsCLI` — 14 and 25 lines, mostly comment. Symlinked into the package, so `find Sources` does not descend into them and they are outside the total below. |
+| **Package total** | **76,155** | **245** | **1,862** | |
+| `App/` | 3,921 | 10 | 0 | SwiftUI scenes and menus only. |
+| `Relay/` | 755 | 7 | 24 | Not Swift, not in the package. The Cloud Share worker: router, Durable Object, token grammar, and its vitest specs. Lines and files are `.ts` only; the 24 are vitest cases, not `@Test`s, and they run under `npm test`, not `swift test`. |
 
 *(Line counts vary by a few dozen depending on how trailing newlines are counted; treat them as
-"about 72,700 in the package and about 3,900 in the app", which is the ratio that matters.)*
+"about 76,000 in the package and about 3,900 in the app", which is the ratio that matters.)*
 
 `DocumentCore` is the one place that imports every other target at once. It is where the components
 are wired together, and it is the only layer allowed to know about more than one of them.
@@ -650,6 +693,13 @@ One dependency in that graph is there for a specific reason worth knowing: `Docu
 the MCP server must agree on *to the cell*. It used to live in `DocumentCore`, which meant Claude
 Code read the producer's uncomputed zeroes out of the same file the user saw real numbers in.
 `SheetMCP` is the lowest target both front ends can see.
+
+The second such edge is `DocumentCore → SheetShare`, added with Cloud Share, and it points the same
+direction as every other one: `SheetShare` is a leaf that knows about `SheetModel` and `SheetStore`
+and nothing above them. It notably does **not** depend on `SheetMCP`, even though its whole job is
+to talk to an MCP server — because it talks to that server the way any other client would, by
+spawning the shipped binary and writing newline-framed JSON-RPC to its stdin. The bridge parses
+exactly one thing out of a frame, the JSON-RPC `id`, and treats the rest as bytes.
 
 ### 4.2 Why AppKit for the grid and SwiftUI for the chrome
 
@@ -1235,33 +1285,94 @@ Four properties, each structural rather than remembered. [§9](#9-security-model
 
 ### 5.9 Client compatibility
 
-**The server is stdio-only.** `Sources/SheetMCP/JSONRPC/` contains exactly one transport,
+**The server is still stdio-only.** `Sources/SheetMCP/JSONRPC/` contains exactly one transport,
 `StdioTransport.swift`, speaking newline-delimited JSON-RPC; there is no HTTP server, no SSE stream,
-no WebSocket and no socket listener anywhere in the target. That single fact decides which clients can
-use it.
+no WebSocket and no socket listener anywhere in the target, and Cloud Share did not add one. What
+changed is that the *app* can now pump that subprocess's pipes to a socket.
 
 | Client | Works | Why |
 | --- | --- | --- |
 | **Claude Code** | yes | Spawns the binary as a local subprocess. This is the target case ([§5.1](#51-setup)). |
 | **Claude Desktop** | yes | Same mechanism — a local `command` entry in its MCP config, which **Settings ▸ Claude** writes with one click ([§3.2](#32-connect-the-server-to-claude)); restart Desktop to pick it up. |
 | **Any client that can spawn a local stdio MCP server** | yes | Including local-LLM harnesses. Nothing in the protocol is Anthropic-specific; it is MCP over stdin and stdout. |
-| **ChatGPT on the web** | **no** | Browser-hosted assistants require a **remotely hosted** MCP server reachable over HTTPS, with OAuth. A page in a browser tab cannot spawn a process on your Mac. |
-| **Any other browser-hosted assistant** | **no** | Same reason. |
+| **claude.ai, ChatGPT on the web, Gemini Enterprise** | **through a Cloud Share link** | Not by spawning anything. The owner creates a revocable capability URL; the client adds it as a remote MCP server with auth "None"; the relay routes its requests to a subprocess on the owner's Mac. Streamable HTTP only, no `/sse`. See [docs/cloud-share.md](docs/cloud-share.md). |
+| **A browser-hosted assistant with no link** | **no** | Unchanged. A page in a browser tab cannot spawn a process on your Mac, and without a link there is nothing for it to reach. |
 
-**This is a deliberate scope decision, not an oversight, and it is worth being plain about why.**
-Supporting a browser-hosted client would mean putting a bridge to a user's local files on the public
-internet, behind a hosted endpoint and an OAuth flow. That is a materially different security
-proposition from a local subprocess that can only touch folders the user picked in a file panel — and
-the local-subprocess property is not incidental here, it is the thing the whole safety model rests on
-([§5.8](#58-the-safety-model-in-one-page)): neither binary links AppKit, so neither *can* mint a grant,
-and an attacker who reaches the server still reaches only what the user granted. A hosted bridge
-replaces "a process on your machine that a human granted folders to" with "an endpoint on the
-internet holding a credential that grants folders on your machine". That may be worth building one
-day. It is not the same product, and shipping it by accident under the same name would be worse than
-not shipping it.
+#### The argument this section used to make, and the answer to it
 
-If you want an agent in a browser to work on a spreadsheet through OpenSheets today, the honest answer
-is that you cannot, and the workaround is to run the agent locally instead.
+This document argued the opposite until 2026-08-30, and the argument is kept here rather than
+deleted, because a reader who remembers it deserves to see it answered rather than overwritten:
+
+> **This is a deliberate scope decision, not an oversight, and it is worth being plain about why.**
+> Supporting a browser-hosted client would mean putting a bridge to a user's local files on the
+> public internet, behind a hosted endpoint and an OAuth flow. That is a materially different
+> security proposition from a local subprocess that can only touch folders the user picked in a file
+> panel — and the local-subprocess property is not incidental here, it is the thing the whole safety
+> model rests on: neither binary links AppKit, so neither *can* mint a grant, and an attacker who
+> reaches the server still reaches only what the user granted. A hosted bridge replaces "a process
+> on your machine that a human granted folders to" with "an endpoint on the internet holding a
+> credential that grants folders on your machine". That may be worth building one day. It is not the
+> same product, and shipping it by accident under the same name would be worse than not shipping it.
+
+That last sentence set the condition, and it is the one being met: this is not being shipped by
+accident. The load-bearing clause is **"an endpoint on the internet holding a credential that grants
+folders on your machine"** — and the design's answer is that the relay holds no such credential.
+Five points, in the order they matter:
+
+1. **The relay holds no credential that grants anything.** It stores SHA-256 hashes of link tokens
+   and one device-secret hash, and it routes frames. Grant enforcement, the deny-list, preview
+   semantics, snapshot-before-write and the untrusted-content envelope all run where they always
+   ran: in a local `opensheets-mcp` subprocess in `.enforcementOnly` mode, which cannot construct
+   the type that means "a human chose this folder in a panel" because it does not link AppKit
+   ([§5.8](#58-the-safety-model-in-one-page)). A fully compromised relay can do exactly what a
+   person holding a valid link can do, and nothing more — and only while the app is running with
+   Cloud Share switched on.
+2. **Revocation is enforced twice, and the authoritative half is local.** The relay rejects a
+   revoked token hash on the fast path. The app re-reads the link record from its own database on
+   *every inbound request* and refuses to bridge a revoked one — never from a cached list, the same
+   rule that governs grants. A stale or malicious relay cannot resurrect a revoked link.
+3. **`SheetMCP` still makes no network requests.** All networking lives in the app-side `SheetShare`
+   target and the `Relay/` worker. `opensheets-mcp` is unchanged as a program: a local stdio server,
+   one transport, no listener. The only new argument it accepts is `--read-only`, which makes it
+   build a smaller registry.
+4. **Off costs nothing, structurally** — the `OSFlagHandshake` bar, met the same way. With
+   `OSFlagCloudShare` off there is no service object. With the owner's `OSCloudShareEnabled` off no
+   engine is built: no socket, no Keychain read, no `share_link` query, no subprocess. Both are
+   asserted by counting fakes, not by prose ([§2.6](#26-feature-flags)).
+5. **What we cannot promise, we say.** The relay terminates TLS, so spreadsheet content transits it
+   in plaintext per hop — client→relay and relay→Mac are each TLS, but there is no end-to-end
+   encryption to the AI client. The relay is written to log no payloads. And anyone holding an
+   active link can read — on a read-write link, edit — every workbook in every folder the owner
+   granted. All three sentences are in [docs/cloud-share.md](docs/cloud-share.md) where a person
+   about to create a link will read them.
+
+What did **not** move: the deny-list only ever narrows, and Cloud Share narrowed it further by
+adding `~/Library/Application Support/OpenSheets`, so an agent arriving through a link cannot read
+the share-link store that grants it. The three pinned deny-list tests still pass unedited
+([§9.2](#92-workspace-grants), [§9.6](#96-the-cloud-share-trust-boundary)).
+
+#### What a link exposes
+
+A `read_only` link — the default — serves nine tools, and the set is pinned whole by
+`EndToEndShareTests` rather than described and hoped for:
+
+`describe` · `find` · `get_selection` · `list_files` · `list_snapshots` · `list_workspace` ·
+`open_in_app` · `read_range` · `reveal_range`
+
+`filter` and `snapshot` are deliberately absent and people will ask why, because both read like
+reading tools. They are not: `filter` takes an `action: "delete"` that removes matching rows, and
+`snapshot` writes a restore point. Both are correctly annotated `isReadOnly: false`.
+`ToolRegistry.readOnly` filters on each schema's own annotation and never on a list of names, so a
+future tool classifies itself; the remedy, if a read-only surface ought to offer those two, is to
+split the tool rather than special-case the filter. A `read_write` link serves all 25
+([§5.6](#56-all-25-tools)).
+
+**Status, stated rather than rounded up.** The relay is deployed and answering; the app-side stack is
+built and tested end to end against a real subprocess. The Settings ▸ Cloud pane is built and was
+**driven once on a screen** (link created, MCP call served through the relay, link revoked, 2026-08-30);
+`OSFlagCloudShare` defaults off pending a soak, and no link has yet been pasted into an actual
+hosted assistant (only a `curl` stand-in). See
+[§12.1](#121-release-gates-that-are-genuinely-open).
 
 ---
 
@@ -1804,6 +1915,24 @@ build must sign that helper too. No signing pipeline exists in-repo today — `S
 passes `CODE_SIGNING_ALLOWED=NO` and there is no notarisation script anywhere in the tree — so
 this is a note for whoever builds one, not work already done.
 
+**The entitlements file gained a key, and its own comment now says why.** `Config/OpenSheets.entitlements`
+carries `com.apple.security.network.client` = `true` as of 2026-08. It used to carry a written
+tripwire — *"Nothing here grants network access, JIT, unsigned memory, or library-validation bypass.
+If a future change appears to need one of those, that is a design smell worth arguing about before
+it is worth entitling."* That comment is not deleted; it is quoted in the file above the rewrite,
+because the argument it demanded is the one that happened. What the file now says, in its own voice:
+Cloud Share is the one exception and is entitled explicitly rather than quietly; the counter-argument
+lives in [§5.9](#59-client-compatibility); and the answer is that the relay routes bytes and grants
+nothing.
+
+Two honest riders are in that comment and worth repeating here. The key is **inert** while
+`app-sandbox` is false — an unsandboxed process already has the network, so this entitles nothing
+that was not already possible. It is there for the same reason the two file keys above it are: so a
+future sandboxed build stays a build-setting change rather than a rewrite, and so the file *states*
+what the app does instead of understating it. And the other three tripwires still stand — nothing
+here grants JIT, unsigned memory, or library-validation bypass, and a change that appears to need
+one of those is still a design smell worth arguing about before it is worth entitling.
+
 ### 9.2 Workspace grants
 
 The MCP server is spawned by Claude Code and inherits the *user's full file access*. That is far more
@@ -1838,12 +1967,23 @@ inside granted folders too. Nothing you can do in the app will allow it."*
 
 - **Directories, and everything inside them:** `~/.ssh`, `~/.aws`, `~/.config/gh`,
   `~/Library/Keychains`, `~/.gnupg`, `~/.kube`, `~/.docker`, `~/Library/Cookies`,
-  `~/Library/Application Support/Google/Chrome`, `/etc/ssh`, `/var/db/shadow` (and their `/private`
-  spellings).
+  `~/Library/Application Support/Google/Chrome`, **`~/Library/Application Support/OpenSheets`**,
+  `/etc/ssh`, `/var/db/shadow` (and their `/private` spellings).
 - **Exact files:** `~/.claude.json`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`, `~/.git-credentials`,
   `/etc/master.passwd`, `/etc/sudoers` (and `/private` spellings).
 - **Filename patterns**, matched against the last component only: `*.pem`, `*.key`, `*.p12`, `*.pfx`,
   `*.keychain`, `*.keychain-db`, `.env*`.
+
+**Our own store is on that list, and it is the newest entry.**
+`~/Library/Application Support/OpenSheets` was added with Cloud Share
+([§9.6](#96-the-cloud-share-trust-boundary)) because share-link URLs are kept there in plaintext,
+beside the snapshots and the SQLite database. An agent that arrived through a link must not be able
+to read the links that grant it — nor the snapshot history of files it was never granted — and a
+deny-list entry is the only mechanism here that a grant cannot override, including a grant of
+`~/Library`. **The list is only ever narrowed**, which is what made this a safe addition: it takes
+access away and can give none back. The three pinned deny-list tests
+(`WorkspaceGrantsTests`, `GrantEscapeTests`, `ShippedBinaryTests`) were not edited to accommodate
+it; the new assertion lives in a new file, `DenyListShareStoreTests`.
 
 **Why neither binary can grant a folder.** A grant is proof that a human chose a folder in a file
 picker. The type that carries that proof, `UserGrantAuthorization`, has a `@MainActor` initialiser
@@ -1891,7 +2031,11 @@ Three further guarantees:
   executed" chip.
 - **Nothing is ever fetched.** External workbook links and `HYPERLINK()` targets are inert until
   clicked, and clicking shows the full resolved URL first. The server makes no network requests at
-  all.
+  all — and that is still literally true after Cloud Share, which is the point of where its code
+  lives. `opensheets-mcp` remains a local stdio program with no socket in it; all networking is in
+  the app-side `SheetShare` target and in `Relay/`. What changed is that the *app* may pump the
+  subprocess's pipes to a socket, with the owner's per-link consent
+  ([§5.9](#59-client-compatibility), [§9.6](#96-the-cloud-share-trust-boundary)).
 - **The server spawns exactly one thing, deliberately.** Until the file lifecycle landed the honest
   claim was that it spawned nothing; `open_in_app` changed the count from zero to one, and every
   part of that one is pinned (`AppHandshake.systemLaunch`): the executable is the literal
@@ -1973,6 +2117,43 @@ must not be a lie: it removes the `opensheets` entry from the top-level `mcpServ
 every `projects.<path>.mcpServers` — leftovers of old manual `claude mcp add` runs — and touches
 nothing else.
 
+### 9.6 The Cloud Share trust boundary
+
+[§5.9](#59-client-compatibility) carries the argument. This is the mechanism, layer by layer, with
+the place each rule is enforced — because "who enforces it" is the only interesting column.
+
+| Action | Enforced at | Mechanism |
+| --- | --- | --- |
+| Read or edit a workbook through a link | The Mac, in the subprocess | `WorkspaceGrants` in `.enforcementOnly` mode plus the deny-list, through the same `DocumentBroker.resolve` funnel every other tool call uses. Nothing about this path is new. |
+| Use a write tool on a read-only link | The Mac, in the subprocess | A filtered registry. The process was spawned `--read-only`, so write tools are absent from `tools/list` *and* from dispatch — a call to one comes back `methodNotFound`, not as a permission argument an agent might try to talk its way out of. |
+| Use a revoked link | The relay **and** the Mac | Hash rejected with a 404 at the relay; the app re-reads the record per request and refuses regardless. The local half is authoritative. |
+| Create or revoke a link | The Mac, the app only | Only the app writes `share_link`. The relay accepts link state solely from an authenticated device socket. |
+| Impersonate the owner's Mac | The relay | Trust-on-first-use: the first `hello` for an unknown device id stores SHA-256 of the device secret; a later mismatch closes the socket with 4401. The secret lives only in the owner's Keychain. |
+| Read the share-link store through the tools | The Mac, in the subprocess | `~/Library/Application Support/OpenSheets` is on `DenyList.standard`. Grants cannot override the deny-list. |
+| Reach any of it at all | The app | `OSFlagCloudShare` and `OSCloudShareEnabled`, both default off, both structural. |
+
+**A link URL is a credential, and the document says so where it matters.** 256 bits of entropy in
+the URL *path* — never the query string, which the MCP specification prohibits for credentials. The
+plaintext token exists in exactly two places: the `url` column of the owner's local database, and
+wherever the owner pasted it. The relay never sees it stored; it hashes what arrives and compares.
+That plaintext column is precisely why the app-support directory joined the deny-list, and the
+three pre-existing pinned deny tests were not edited to make room — the new assertion is a new file.
+
+**Assume a hostile client.** Every inbound frame is bytes handed to a subprocess that already treats
+paths, arguments and cell content as untrusted. The bridge parses one thing out of a frame — the
+JSON-RPC `id`, to decide whether a response is expected — and forwards the rest unexamined. It adds
+no interpretation of its own, which is the only way to be sure it adds no new parsing bug.
+
+**What a read-only link can still do to your screen.** Two of its nine tools are read-only with
+respect to the *file* and visible to the owner: `open_in_app` brings the app forward and opens a
+document, and `reveal_range` selects a range. Both go through the app's normal open funnel and are
+grant-checked at the moment of acting. `OSFlagHandshake` gates the app half that *applies* a
+requested sheet and range (`AppModel.swift:463`), so with it off a `reveal_range` does nothing and
+an `open_in_app` still opens the file — the launch is `/usr/bin/open`, which is the OS, not the
+handshake consumer. It is intended behaviour — it is how "show me the row you mean" works — but a
+recipient of a link the owner called "read only" can make the owner's window come forward, and that
+is worth knowing before it happens.
+
 ---
 
 ## 10. Testing
@@ -1984,31 +2165,48 @@ This is the section to read if you want to know whether to trust the project.
 **Swift Testing** (`import Testing`, `@Test`) throughout. Measured:
 
 ```
-$ cd Packages/OpenSheetsCore && swift test
-━ Test run with 1720 tests in 152 suites passed after 36.097 seconds with 8 known issues.
+$ cd Packages/OpenSheetsCore && swift test -Xswiftc -warnings-as-errors
+━ Test run with 1862 tests in 166 suites failed after 35.280 seconds with 9 issues (including 8 known issues).
 ```
+
+That run says `failed`, and the ninth issue is the documented `CoreLoopTests` flake —
+`autoRefreshAppliesWithoutBeingAsked`, which reads `syncState` as `.reloading` when it expected
+`.synced` ([§12.3](#123-fragilities-worth-a-decision)). It is the same test that has always been
+flaky, it is timing, and it is not chased. Everything else is green.
 
 ```bash
 # how the per-target numbers below were derived
-for t in Tests/*/; do echo "$(basename $t): $(grep -rho '@Test' $t | wc -l)"; done
+for t in Tests/*/; do echo "$(basename $t): $(grep -rhoE '^ *@Test' $t | wc -l)"; done
 ```
 
 | Test target | Tests | Files | Lines | What it covers |
 | --- | ---: | ---: | ---: | --- |
-| `DocumentCoreTests` | 288 | 20 | 7,997 | The core loop end to end, open-document and window rules, save fidelity, grid integration, recalculate-on-open, **rendered-grid pixels**, the frozen-divider shadow, the workspace tree, **both halves of the app↔agent handshake**, Files-panel/MCP listing parity, and the **Claude connector's config reads and writes** ([§9.5](#95-who-writes-claudes-config--the-line-the-connect-button-draws)). |
+| `DocumentCoreTests` | 308 | 21 | 8,505 | The core loop end to end, open-document and window rules, save fidelity, grid integration, recalculate-on-open, **rendered-grid pixels**, the frozen-divider shadow, the workspace tree, **both halves of the app↔agent handshake**, Files-panel/MCP listing parity, the **Claude connector's config reads and writes** ([§9.5](#95-who-writes-claudes-config--the-line-the-connect-button-draws)), and **`CloudShareService`'s two kill switches, counted rather than asserted**. |
 | `SheetModelTests` | 257 | 15 | 3,762 | The frozen model: `CellRef`/`CellRange` A1 conversion, `CellStore`, `RunLengthArray`, `StyleTable`, `NumberFormat`, `SerialDate`, `SheetFragment`, `SheetError`, Codable round-trips, the Wave-1 model corrections. |
+| `SheetMCPTests` | 204 | 15 | 4,918 | `describe`, the read tools, **the discovery tools**, editing, **the file lifecycle** (create, delete-and-resurrect, the spied launcher), safety, **grant escapes**, paging-argument bounds, the JSON-RPC protocol, the **shipped binary**, CLI behaviour, CLI/tool surface parity, recalculate-on-read, and the **read-only registry** — that it is exactly the `isReadOnly` schemas, and that a write tool on it answers `methodNotFound`. |
+| `SheetStoreTests` | 201 | 16 | 4,805 | The file watcher, self-write suppression, the sync state machine, document sessions, snapshots — including that a snapshot key survives the file it names ([§12.2](#122-known-defects-deliberately-shipped-or-deferred)) — workspace grants, **the deny-list over our own app-support directory**, the `share_link` table, the directory lister and walker, the differ. |
 | `GridKitTests` | 196 | 17 | 3,996 | Axis metrics, cell formatting, **drawn-pixel rendering**, dark-mode text, selection and merges, header selection, spill rendering, the host view, flash and cache, the scroll benchmark lane. |
-| `SheetStoreTests` | 180 | 14 | 4,415 | The file watcher, self-write suppression, the sync state machine, document sessions, snapshots — including that a snapshot key survives the file it names ([§12.2](#122-known-defects-deliberately-shipped-or-deferred)) — workspace grants, the directory lister and walker, the differ. |
 | `SheetFormatTests` | 174 | 19 | 4,467 | The golden corpus, the hostile corpus, the XML pull parser, the ZIP reader and writer, the surgical write, the passthrough contract, atomic writes, CSV read and write. |
-| `SheetMCPTests` | 190 | 14 | 4,684 | `describe`, the read tools, **the discovery tools**, editing, **the file lifecycle** (create, delete-and-resurrect, the spied launcher), safety, **grant escapes**, paging-argument bounds, the JSON-RPC protocol, the **shipped binary**, CLI behaviour, CLI/tool surface parity, recalculate-on-read. |
+| `GlassUITests` | 160 | 10 | 3,667 | Component behaviour, palette contrast, the appearance snapshot matrix, the Cloud Share status words and row models, and the **lint rules enforced as tests**. |
 | `SheetFormulaTests` | 155 | 11 | 2,307 | The 779-row function table, error semantics, Excel-vs-LibreOffice divergences, spill, the dependency graph and recalculation, uncomputed cells, stored function names, performance. |
-| `GlassUITests` | 153 | 10 | 3,535 | Component behaviour, palette contrast, the appearance snapshot matrix, and the **lint rules enforced as tests**. |
 | `TestSupportTests` | 121 | 10 | 1,825 | The test infrastructure itself — builders, matchers, fakes, the perf harness, the snapshot harness — including that each of them **fails when it should**. |
+| `SheetShareTests` | 80 | 6 | 2,664 | Cloud Share: token format and hashing against a vector shared with the relay, wire-contract-A byte stability, Keychain device identity, the relay client's hello ordering and backoff, the **subprocess bridge against the real built binary**, and the **end-to-end suite** — fake relay socket → engine → real subprocess → real staged database. |
 | `MiniZipTests` | 6 | 1 | 82 | The shared ZIP types. (The real ZIP coverage lives in `SheetFormatTests`.) |
-| **Total** | **1,720** | **131** | **37,070** | |
+| **Total** | **1,862** | **142** | **40,998** | |
 
-The `@Test` count and the runtime count agree exactly at 1,720, which is the cheap check that the
-table above is not drifting from the suite it describes.
+The `@Test` count and the runtime count agree exactly at 1,862, which is the cheap check that the
+table above is not drifting from the suite it describes — but the pattern now has to be anchored to
+the start of a line to get there. A bare `grep -o '@Test'` returns 1,864, because two doc comments
+in `SheetShareTests` explain why their fixtures sit at file scope and mention `@Test(arguments:)` in
+the prose. The check is still worth having; it just needed a sharper grep, and the two-line
+discrepancy is exactly the kind of thing it exists to surface.
+
+There is a second suite that `swift test` does not run at all: **the relay's**. `Relay/` is
+TypeScript and its 24 vitest cases run under `npm test`, inside the Workers runtime via miniflare.
+They cover the token grammar, trust-on-first-use device auth, `hello` reconciliation, the uniform
+404 for unknown and revoked tokens, the offline JSON-RPC error with the caller's id echoed, the
+202 for notifications, and the response timeout. Verified on this commit: `3 passed (3)` files,
+`24 passed (24)` tests.
 
 The "known issues" total is **8 or 9 depending on the run**, not a fixed 8. They are the deliberate
 `withKnownIssue` baselines of [§10.7](#107-the-tests-that-are-supposed-to-fail); one of them is
@@ -2549,6 +2747,39 @@ is narrow), and no human has watched the window move — the presence record is 
 app's live UI state, so that residue is a formality for the driven flows, but ten seconds of
 `opensheets reveal <file> C4:C20` with the app on screen would close it entirely.
 
+**Cloud Share has four open gates, and the relay is not one of them.** The relay *is* deployed and
+answering: `GET /health` on `https://opensheets-relay.opensheets-relay.workers.dev` returns
+`{"ok":true}`, a `POST` to an unknown token returns the uniform 404 the design calls for, and that
+origin is compiled in as `CloudShareConfiguration.standardRelayOrigin`. The placeholder origin
+survives only as a sentinel for a build deliberately pointed elsewhere. What is genuinely open:
+
+1. **The Settings ▸ Cloud pane has been driven once, by hand, and not since.** This gate has moved
+   twice. It first read "not wired up" — no file in `App/` rendered the GlassUI rows. That landed:
+   `App/LauncherScene.swift` draws the section behind `Flags.cloudShareEnabled` — the master toggle,
+   the status dot with its App-written sentence, the name/mode/**Create & Copy** row, and the link
+   list with copy, revoke and remove (`grep -ric cloud App/` matches 22 lines in `LauncherScene.swift`
+   and one in `Flags.swift`). Then, on 2026-08-30, it was exercised end to end on a screen against the
+   live relay: the flag was enabled, the pane opened, it reported **Online**, a read-only link was
+   created and copied, an external HTTPS client (plain `curl`, standing in for a hosted assistant)
+   ran `initialize` → `tools/list` → `describe` through the relay against a granted workbook and got
+   real data in the untrusted-content envelope, the row's "Last used" advanced, and **Revoke** turned
+   the same URL into the uniform 404. What stays open: that was one operator on one Mac, not a soak —
+   the pane's layout has been eyeballed at 460 pt but not across themes or with a long link list, and
+   `OSFlagCloudShare` stays off by default until it has been lived in rather than demonstrated.
+2. **Gemini's consumer surface is unverified.** Whether Spark custom apps accept a no-auth remote
+   MCP server at all was not established by the research, and nothing has been tried against it.
+   Gemini *Enterprise* is documented as accepting Streamable-HTTP-only servers with auth "None".
+3. **The claude.ai org-managed admin flow may not offer auth "None".** Personal claude.ai custom
+   connectors document it explicitly; the admin-managed path may require an auth method v1 does not
+   implement, in which case an org-managed workspace cannot add a share link at all. Untested.
+4. **`OSFlagCloudShare` defaults off**, and should stay off until gate 1 is closed and someone has
+   watched a link work on a screen: create, paste into a client, call a tool, revoke, watch it stop.
+
+Everything below the UI is covered: 80 tests in `SheetShareTests` including an end-to-end suite that
+drives a fake relay socket into the real `opensheets-mcp` binary against a real staged database, and
+24 vitest cases against the relay. What none of that proves is that a real client's connector form
+accepts this URL.
+
 **Cold-launch time is unmeasured** ([§11.3](#113-cold-launch)).
 
 ### 12.2 Known defects, deliberately shipped or deferred
@@ -2595,6 +2826,18 @@ untouched `main` as well. The known mechanism was narrowed once already: a plain
 baseline recompute inherited the main actor and widened a window the document pump was already
 racing, which is why `DocumentModel` uses `Task.detached` there and says so at the call site. That
 fixed the common case rather than the class.
+
+`RelayClientTests.theClientIsOnlineOnlyAfterTheRelayAcknowledgesHello` had a narrower version of the
+same shape, and it is **fixed**. It waited on `client.isOnline` and then asserted on an event log
+that a **different** task drains, so the assertion could win the race against the drain. It was
+found when `CloudShareServiceTests` landed: twenty tests standing up SQLite stores, a relay client
+and an engine at once were enough of a load generator to widen the window. The first fix was to mark
+the new suite `.serialized`, which costs about a tenth of a second and stopped it *generating* the
+load — without touching the race, which lived in `RelayClient`'s test. The real fix has since landed:
+the test now waits on the event log rather than on the flag. `RelayClient` sets `isOnline` and *then*
+yields `.online`, so the log entry is strictly the later of the two and therefore the honest thing to
+wait for; the flag became the assertion instead of the trigger. Ten consecutive runs of the suite
+pass. The `.serialized` marking stays — not generating load is worth a tenth of a second on its own.
 
 `CellStore performance` — *"emitting a million references into a byte buffer allocates nothing per
 cell"* — asserts a 2.4 s wall-clock budget and is measured in **debug**, so a machine doing anything
@@ -2657,26 +2900,37 @@ Packages/OpenSheetsCore/          ~95% of the code
   Sources/GlassUI/                design tokens and every glass surface
   Sources/SheetStore/             watcher, snapshots, grants, SQLite
   Sources/SheetMCP/               the 25-tool MCP surface and the CLI
+  Sources/SheetShare/             Cloud Share: token, wire protocol, relay socket, subprocess bridge
   Sources/DocumentCore/           the wiring layer
   Sources/TestSupport/            builders, fakes, matchers, harnesses
-  Tests/                          131 files, 1,720 tests
+  Tests/                          142 files, 1,862 tests
+Relay/                            the Cloud Share relay — a Cloudflare Worker; TypeScript, npm, vitest
 Fixtures/                         the golden corpus — 87 definitions, 8 groups
 Scripts/                          build.sh, test.sh, bench.sh, gen-fixtures.py, validate-fixtures.py
 docs/perf/                        budgets, baseline, latest run, the scroll write-up
-docs/agents/                      the original build briefs and the wave addenda
+docs/agents/                      the original build briefs, the wave addenda, per-feature tracking
+docs/cloud-share.md               the Cloud Share guide, for owners and recipients
 PLAN.md                           architecture and reasoning
 ```
+
+`Relay/` is the exception to "everything goes in a SwiftPM target", and it is a deliberate one. It
+is a second toolchain — Node ≥ 20, npm, wrangler, vitest — confined to one directory, never imported
+by the Swift package, and versioned alongside the app because the wire contract is a single artifact
+implemented twice and two repositories would let the halves drift. It does not touch the one-SwiftPM-
+dependency rule. Its tests do not run under `swift test`; see [§10.1](#101-shape-of-the-suite).
 
 ### 13.2 Running things
 
 ```bash
 Scripts/build.sh --package-only     # build the package
 Scripts/build.sh                    # …and the app
-Scripts/test.sh                     # 1,720 tests, ~36 s warm
+Scripts/test.sh                     # 1,862 tests, ~35 s warm
 Scripts/test.sh --filter GlassLint  # one suite
 Scripts/test.sh --coverage          # per-target line coverage
 Scripts/test.sh --sanitize thread
 Scripts/bench.sh --no-compare       # the performance lane
+
+cd Relay && npm ci && npm test      # the relay's 24 vitest cases — not part of swift test
 
 python3 Scripts/validate-fixtures.py              # 2,004 assertions, stdlib only
 python3 Scripts/validate-fixtures.py --load-test  # + open each fixture in LibreOffice (~90 s)

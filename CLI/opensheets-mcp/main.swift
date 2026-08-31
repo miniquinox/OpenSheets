@@ -15,5 +15,11 @@ import SheetMCP
 //
 //  Like `opensheets`, this binary does not link AppKit and therefore cannot mint a workspace
 //  grant. It can only check the ones the app created.
+//
+//  Arguments are passed through in front of nothing: `serve` is prepended, never replaced, so the
+//  subcommand cannot be talked into being something else — `opensheets-mcp tools` is `serve tools`
+//  and exits 2, not a different program. What that pass-through is for is `--read-only`, which
+//  spawns a server whose `tools/list` holds only the tools that read. Anything else after the
+//  binary name is a usage error rather than an argument the server quietly ignores.
 
-exit(await OpenSheetsCLI.run(arguments: ["serve"]))
+exit(await OpenSheetsCLI.run(arguments: ["serve"] + Swift.CommandLine.arguments.dropFirst()))

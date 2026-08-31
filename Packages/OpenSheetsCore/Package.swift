@@ -40,6 +40,7 @@ let package = Package(
         .library(name: "GlassUI", targets: ["GlassUI"]),
         .library(name: "SheetStore", targets: ["SheetStore"]),
         .library(name: "SheetMCP", targets: ["SheetMCP"]),
+        .library(name: "SheetShare", targets: ["SheetShare"]),
         .library(name: "DocumentCore", targets: ["DocumentCore"]),
         .library(name: "TestSupport", targets: ["TestSupport"]),
         // A9's binaries. Build with `swift build -c release --product opensheets-mcp`; the
@@ -58,6 +59,7 @@ let package = Package(
                 "GlassUI",
                 "SheetStore",
                 "SheetMCP",
+                "SheetShare",
                 "DocumentCore",
             ]
         ),
@@ -90,6 +92,25 @@ let package = Package(
             swiftSettings: strictSettings
         ),
 
+        // Cloud Share's app-side half: share tokens, the relay wire contract, this Mac's device
+        // identity, and (later in the wave) the socket and the subprocess bridge.
+        //
+        // A leaf beside `SheetMCP` rather than inside it, and that placement is the feature's
+        // main structural claim. `DOCUMENTATION.md` §5.9 says the MCP server makes no network
+        // requests; keeping every socket in a target `SheetMCP` cannot see keeps that sentence
+        // literally true rather than merely intended. `opensheets-mcp` links `SheetMCP` and not
+        // this, so the serving process still cannot reach the network no matter what the app
+        // does with its stdio.
+        //
+        // `SheetStore` is here for the share-link table and `ULID`: the engine reads link
+        // records in-process to answer "is this link still live" per request, which is the
+        // authoritative half of revocation.
+        .target(
+            name: "SheetShare",
+            dependencies: ["SheetModel", "SheetStore"],
+            swiftSettings: strictSettings
+        ),
+
         // MARK: - Wave 2
 
         // A8's document model. The one place that imports every other target at once: it is where
@@ -101,10 +122,18 @@ let package = Package(
         // saw real numbers in. `SheetMCP` is the lowest target both front ends can see; the app
         // already links it through the `OpenSheetsCore` umbrella, so this costs nothing at build
         // time and removes a whole class of disagreement.
+        //
+        // `SheetShare` is here for the same kind of reason, and the justification is worth
+        // stating because a new edge in this graph is not free. Cloud Share's service object is
+        // `@MainActor @Observable` and owned by `AppModel` — it is app state, so it belongs on
+        // the layer that owns app state, not in the leaf that owns sockets and subprocesses.
+        // `DocumentCore` is the one target allowed to know about more than one component, so
+        // the composition happens here and the leaf stays testable without a main actor.
         .target(
             name: "DocumentCore",
             dependencies: [
                 "SheetModel", "SheetFormat", "SheetFormula", "GridKit", "GlassUI", "SheetStore", "SheetMCP",
+                "SheetShare",
             ],
             swiftSettings: strictSettings
         ),
@@ -152,6 +181,7 @@ let package = Package(
             swiftSettings: strictSettings
         ),
         .testTarget(name: "SheetMCPTests", dependencies: ["SheetMCP", "TestSupport"], swiftSettings: strictSettings),
+        .testTarget(name: "SheetShareTests", dependencies: ["SheetShare", "TestSupport"], swiftSettings: strictSettings),
         .testTarget(
             name: "DocumentCoreTests",
             dependencies: ["DocumentCore", "MiniZip", "SheetMCP", "TestSupport"],
