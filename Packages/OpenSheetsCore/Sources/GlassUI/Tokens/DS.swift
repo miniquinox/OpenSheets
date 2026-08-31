@@ -609,6 +609,12 @@ public extension DS {
             context.pick(light: Palette.solidFloatingLight, dark: Palette.solidFloatingDark)
         }
 
+        /// The frost tint for ``GlassTier/hud`` — the volume-HUD look. The alpha is the frost
+        /// strength; the lens carries it, so this is a tint on glass, never a fill over it.
+        public static func hudFrost(_ context: AppearanceContext) -> RGBA {
+            context.pick(light: Palette.hudFrostLight, dark: Palette.hudFrostDark)
+        }
+
         public static func borderColor(_ context: AppearanceContext) -> RGBA {
             if context.increaseContrast {
                 return context.pick(

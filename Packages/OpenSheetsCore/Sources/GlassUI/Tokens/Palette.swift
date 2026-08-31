@@ -121,6 +121,14 @@ public enum Palette {
     public static let solidFloatingLight = RGBA(hex: "#FCFCFD")
     public static let solidFloatingDark = RGBA(hex: "#323236")
 
+    /// The `hud` tier's frost tint (alpha = frost strength), theme-adaptive like the system's
+    /// own HUDs: in light mode a bright white frost, in dark mode only a *lift* — enough sheen
+    /// that the surface reads as a control, little enough that the lens stays visibly glass and
+    /// the panel stays dark. 65% white was tried here and read as a light-grey slab over a dark
+    /// grid: past a point, frost stops being glass and starts being paint.
+    public static let hudFrostLight = RGBA(hex: "#FFFFFF99")
+    public static let hudFrostDark = RGBA(hex: "#EBEBF042")
+
     /// The hairline that replaces the glass edge. This is the only border in the design system,
     /// and it exists only when there is no glass to muddy.
     public static let solidBorderLight = RGBA(hex: "#00000026")

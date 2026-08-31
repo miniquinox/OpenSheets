@@ -114,20 +114,34 @@ public struct ChatSurface: View {
                 ChatBubble(isResponding: state.isResponding, context: context, perform: perform)
                     .glassMorph(.chatSurface, in: morphNamespace)
                     .glassMorphTransition(context)
+                    .transition(Self.zoom(context))
             case .panel:
                 ChatPanel(state: state, context: context, perform: perform)
                     .glassMorph(.chatSurface, in: morphNamespace)
                     .glassMorphTransition(context)
+                    .transition(Self.zoom(context))
             }
         }
         .animation(DS.Motion.morph(context), value: phase)
+    }
+
+    /// The grow/shrink half of the gesture: the panel inflates out of the bubble's corner and
+    /// deflates back into it, anchored bottom-trailing where both shapes live. Layered on the
+    /// lens morph — the glass stretches while the content scales — which is what makes the
+    /// expansion read as the system's own zoom rather than a swap. Under `reduceMotion`, a
+    /// cross-fade, for ``SwiftUI/View/glassMorphTransition(_:)``'s exact reason.
+    private static func zoom(_ context: AppearanceContext) -> AnyTransition {
+        context.reduceMotion
+            ? .opacity
+            : .scale(scale: 0.35, anchor: .bottomTrailing).combined(with: .opacity)
     }
 }
 
 // MARK: - The bubble
 
-/// "✦ Ask your sheet". A capsule like the stats pill across the grid from it: a passive offer,
-/// not a signal, so it takes the floating tier with no tint.
+/// The Apple Intelligence glyph in a round frosted lens — the system volume HUD's grammar: an
+/// icon the OS has already taught, on the ``GlassTier/hud`` frost so it reads as a control and
+/// not as a dark window onto the grid.
 public struct ChatBubble: View {
     private let isResponding: Bool
     private let context: AppearanceContext
@@ -143,24 +157,24 @@ public struct ChatBubble: View {
         self.perform = perform
     }
 
+    /// The system volume HUD's proportions: one glyph in a round frosted lens, no caption. The
+    /// words moved to the tooltip and the accessibility label — an icon that needs a label next
+    /// to it is an icon that is not doing its job, and this one is the OS's own.
+    private static let diameter: CGFloat = 40
+
     public var body: some View {
         Button { perform(.expand) } label: {
-            HStack(spacing: DS.Space.s) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(DS.Chrome.accent)
-                    .symbolEffect(.pulse, isActive: isResponding && !context.reduceMotion)
-                Text(isResponding ? "Answering…" : "Ask your sheet")
-                    .font(DS.Text.bodyEmphasis)
-                    .foregroundStyle(DS.Chrome.primary)
-            }
-            .padding(.horizontal, DS.Space.l)
-            .padding(.vertical, DS.Space.s)
-            .contentShape(Capsule(style: .continuous))
+            Image(systemName: "apple.intelligence")
+                .font(.system(size: 20, weight: .medium))
+                .symbolRenderingMode(.multicolor)
+                .foregroundStyle(DS.Chrome.primary)
+                .symbolEffect(.pulse, isActive: isResponding && !context.reduceMotion)
+                .frame(width: Self.diameter, height: Self.diameter)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .glassPill(context: context)
-        .hoverTitle("Chat with this sheet — ⌥⌘C")
+        .glassPill(context: context, frosted: true)
+        .hoverTitle("Ask your sheet — ⌥⌘C")
         .accessibilityLabel(isResponding ? "Sheet chat, answering" : "Ask your sheet")
         .accessibilityHint("Opens the sheet chat")
     }
@@ -169,9 +183,9 @@ public struct ChatBubble: View {
 // MARK: - The panel
 
 /// The conversation. Fixed width like the diff panel, height capped so the transcript scrolls
-/// rather than the panel growing past the window — and plain floating glass, not a tint, for the
-/// diff panel's exact reason: at this area a tint is a slab, and the sheet the answers are
-/// *about* is what belongs behind the surface.
+/// rather than the panel growing past the window. Frosted (``GlassTier/hud``) rather than plain
+/// floating glass: a transcript is read *on* the surface, not through it, and the frost is what
+/// keeps three paragraphs legible over a grid of numbers.
 public struct ChatPanel: View {
     private let state: ChatSurfaceState
     private let context: AppearanceContext
@@ -208,7 +222,9 @@ public struct ChatPanel: View {
             }
         }
         .frame(width: Metrics.width)
-        .glassCard(context: context)
+        // Frosted like the bubble it morphs out of — both ends of a morph are one lens, and a
+        // lens that changes recipe mid-flight reads as a cross-fade between two objects.
+        .glassCard(context: context, frosted: true)
         .onExitCommand { perform(.collapse) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sheet chat")
@@ -216,8 +232,9 @@ public struct ChatPanel: View {
 
     private var header: some View {
         HStack(spacing: DS.Space.s) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 12, weight: .semibold))
+            Image(systemName: "apple.intelligence")
+                .font(.system(size: 13, weight: .medium))
+                .symbolRenderingMode(.multicolor)
                 .foregroundStyle(DS.Chrome.accent)
             Text("Ask your sheet")
                 .font(DS.Text.panelTitle)

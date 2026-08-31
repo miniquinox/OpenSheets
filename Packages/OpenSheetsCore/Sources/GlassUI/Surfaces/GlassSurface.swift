@@ -23,6 +23,16 @@ public enum GlassTier: String, Sendable, Hashable, CaseIterable, Codable {
     ///
     /// Tint is semantic and there are exactly three of them. See ``DS/SignalKind``.
     case signal
+
+    /// `.regular.tint(frost).interactive()` — the sheet-chat bubble and its panel.
+    ///
+    /// Floating, but **frosted**, the way the system's own volume HUD is: a white frost tint
+    /// lifts the lens off whatever is beneath it, so the surface reads as a control in its own
+    /// right rather than as a dark window onto the grid. The plain floating tier is the right
+    /// default — a lens should show the document — but a *conversation* is not a readout of the
+    /// cells behind it, and rendering it as one made it look switched off. The frost is a look,
+    /// not a meaning, which is why this is a tier and not a fourth ``DS/SignalKind``.
+    case hud
 }
 
 /// The signature surface.
@@ -91,6 +101,8 @@ public struct GlassSurface<S: Shape>: ViewModifier {
             DS.Signal.tintValue(signal, context)
                 .map { Glass.regular.tint($0.opacity(DS.Signal.glassTintStrength).color) }
                 ?? .regular
+        case .hud:
+            .regular.tint(DS.Surface.hudFrost(context).color).interactive()
         }
     }
 }
@@ -126,7 +138,7 @@ public struct GlassResolution: Sendable, Hashable, CustomStringConvertible {
         guard context.usesRealGlass else {
             let fill: RGBA = switch tier {
             case .chrome: DS.Surface.chromeColor(context)
-            case .floating: DS.Surface.floatingColor(context)
+            case .floating, .hud: DS.Surface.floatingColor(context)
             case .signal: DS.Surface.signalColor(signal, context)
             }
             return GlassResolution(
@@ -146,6 +158,8 @@ public struct GlassResolution: Sendable, Hashable, CustomStringConvertible {
             recipe = "regular"
         case .floating:
             recipe = "regular.interactive"
+        case .hud:
+            recipe = "regular.tint(\(DS.Surface.hudFrost(context).hexString)).interactive"
         case .signal:
             if signal == .neutral {
                 recipe = "regular"
@@ -223,11 +237,18 @@ public extension View {
     }
 
     /// A floating capsule: the stats pill, the refresh pill, the sync chip.
-    func glassPill(context: AppearanceContext, signal: DS.SignalKind = .neutral) -> some View {
+    ///
+    /// `frosted` swaps the plain lens for the ``GlassTier/hud`` frost. A signal outranks a
+    /// frost: a tinted surface is saying something, and the saying wins.
+    func glassPill(
+        context: AppearanceContext,
+        signal: DS.SignalKind = .neutral,
+        frosted: Bool = false
+    ) -> some View {
         modifier(
             GlassSurface(
                 shape: Capsule(style: .continuous),
-                tier: signal == .neutral ? .floating : .signal,
+                tier: signal != .neutral ? .signal : (frosted ? .hud : .floating),
                 context: context,
                 signal: signal
             )
@@ -238,12 +259,13 @@ public extension View {
     func glassCard(
         context: AppearanceContext,
         radius: CGFloat = DS.Radius.card,
-        signal: DS.SignalKind = .neutral
+        signal: DS.SignalKind = .neutral,
+        frosted: Bool = false
     ) -> some View {
         modifier(
             GlassSurface(
                 shape: DS.Radius.shape(radius),
-                tier: signal == .neutral ? .floating : .signal,
+                tier: signal != .neutral ? .signal : (frosted ? .hud : .floating),
                 context: context,
                 signal: signal
             )
